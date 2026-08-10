@@ -6,16 +6,25 @@ client_id = ""
 embedded = true
 
 [access_scopes]
-# [START campaign-dashboard.scopes]
 # Granted at install. Changing this list re-prompts every user on next load.
-scopes = "read_reports,write_reports,read_analytics_annotations,write_analytics_annotations"
-# [END campaign-dashboard.scopes]
+#
+# read_reports runs shopifyqlQuery. write_reports creates and measures analytics
+# targets. The two annotation scopes read and write markers on the store's charts.
+# write_products and write_customers are what let the app stamp its own metafields
+# onto products and customers, and create the definitions behind them.
+scopes = "read_reports,write_reports,read_analytics_annotations,write_analytics_annotations,write_products,write_customers"
 
-# [START campaign-dashboard.direct-api]
+# The metric cards fetch their own data from the browser through App Bridge rather
+# than through a loader, so direct API access has to be on for them to render.
 [access.admin]
 direct_api_mode = "online"
 embedded_app_direct_api_access = true
-# [END campaign-dashboard.direct-api]
+
+# The two metafield definitions this app owns are deliberately not declared here.
+# TOML supports only the adminFilterable, uniqueValues, and cartToOrderCopyable
+# capabilities, and a definition declared in TOML is read-only through the Admin
+# API, so a declared definition could never be made analytics queryable. The app
+# creates them itself instead. See app/campaign-queries.server.js.
 
 [webhooks]
 api_version = "2026-10"

@@ -1,5 +1,5 @@
 {
-  "name": "example-shopifyql-sales-dashboard-react",
+  "name": "example-analytics-campaign-dashboard-react",
   "private": true,
   "type": "module",
   "scripts": {
@@ -12,7 +12,7 @@
     "env": "shopify app env",
     "start": "react-router-serve ./build/server/index.js",
     "docker-start": "npm run setup && npm run start",
-    "setup": "prisma generate && prisma migrate deploy",
+    "setup": "prisma generate && prisma db push",
     "shopify": "shopify",
     "prisma": "prisma",
     "vite": "vite"
