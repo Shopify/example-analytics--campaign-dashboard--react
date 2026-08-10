@@ -460,10 +460,14 @@ export const bounceQuery = (campaign) => `
 // [END campaign-dashboard.bounce-query]
 
 // [START campaign-dashboard.insight-query]
-// OVERALL ranks across the whole window. Without it the top five are re-picked
-// every week, so a product that slips to sixth vanishes from that week and reads
-// the same as a week with no sales. ONLY drops the fold row, which is most of the
-// catalog and flattens all five lines against the axis.
+// TIMESERIES week counts as the first grouping, so product_title is the second
+// and OVERALL applies to it. Without OVERALL the top five are picked again every
+// week, and a product that slips to sixth vanishes from that week and reads the
+// same as a week with no sales.
+//
+// ONLY drops the `Other` row, which aggregates every product outside the top
+// five. Left in, it dwarfs the five product lines and flattens them against the
+// axis.
 export const insightQuery = (campaign) => `
   query CampaignInsight {
     shopifyqlQuery(

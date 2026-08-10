@@ -20,6 +20,9 @@ export const CHANNELS = {
       sent: 'emails_sent',
       reached: 'emails_delivered',
       engaged: 'emails_opened',
+      // Two ways an email is lost, and they're different problems. A bounce
+      // never arrived. An unsubscribe arrived and opted out.
+      bounced: 'emails_bounced',
       lost: 'email_unsubscribes',
     },
     // What engagement means here, so one axis can't imply three channels count
@@ -73,13 +76,20 @@ export const FUNNEL_METRICS = [
   ...LIST_STAGES.map((stage) => stage.metric),
   ...CHANNEL_KEYS.flatMap((key) => [
     ...CHANNELS[key].stages.map((stage) => stage.metric),
+    // The losses aren't stages, because a funnel reads as a progression and
+    // these leave it. Ask for the columns anyway: the health panel and the
+    // bounce alert are computed from the same rows the funnel is drawn from, so
+    // a metric left out here reads as a permanent zero rather than as an error.
+    CHANNELS[key].metrics.bounced,
     CHANNELS[key].metrics.lost,
   ]),
 ].filter((metric, index, all) => metric && all.indexOf(metric) === index);
 
 // The sequence query groups by template_id, so it only needs the four metrics a
 // touch is scored on rather than every stage.
+const SCORED = ['sent', 'reached', 'engaged', 'lost'];
+
 export const SEQUENCE_METRICS = CHANNEL_KEYS.flatMap((key) =>
-  Object.values(CHANNELS[key].metrics),
+  SCORED.map((slot) => CHANNELS[key].metrics[slot]),
 ).filter((metric, index, all) => metric && all.indexOf(metric) === index);
 // [END campaign-dashboard.channel-registry]
