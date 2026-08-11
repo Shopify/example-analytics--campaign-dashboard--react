@@ -82,7 +82,7 @@ export default function CampaignsIndex() {
       multiple: 5,
     });
 
-    // Cancelling returns undefined rather than an empty array, and treating
+    // Canceling returns undefined rather than an empty array, and treating
     // those the same clears a selection the user meant to keep.
     if (!selection) return;
 

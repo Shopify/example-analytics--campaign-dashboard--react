@@ -30,9 +30,9 @@ export const CAMPAIGN_FIELDS = {
   markers: 'Annotation IDs the app wrote, keyed by mark, so it can update them.',
 };
 
-// A cancelled campaign keeps its record with `status: 'cancelled'` rather than
+// A canceled campaign keeps its record with `status: 'canceled'` rather than
 // disappearing. Its ID stays spent, because event data can't be deleted and a
-// reused ID would inherit the cancelled campaign's funnel.
+// reused ID would inherit the canceled campaign's funnel.
 export const FIRST_CAMPAIGN_ID = 4210;
 
 export const emptyState = () => ({campaigns: []});

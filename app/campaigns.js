@@ -76,8 +76,8 @@ export function campaignMarks(campaign) {
     },
     {
       key: 'launch',
-      // Resolved against the store's own data before the write, because a
-      // bundle and a plain product are different types.
+      // The plan's guess. `resolveLaunchMark` checks the store before the write
+      // and upgrades this to `bundle_launch` when the products are bundles.
       type: 'product_launch',
       title: `${products} live`,
       description: `${products} went on sale for ${campaign.title}.`,

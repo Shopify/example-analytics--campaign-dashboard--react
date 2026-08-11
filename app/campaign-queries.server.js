@@ -674,23 +674,4 @@ export const CUSTOMER_NAMES = `
     }
   }
 `;
-
-// Taking someone out of the audience clears the metafield, which is what drops
-// them out of every report filtered on the tier. metafieldsSet has no way to
-// write an absent value, so removal is its own mutation.
-export const METAFIELDS_DELETE = `
-  mutation RemoveAudienceMember($metafields: [MetafieldIdentifierInput!]!) {
-    metafieldsDelete(metafields: $metafields) {
-      deletedMetafields {
-        key
-        namespace
-        ownerId
-      }
-      userErrors {
-        field
-        message
-      }
-    }
-  }
-`;
 // [END campaign-dashboard.audience-roster]

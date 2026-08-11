@@ -90,7 +90,9 @@ export function outcomeText({campaign, revenue, target, sequence, money}) {
     description: clamp(`${sentences.join('. ')}.`, 150),
   };
 }
+// [END campaign-dashboard.outcome-text]
 
+// [START campaign-dashboard.detect-incident]
 // The app's own numbers can say something went wrong, which is worth telling the
 // user on their charts rather than only inside the app. Both halves of the text
 // come from measured data, so the marker names the kind of bounce it was.
@@ -121,4 +123,4 @@ export function detectIncident(campaign, funnel, bounces) {
     ),
   };
 }
-// [END campaign-dashboard.outcome-text]
+// [END campaign-dashboard.detect-incident]

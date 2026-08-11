@@ -367,12 +367,14 @@ async function raiseTarget(admin, target) {
 
 // [START campaign-dashboard.bundle-mark]
 // A bundle sells as one line and reports as its components, so a campaign that
-// promoted a bundle has a product launch marker that doesn't match what the sales
-// charts show. Say so on the marker rather than leaving the reader to work out why
-// the numbers don't add up.
-async function bundleNote(admin, campaign) {
+// promoted a bundle needs `bundle_launch` rather than `product_launch`, plus a note
+// saying why the numbers won't add up. Only the store's own data knows which it is,
+// so resolve the type here rather than taking it from the plan.
+const PLAIN_LAUNCH = {type: 'product_launch', note: ''};
+
+async function resolveLaunchMark(admin, campaign) {
   const ids = campaign.products.map((product) => product.id);
-  if (ids.length === 0) return '';
+  if (ids.length === 0) return PLAIN_LAUNCH;
 
   const body = await (
     await admin.graphql(BUNDLE_QUERY, {variables: {ids}})
@@ -380,9 +382,12 @@ async function bundleNote(admin, campaign) {
   const bundles = (body.data?.nodes ?? []).filter(
     (node) => node?.hasVariantsThatRequiresComponents,
   );
-  if (bundles.length === 0) return '';
+  if (bundles.length === 0) return PLAIN_LAUNCH;
 
-  return ` Sold as a bundle, so sales report against its components.`;
+  return {
+    type: 'bundle_launch',
+    note: ` Sold as a bundle, so sales report against its components.`,
+  };
 }
 // [END campaign-dashboard.bundle-mark]
 
@@ -558,7 +563,7 @@ async function markMilestone(admin, target, markedAt) {
 // [START campaign-dashboard.record-mark]
 // Every annotation the app writes goes onto the campaign record under a key.
 // That's what lets a marker written before the campaign ran be found and rewritten
-// afterwards, and it's the exact set that cancelling deletes.
+// afterwards, and it's the exact set that canceling deletes.
 const recordMark = (admin, campaign, key, id) =>
   id ? rememberMarkers(admin, campaign.id, {[key]: id}) : null;
 // [END campaign-dashboard.record-mark]
@@ -658,7 +663,7 @@ export async function action({request, params}) {
       return {problems: ['This campaign has already been launched.']};
     }
 
-    const note = await bundleNote(admin, campaign);
+    const launch = await resolveLaunchMark(admin, campaign);
     const markers = {};
     for (const [key, mark] of Object.entries(campaignMarks(campaign))) {
       const body = await (
@@ -670,9 +675,12 @@ export async function action({request, params}) {
               // that hasn't finished, which is what the campaign's own marker is
               // until it closes.
               ...(mark.ranged ? {endedAt: null} : {}),
-              type: mark.type,
+              type: key === 'launch' ? launch.type : mark.type,
               title: mark.title,
-              description: key === 'launch' ? `${mark.description}${note}` : mark.description,
+              description:
+                key === 'launch'
+                  ? `${mark.description}${launch.note}`
+                  : mark.description,
             },
           },
         })
@@ -804,10 +812,10 @@ export async function action({request, params}) {
       await admin.graphql(TARGETS_DELETE, {variables: {ids}});
     }
 
-    // The metafields stay, and so does the event data. Cancelling undoes the
+    // The metafields stay, and so does the event data. Canceling undoes the
     // annotations and the goals, and nothing else.
     await updateCampaign(admin, campaign.id, {
-      status: 'cancelled',
+      status: 'canceled',
       markers: {},
     });
     return {ok: true};
@@ -844,15 +852,15 @@ export default function CampaignDashboard() {
   // the API rather than for the script tag.
   const [cardReady, setCardReady] = useState(false);
   useEffect(() => {
-    let cancelled = false;
+    let canceled = false;
     const poll = setInterval(() => {
-      if (!cancelled && window.shopify?.shopifyQL) {
+      if (!canceled && window.shopify?.shopifyQL) {
         setCardReady(true);
         clearInterval(poll);
       }
     }, 100);
     return () => {
-      cancelled = true;
+      canceled = true;
       clearInterval(poll);
     };
   }, []);
@@ -997,7 +1005,7 @@ export default function CampaignDashboard() {
   // Polaris Viz matches an annotation to a point by the axis label it drew, not by
   // the value in the data, so the key is the formatted day and not the timestamp.
   const chartAnnotations = annotations.map((annotation) => ({
-    startKey: annotation.startedAt.slice(0, 10),
+    startKey: shortDate(annotation.startedAt.slice(0, 10)),
     label: annotation.title,
     content: {
       content: annotation.description ?? annotation.title,
@@ -1217,8 +1225,13 @@ export default function CampaignDashboard() {
   const crossAppRows = (crossApp.tableData.rows ?? [])
     .map((row) => ({
       app: String(cell(row, 'app_name') ?? 'Unnamed'),
-      sent: Number(cell(row, 'emails_sent') ?? 0),
-      opened: Number(cell(row, 'emails_opened') ?? 0),
+      // Every send the app reported, not only its email. An app that sends on one
+      // channel would drop out of the comparison if this counted a column it never
+      // reports into.
+      sent:
+        Number(cell(row, 'emails_sent') ?? 0) +
+        Number(cell(row, 'sms_messages_sent') ?? 0) +
+        Number(cell(row, 'push_notifications_sent') ?? 0),
     }))
     .filter((row) => row.sent > 0)
     .sort((a, b) => b.sent - a.sent);
@@ -1505,7 +1518,7 @@ export default function CampaignDashboard() {
               Close the campaign with its result
             </s-button>
           )}
-          {campaign.status !== 'cancelled' && (
+          {campaign.status !== 'canceled' && (
             <s-button tone="critical" loading={busy} onClick={() => submit('cancel')}>
               Cancel the campaign
             </s-button>
@@ -2247,14 +2260,12 @@ export default function CampaignDashboard() {
                 <s-table-header-row>
                   <s-table-header>App</s-table-header>
                   <s-table-header>Sent</s-table-header>
-                  <s-table-header>Opened</s-table-header>
                 </s-table-header-row>
                 <s-table-body>
                   {crossAppRows.map((row) => (
                     <s-table-row key={row.app}>
                       <s-table-cell>{row.app}</s-table-cell>
                       <s-table-cell>{integer(row.sent)}</s-table-cell>
-                      <s-table-cell>{integer(row.opened)}</s-table-cell>
                     </s-table-row>
                   ))}
                 </s-table-body>
