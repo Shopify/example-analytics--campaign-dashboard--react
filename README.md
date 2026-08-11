@@ -16,7 +16,9 @@ This is the companion code for [Build a campaign performance dashboard](https://
 
 - [Level 2 access to protected customer data](https://shopify.dev/docs/apps/launch/protected-customer-data), which `shopifyqlQuery` requires. Approval can take time, so request it early.
 - API version `2026-10` or later. Annotations and targets aren't available before it.
-- [App Events in Analytics](https://shopify.dev/docs/apps/build/app-events/analytics) access, which is in developer preview and granted to approved apps. The funnel and sequence panels need it, and report that they can't reach the dataset without it. Every other panel works.
+- [App Events in Analytics](https://shopify.dev/docs/apps/build/app-events/analytics) access. The preview is available to approved apps, and [early access is open](https://forms.gle/2yLka2Ww3J3cNiGY8).
+
+  **Without App Events access, the app still runs and nothing fails.** Sales, goals, timeline, and insight all work, and the campaign still writes its annotations and targets. The Funnel and Sequence panels are the two that need the dataset. They report that they can't reach it and stay empty, and **Send the campaign's events** has nothing to query back.
 
 ## Run it
 

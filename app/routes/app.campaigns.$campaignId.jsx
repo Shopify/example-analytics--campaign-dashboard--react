@@ -273,15 +273,22 @@ export async function loader({request, params}) {
   };
 }
 
+// A skipped target and a rejected one both have no ID, so say which with the errors.
+const NO_TARGET = {id: null, userErrors: []};
+
 // [START campaign-dashboard.store-target]
 // No filter, so it measures the whole store over the campaign's window. Metric, dates,
-// and filters identify a target, so creating this twice is a user error. Return the ID:
-// targets are shop-scoped, so only the app's own record knows which ones are its.
+// and filters identify a target, so creating this twice is a user error. Return the ID
+// with the errors: targets are shop-scoped, so only the app's record knows which are its.
 async function createTarget(admin, input) {
   const body = await (
     await admin.graphql(TARGET_CREATE, {variables: {input}})
   ).json();
-  return body.data?.analyticsTargetCreate?.analyticsTarget?.id ?? null;
+  const created = body.data?.analyticsTargetCreate;
+  return {
+    id: created?.analyticsTarget?.id ?? null,
+    userErrors: created?.userErrors ?? [],
+  };
 }
 
 const createStoreTarget = (admin, campaign) =>
@@ -299,7 +306,7 @@ const createStoreTarget = (admin, campaign) =>
 // campaign sell what it advertised" from "did the store have a good fortnight".
 async function createProductTarget(admin, campaign) {
   const filters = promotedFilter(campaign);
-  if (!filters) return null;
+  if (!filters) return NO_TARGET;
 
   return createTarget(admin, {
     name: `${campaign.title}: promoted products`,
@@ -317,8 +324,8 @@ async function createProductTarget(admin, campaign) {
 // metafield is the app's, so the filter quotes the reserved namespace in full. Skip it
 // until the definition is queryable, or the generated query has no such column.
 async function createAudienceTarget(admin, campaign, definition) {
-  if (!isTargetedTier(campaign.audience)) return null;
-  if (!definition.enabled) return null;
+  if (!isTargetedTier(campaign.audience)) return NO_TARGET;
+  if (!definition.enabled) return NO_TARGET;
 
   return createTarget(admin, {
     name: `${campaign.title}: ${tierLabel(campaign.audience)}`,
@@ -376,18 +383,24 @@ async function resolveLaunchMark(admin, campaign) {
 // Stamp each promoted product with the campaign that pushed it, so "which campaign sold
 // this" is answerable later. `$app` resolves to the app's reserved namespace on write,
 // and the field reads back as `app--<id>.promoted_by`.
-const stampProducts = (admin, campaign) =>
-  admin.graphql(METAFIELDS_SET, {
-    variables: {
-      metafields: campaign.products.map((product) => ({
-        ownerId: product.id,
-        namespace: '$app',
-        key: 'promoted_by',
-        type: 'single_line_text_field',
-        value: campaign.title,
-      })),
-    },
-  });
+async function stampProducts(admin, campaign) {
+  if (campaign.products.length === 0) return [];
+
+  const body = await (
+    await admin.graphql(METAFIELDS_SET, {
+      variables: {
+        metafields: campaign.products.map((product) => ({
+          ownerId: product.id,
+          namespace: '$app',
+          key: 'promoted_by',
+          type: 'single_line_text_field',
+          value: campaign.title,
+        })),
+      },
+    })
+  ).json();
+  return body.data?.metafieldsSet?.userErrors ?? [];
+}
 // [END campaign-dashboard.product-metafield]
 
 // [START campaign-dashboard.stamp-tier]
@@ -395,7 +408,7 @@ const stampProducts = (admin, campaign) =>
 // is saved on the record too: the metafield says the tier, not which campaign set it.
 async function stampTier(admin, campaign) {
   const tier = AUDIENCE_TIERS.find((entry) => entry.value === campaign.audience);
-  if (!tier?.size) return [];
+  if (!tier?.size) return {members: [], userErrors: []};
 
   const body = await (await admin.graphql(tierRankQuery(tier))).json();
   // GROUP BY customer_id returns the numeric ID, and every mutation that follows
@@ -404,27 +417,32 @@ async function stampTier(admin, campaign) {
     .map((row) => row.customer_id)
     .filter(Boolean)
     .map((id) => `gid://shopify/Customer/${id}`);
-  if (ids.length === 0) return [];
+  if (ids.length === 0) return {members: [], userErrors: []};
 
-  await admin.graphql(METAFIELDS_SET, {
-    variables: {
-      metafields: ids.map((id) => ({
-        ownerId: id,
-        namespace: '$app',
-        key: TIER_METAFIELD.key,
-        type: 'single_line_text_field',
-        value: campaign.audience,
-      })),
-    },
-  });
+  const stamped = await (
+    await admin.graphql(METAFIELDS_SET, {
+      variables: {
+        metafields: ids.map((id) => ({
+          ownerId: id,
+          namespace: '$app',
+          key: TIER_METAFIELD.key,
+          type: 'single_line_text_field',
+          value: campaign.audience,
+        })),
+      },
+    })
+  ).json();
 
   const names = await (
     await admin.graphql(CUSTOMER_NAMES, {variables: {ids}})
   ).json();
-  return (names.data?.nodes ?? []).filter(Boolean).map((node) => ({
-    id: node.id,
-    displayName: node.displayName,
-  }));
+  return {
+    members: (names.data?.nodes ?? []).filter(Boolean).map((node) => ({
+      id: node.id,
+      displayName: node.displayName,
+    })),
+    userErrors: stamped.data?.metafieldsSet?.userErrors ?? [],
+  };
 }
 // [END campaign-dashboard.stamp-tier]
 
@@ -705,16 +723,18 @@ export async function action({request, params}) {
       createAudienceTarget(admin, campaign, dimensions.customer),
     ]);
     const targets = {};
-    for (const [key, id] of [
+    const rejected = [];
+    for (const [key, result] of [
       ['store', store],
       ['product', product],
       ['audience', audience],
     ]) {
-      if (id) targets[key] = id;
+      if (result.id) targets[key] = result.id;
+      rejected.push(...result.userErrors);
     }
 
-    await stampProducts(admin, campaign);
-    const members = await stampTier(admin, campaign);
+    const unstamped = await stampProducts(admin, campaign);
+    const {members, userErrors: untiered} = await stampTier(admin, campaign);
     const {userErrors} = await updateCampaign(admin, campaign.id, {
       status: 'running',
       markers,
@@ -724,7 +744,14 @@ export async function action({request, params}) {
     if (userErrors.length) {
       return {problems: userErrors.map((error) => error.message)};
     }
-    return {ok: true};
+
+    // The campaign is launched and its record is saved, so report a rejected goal or
+    // stamp as a warning beside that rather than as a failed launch. Silence here is
+    // what leaves the user with a goal they never set and no way to know.
+    const problems = [...rejected, ...unstamped, ...untiered].map(
+      (error) => error.message,
+    );
+    return problems.length ? {ok: true, problems} : {ok: true};
   }
 
   if (intent === 'raise-target') {
@@ -1481,6 +1508,8 @@ export default function CampaignDashboard() {
   // [END campaign-dashboard.advice]
 
   const problems = fetcher.data?.problems ?? [];
+  // Problems alongside `ok` mean the action landed with something rejected inside it.
+  const partial = Boolean(fetcher.data?.ok);
   const busy = fetcher.state !== 'idle';
   const today = dayOf(Date.now());
 
@@ -1515,7 +1544,14 @@ export default function CampaignDashboard() {
     <s-page heading={campaign.title}>
       {problems.length > 0 && (
         <s-section>
-          <s-banner tone="critical" heading="That didn't go through">
+          <s-banner
+            tone={partial ? 'warning' : 'critical'}
+            heading={
+              partial
+                ? "Some of that didn't go through"
+                : "That didn't go through"
+            }
+          >
             <s-unordered-list>
               {problems.map((problem) => (
                 <s-list-item key={problem}>{problem}</s-list-item>
