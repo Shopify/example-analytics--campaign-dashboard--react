@@ -1,5 +1,5 @@
 // [START campaign-dashboard.app-events-token]
-// App Events doesn't use the shop's Admin API session. It needs a client-credentials
+// App Events doesn't use the store's GraphQL Admin API session. It needs a client-credentials
 // token minted from the app's own client ID and secret.
 let cached = {token: null, expiresAt: 0};
 

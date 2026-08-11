@@ -20,10 +20,10 @@ export default function App() {
   return (
     <div className={styles.index}>
       <div className={styles.content}>
-        <h1 className={styles.heading}>ShopifyQL sales dashboard</h1>
+        <h1 className={styles.heading}>Campaign performance dashboard</h1>
         <p className={styles.text}>
-          Run a ShopifyQL query with the GraphQL Admin API and render the results
-          in the Shopify admin.
+          Report a campaign's funnel with App Events, query it back with
+          ShopifyQL, and record the result on the store's analytics timeline.
         </p>
         {showForm && (
           <Form className={styles.form} method="post" action="/auth/login">

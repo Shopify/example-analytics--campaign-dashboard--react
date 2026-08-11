@@ -21,10 +21,8 @@ direct_api_mode = "online"
 embedded_app_direct_api_access = true
 
 # The two metafield definitions this app owns are deliberately not declared here.
-# TOML supports only the adminFilterable, uniqueValues, and cartToOrderCopyable
-# capabilities, and a definition declared in TOML is read-only through the Admin
-# API, so a declared definition could never be made analytics queryable. The app
-# creates them itself instead. See app/campaign-queries.server.js.
+# TOML supports neither the analyticsQueryable capability nor edits through the
+# GraphQL Admin API, so app/campaign-queries.server.js creates them at runtime.
 
 [webhooks]
 api_version = "2026-10"
