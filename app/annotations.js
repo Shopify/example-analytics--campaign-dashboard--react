@@ -1,8 +1,6 @@
 // [START campaign-dashboard.annotate-clause]
-// ANNOTATE takes `category.type`, while the GraphQL Admin API takes the bare
-// type. Map one to the other here so the overlay stays in sync with whatever
-// this app actually writes. The last two are never planned. The app writes them
-// from what it measures, after the campaign has run.
+// ANNOTATE takes `category.type` while the GraphQL Admin API takes the bare type,
+// so the overlay needs the mapping between them.
 export const CATEGORIES = {
   campaign: 'marketing_events',
   product_launch: 'product_events',
@@ -15,9 +13,8 @@ export const CATEGORIES = {
   other: 'custom_events',
 };
 
-// Build the clause from the types the app resolved, not from the types it
-// planned. A clause asking for product_events.product_launch filters out the
-// bundle_launch marker the app actually wrote.
+// Built from the types the app resolved rather than the ones it planned. A clause
+// asking for product_events.product_launch filters out a bundle_launch marker.
 export function annotateClause(types) {
   return [
     ...new Set(
@@ -30,10 +27,8 @@ export function annotateClause(types) {
 // [END campaign-dashboard.annotate-clause]
 
 // [START campaign-dashboard.category-colors]
-// Colour the dots by category rather than by type, so the strip doubles as a
-// legend for the ANNOTATE clause. Two markers the user can filter together look
-// the same, and a marker another app wrote is greyed out because this app can
-// read it and can't change it.
+// Coloured by category rather than by type, so two markers the user can filter
+// together look the same and the strip doubles as a legend for the ANNOTATE clause.
 const CATEGORY_COLORS = {
   marketing_events: '#005bd3',
   product_events: '#29845a',
@@ -59,8 +54,8 @@ export const CATEGORY_LABELS = {
   custom_events: 'Custom',
 };
 
-// One swatch for each category actually on the strip, so the legend never
-// explains a colour the user can't see.
+// One swatch per category on the strip, so the legend never explains a colour the
+// user can't see. The count comes with it because an overlapping strip hides it.
 export function categoryLegend(annotations, appId) {
   const seen = new Map();
   for (const annotation of annotations) {
@@ -71,18 +66,19 @@ export function categoryLegend(annotations, appId) {
         category,
         label: CATEGORY_LABELS[category] ?? category,
         color: CATEGORY_COLORS[category] ?? '#005bd3',
+        count: 0,
       });
     }
+    seen.get(category).count += 1;
   }
   return [...seen.values()];
 }
 // [END campaign-dashboard.category-colors]
 
 // [START campaign-dashboard.explore-link]
-// Hand the user the query rather than a date range. The explore report reads its
-// window from the ql parameter's own SINCE and UNTIL, and ANNOTATE carries this
-// app's markers onto the chart the admin draws. A plain link to /analytics opens
-// on whatever the user last looked at.
+// The explore report reads its window from the query's own SINCE and UNTIL, so
+// handing it a query rather than a date range is what lands the user on this
+// campaign.
 export function exploreLink(query) {
   return `shopify://admin/analytics/reports/explore?ql=${encodeURIComponent(query)}`;
 }

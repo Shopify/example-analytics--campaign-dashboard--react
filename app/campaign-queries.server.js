@@ -1,23 +1,34 @@
-// Every GraphQL document this app sends, in the order the tutorial introduces
-// them. Queries that depend on a campaign are builders, so a second campaign
-// gets its own window and its own filters without a second document.
+// Every GraphQL document this app sends. Campaign-dependent queries are builders,
+// so a second campaign needs no second document.
 import {campaignWindow} from './campaigns';
 import {FUNNEL_METRICS, SEQUENCE_METRICS} from './channels';
 import {insightWindow} from './insight';
 
+// [START campaign-dashboard.shop-query]
+// The store's timezone decides which day a dated write lands on, and App Events
+// addresses the store by ID.
+export const SHOP_QUERY = `
+  query CampaignShop {
+    shop {
+      id
+      ianaTimezone
+    }
+  }
+`;
+// [END campaign-dashboard.shop-query]
+
 // [START campaign-dashboard.metafield-state]
-// One app-data metafield holds every campaign this app has created. An
-// AppInstallation owner is already isolated to this install, so the reserved
-// $app namespace isn't needed here the way it is on a product or a customer.
+// One app-data metafield holds every campaign. An AppInstallation owner is already
+// isolated to this install, so the reserved `$app` namespace isn't needed here.
 export const STATE_NAMESPACE = 'campaign_dashboard';
 export const STATE_KEY = 'campaigns';
 
+// Returns the app's own ID too, which is how a later read tells this app's markers
+// from another app's without matching on the title.
 export const STATE_QUERY = `
   query CampaignState {
     currentAppInstallation {
       id
-      # The app's own ID, so a read can tell this app's markers from another
-      # app's without matching on the title.
       app {
         id
       }
@@ -29,8 +40,8 @@ export const STATE_QUERY = `
   }
 `;
 
-// The same mutation writes the campaign list, the promoted-product stamps, and
-// the audience tags. Which resource it writes to is the ownerId.
+// One mutation for the campaign list, the promoted-product stamps, and the audience
+// tags. The ownerId is what differs.
 export const METAFIELDS_SET = `
   mutation SetCampaignMetafields($metafields: [MetafieldsSetInput!]!) {
     metafieldsSet(metafields: $metafields) {
@@ -49,12 +60,13 @@ export const METAFIELDS_SET = `
 // [END campaign-dashboard.metafield-state]
 
 // [START campaign-dashboard.query]
+// ShopifyQL buckets a TIMESERIES by the shop's timezone rather than UTC, so the
+// same query reads it.
 export const salesQuery = (campaign) => `
   query CampaignSales {
     shop {
       id
       currencyCode
-      # ShopifyQL buckets a TIMESERIES into days using this timezone, not UTC.
       ianaTimezone
     }
     shopifyqlQuery(
@@ -75,26 +87,29 @@ export const salesQuery = (campaign) => `
 // [END campaign-dashboard.query]
 
 // [START campaign-dashboard.optional-query]
-export const emptyTable = {tableData: {columns: [], rows: []}, parseErrors: []};
+// A factory, so two skipped panels don't share one rows array.
+export const emptyTable = () => ({
+  tableData: {columns: [], rows: []},
+  parseErrors: [],
+  unavailable: null,
+});
 
-// A query for a dataset the shop can't reach fails the whole GraphQL request
-// rather than returning parseErrors, so isolate it from the ones that must run.
+// A dataset the shop can't reach fails the whole GraphQL request rather than
+// returning parseErrors, and a parse error returns a null tableData. Normalize both.
 export async function runOptional(admin, query) {
   try {
     const body = await (await admin.graphql(query)).json();
     if (body.errors?.length) {
-      return {...emptyTable, unavailable: body.errors[0].message};
+      return {...emptyTable(), unavailable: body.errors[0].message};
     }
     const result = body.data?.shopifyqlQuery;
-    // A parse error returns tableData: null, so normalize before callers read
-    // columns or rows off it.
     return {
-      tableData: result?.tableData ?? emptyTable.tableData,
+      ...emptyTable(),
+      tableData: result?.tableData ?? emptyTable().tableData,
       parseErrors: result?.parseErrors ?? [],
-      unavailable: null,
     };
   } catch (error) {
-    return {...emptyTable, unavailable: error.message};
+    return {...emptyTable(), unavailable: error.message};
   }
 }
 // [END campaign-dashboard.optional-query]
@@ -120,8 +135,8 @@ export const TARGET_CREATE = `
   }
 `;
 
-// Raising a goal you've already beaten is the point of an editable target.
-// Only the fields you pass change, so this leaves the metric and filters alone.
+// Only the fields you pass change, so raising a goal leaves the metric and filters
+// alone.
 export const TARGET_UPDATE = `
   mutation RaiseCampaignTarget($id: ID!, $input: AnalyticsTargetUpdateInput!) {
     analyticsTargetUpdate(id: $id, input: $input) {
@@ -153,9 +168,8 @@ export const TARGETS_DELETE = `
 // [END campaign-dashboard.target]
 
 // [START campaign-dashboard.target-read]
-// A target is a goal plus the query that measures it. `shopifyqlQuery` is
-// generated by Shopify from the metric, the dates, and the filters, so progress
-// never needs a query of your own. Ask for it and run what comes back.
+// Shopify generates each target's `shopifyqlQuery` from its metric, dates, and
+// filters, so measuring progress needs no query of your own.
 export const targetsQuery = (campaign) => `
   query CampaignTargets {
     analyticsTargets(first: 10, query: "start_date:${campaign.startDate}") {
@@ -167,10 +181,7 @@ export const targetsQuery = (campaign) => `
         currencyCode
         startDate
         endDate
-        # Narrows what the target measures. Absent for a store-wide goal.
         filters
-        # The ready-made progress query for this target's metric, dates, and
-        # filters. Run it through shopifyqlQuery to get the current value.
         shopifyqlQuery
       }
     }
@@ -179,9 +190,8 @@ export const targetsQuery = (campaign) => `
 // [END campaign-dashboard.target-read]
 
 // [START campaign-dashboard.target-progress]
-// Each target carries its own query, so measuring three targets could be three
-// round trips. Alias them into one document instead: `shopifyqlQuery` is a plain
-// field, and a GraphQL document can select it as many times as it needs.
+// `shopifyqlQuery` is a plain field, so aliasing it measures every target in one
+// request rather than one each.
 export function progressQuery(targets) {
   const fields = targets
     .map(
@@ -195,8 +205,7 @@ export function progressQuery(targets) {
   return `query TargetProgress {\n${fields}\n}`;
 }
 
-// The generated query selects exactly one metric, so the single row it returns
-// has exactly one value. Read it without knowing the metric's name.
+// The generated query selects one metric, so its single row holds one value.
 export function progressValue(result) {
   if (!result || result.parseErrors?.length) return null;
   const row = result.tableData?.rows?.[0];
@@ -236,17 +245,14 @@ export const ANNOTATION_CREATE = `
 // [END campaign-dashboard.annotation-create]
 
 // [START campaign-dashboard.bundle-query]
-// Some annotation types are settled by the store's data rather than by the plan.
-// A bundle and a plain product are different types, and the app can't know which
-// it promoted until it asks.
+// A bundle and a plain product are different annotation types, and
+// `hasVariantsThatRequiresComponents` is what says which one the app promoted.
 export const BUNDLE_QUERY = `
   query PromotedProductKinds($ids: [ID!]!) {
     nodes(ids: $ids) {
       ... on Product {
         id
         title
-        # True when the product is assembled from components, which is what makes
-        # it a bundle rather than a product launch.
         hasVariantsThatRequiresComponents
       }
     }
@@ -255,9 +261,8 @@ export const BUNDLE_QUERY = `
 // [END campaign-dashboard.bundle-query]
 
 // [START campaign-dashboard.annotation-update]
-// Every field on an annotation is mutable, and only the fields you pass are
-// changed. That's what lets a marker written before the campaign ran be
-// rewritten afterwards with what actually happened.
+// Every field is mutable and only the fields you pass change, so a marker written
+// before the campaign ran can be rewritten with what happened.
 export const ANNOTATION_UPDATE = `
   mutation CloseCampaignAnnotation($id: ID!, $input: AnalyticsAnnotationUpdateInput!) {
     analyticsAnnotationUpdate(id: $id, input: $input) {
@@ -279,7 +284,7 @@ export const ANNOTATION_UPDATE = `
 // [END campaign-dashboard.annotation-update]
 
 // [START campaign-dashboard.annotation-delete]
-// No bulk variant, and the removed ID comes back as deletedId.
+// No bulk variant, and the removed ID comes back as `deletedId`.
 export const ANNOTATION_DELETE = `
   mutation DeleteCampaignAnnotation($id: ID!) {
     analyticsAnnotationDelete(id: $id) {
@@ -294,13 +299,9 @@ export const ANNOTATION_DELETE = `
 // [END campaign-dashboard.annotation-delete]
 
 // [START campaign-dashboard.annotation-read]
-// analyticsAnnotations hangs off Shop, not the query root. Filter terms are
-// space-separated ANDs over the documented filter fields.
-//
-// Filter by window, not by source or type. Reading only your own markers hides
-// the reason a campaign over- or under-performed: a sale that ran the same week,
-// a theme change, a Shopify-generated event. Everything in the window is
-// context, and createdByApp tells you which ones are yours.
+// Hangs off Shop, and sorts by ID unless told otherwise. Filtering by window rather
+// than by app is what keeps the sale or theme change that explains the numbers in
+// view, and `createdByApp` says which markers are the app's own.
 export const annotationsQuery = (campaign) => `
   query CampaignAnnotations {
     currentAppInstallation {
@@ -311,7 +312,6 @@ export const annotationsQuery = (campaign) => `
     shop {
       analyticsAnnotations(
         first: 50
-        # Sorting defaults to ID, which isn't chronological.
         sortKey: STARTED_AT
         query: "started_at:>=${campaign.startDate} started_at:<=${campaign.endDate}"
       ) {
@@ -323,7 +323,6 @@ export const annotationsQuery = (campaign) => `
           startedAt
           endedAt
           source
-          # Null when Shopify generated the annotation.
           createdByApp {
             id
             title
@@ -340,13 +339,8 @@ export const annotationsQuery = (campaign) => `
 // [END campaign-dashboard.annotation-read]
 
 // [START campaign-dashboard.app-events-query]
-// Each column here exists only because the extension declares the matching
-// standard event. On a shop without App Events access the whole GraphQL request
-// errors, so this runs through runOptional and stays out of the error banner.
-//
-// Lead capture and marketing are separate registry categories, and metrics from
-// both can share a SHOW clause. The dataset is the shop's own app data, built
-// from what its installed apps declare, so its columns differ from shop to shop.
+// These columns exist only because the extension declares the matching standard
+// events, so the dataset's shape differs from shop to shop.
 export const appEventsQuery = (campaign) => `
   query CampaignFunnel {
     shopifyqlQuery(
@@ -367,13 +361,8 @@ export const appEventsQuery = (campaign) => `
 // [END campaign-dashboard.app-events-query]
 
 // [START campaign-dashboard.slice-queries]
-// The attributes attached to an event are queryable dimensions, so campaign_id
-// splits any metric by campaign and compares this one against the ones before
-// it.
-//
-// Attribute dimensions reach back 30 days, and a longer window fails outright
-// rather than returning partial data. SINCE -30d UNTIL today spans 31 days,
-// which is why this asks for -29d.
+// Attribute dimensions reach back 30 days and a longer window fails outright, and
+// SINCE -30d UNTIL today spans 31 days. Hence -29d.
 export const sliceQuery = () => `
   query CampaignComparison {
     shopifyqlQuery(
@@ -392,9 +381,8 @@ export const sliceQuery = () => `
 // [END campaign-dashboard.slice-queries]
 
 // [START campaign-dashboard.cross-app-query]
-// app_name is a property of the event rather than an attribute the app attaches,
-// so it has no 30-day cap. That makes it the dimension to reach for when the
-// question is about the whole install rather than one campaign.
+// `app_name` is a property of the event rather than an attribute the app attaches,
+// so it has no 30-day cap.
 export const crossAppQuery = (campaign) => `
   query CampaignReachByApp {
     shopifyqlQuery(
@@ -413,11 +401,8 @@ export const crossAppQuery = (campaign) => `
 // [END campaign-dashboard.cross-app-query]
 
 // [START campaign-dashboard.sequence-query]
-// Each touch carries its own template_id, so grouping by it returns one row for
-// each send. A template belongs to one channel, so metrics from all three can
-// share a SHOW clause and each row fills only its own channel's columns.
-// template_id is an attribute, so this can't use the campaign window the way the
-// funnel query does.
+// A template belongs to one channel, so all three channels' metrics share one SHOW
+// and each row fills only its own channel's columns.
 export const sequenceQuery = (campaign) => `
   query CampaignSequence {
     shopifyqlQuery(
@@ -438,10 +423,8 @@ export const sequenceQuery = (campaign) => `
 // [END campaign-dashboard.sequence-query]
 
 // [START campaign-dashboard.bounce-query]
-// Read back by the attribute that says why a bounce happened. A hard bounce is a
-// dead address the user should drop from the list. A soft one is temporary. The
-// app runs this before it writes an incident annotation, so the text on the
-// user's chart comes from measured data rather than from the browser.
+// `recipient_status` separates a hard bounce, which is a dead address worth dropping
+// from the list, from a soft one, which is temporary.
 export const bounceQuery = (campaign) => `
   query CampaignBounces {
     shopifyqlQuery(
@@ -460,14 +443,9 @@ export const bounceQuery = (campaign) => `
 // [END campaign-dashboard.bounce-query]
 
 // [START campaign-dashboard.insight-query]
-// TIMESERIES week counts as the first grouping, so product_title is the second
-// and OVERALL applies to it. Without OVERALL the top five are picked again every
-// week, and a product that slips to sixth vanishes from that week and reads the
-// same as a week with no sales.
-//
-// ONLY drops the `Other` row, which aggregates every product outside the top
-// five. Left in, it dwarfs the five product lines and flattens them against the
-// axis.
+// TIMESERIES week counts as the first grouping, so OVERALL is what picks the top
+// five once rather than again every week. ONLY drops the `Other` row, which would
+// dwarf the five product lines.
 export const insightQuery = (campaign) => `
   query CampaignInsight {
     shopifyqlQuery(
@@ -483,17 +461,8 @@ export const insightQuery = (campaign) => `
 // [END campaign-dashboard.insight-query]
 
 // [START campaign-dashboard.metafield-capability]
-// These two definitions have to be created by the app rather than declared in
-// shopify.app.toml, and the reason is a pair of rules that meet badly. TOML
-// supports only the adminFilterable, uniqueValues, and cartToOrderCopyable
-// capabilities, so it can't turn analyticsQueryable on. And a definition declared
-// in TOML is read-only through the Admin API, so metafieldDefinitionUpdate can't
-// turn it on afterwards either. A declared definition can never become a
-// dimension, so the app creates its own.
-//
 // Eligibility depends on the owner type and the field type, so read `eligible`
-// before offering the control. Only customer, order, product, and product variant
-// definitions can be queryable at all.
+// before offering the control.
 export const DEFINITION_QUERY = `
   query AppMetafieldDefinitions($namespace: String!) {
     products: metafieldDefinitions(
@@ -537,9 +506,9 @@ export const DEFINITION_QUERY = `
   }
 `;
 
-// Creating it with the capability already on is one round trip rather than two,
-// and it means the dimension is queryable from the moment it exists. `$app`
-// resolves to the app's reserved namespace, so no other app can change the schema.
+// TOML can't set `analyticsQueryable` and a definition declared there is read-only
+// through the GraphQL Admin API, so the app creates its own with the capability
+// already on.
 export const DEFINITION_CREATE = `
   mutation CreateAnalyticsDimension($definition: MetafieldDefinitionInput!) {
     metafieldDefinitionCreate(definition: $definition) {
@@ -564,9 +533,8 @@ export const DEFINITION_CREATE = `
   }
 `;
 
-// The update has no `id` field. It identifies the definition by key and owner
-// type, falling back to the app-reserved namespace when none is given, and none of
-// the three can be changed by the update itself.
+// No `id` field. It addresses the definition by key and owner type, falling back to
+// the app-reserved namespace, and the update can't change any of the three.
 export const DEFINITION_UPDATE = `
   mutation EnableAnalyticsDimension($definition: MetafieldDefinitionUpdateInput!) {
     metafieldDefinitionUpdate(definition: $definition) {
@@ -589,12 +557,12 @@ export const DEFINITION_UPDATE = `
 `;
 // [END campaign-dashboard.metafield-capability]
 
-// Once the capability is on, the field is a column of the sales dataset. The
-// namespace holds a double hyphen, so it has to be quoted inside the query.
+// The namespace holds a double hyphen, so the dimension has to be quoted. `AS` is
+// what names the column, or it comes back as the whole dotted expression.
 export const promotedByQuery = (campaign, dimension) => `
   query CampaignPromotedSplit {
     shopifyqlQuery(
-      query: "FROM sales SHOW total_sales, orders GROUP BY ${dimension} ${campaignWindow(campaign)} ORDER BY total_sales DESC"
+      query: "FROM sales SHOW ${dimension} AS promoted_by, total_sales, orders GROUP BY promoted_by ${campaignWindow(campaign)} ORDER BY total_sales DESC"
     ) {
       tableData {
         columns {
@@ -610,13 +578,13 @@ export const promotedByQuery = (campaign, dimension) => `
 `;
 
 // [START campaign-dashboard.tier-queries]
-// Rank the audience with the sales dataset rather than the customer list.
-// CustomerSortKeys has no spend key, so what people actually spent over the last
-// year is what produces the tier.
-export const tierRankQuery = (size) => `
+// Ranked from the sales dataset because CustomerSortKeys has no spend key. OFFSET is
+// what keeps one tier from containing another, and both need the ORDER BY to be
+// stable.
+export const tierRankQuery = ({size, skip = 0}) => `
   query AudienceRanking {
     shopifyqlQuery(
-      query: "FROM sales SHOW total_sales GROUP BY customer_id SINCE -365d UNTIL today ORDER BY total_sales DESC LIMIT ${size}"
+      query: "FROM sales SHOW total_sales GROUP BY customer_id SINCE -365d UNTIL today ORDER BY total_sales DESC LIMIT ${size}${skip > 0 ? ` OFFSET ${skip}` : ''}"
     ) {
       tableData {
         rows
@@ -626,12 +594,12 @@ export const tierRankQuery = (size) => `
   }
 `;
 
-// The same window as every other panel, filtered to the audience the campaign
-// targeted, so a campaign aimed at VIPs is judged on what VIPs bought.
+// A series rather than a total, because the panel charts it against the store-wide
+// line.
 export const tierSalesQuery = (campaign, dimension, tier) => `
   query CampaignAudienceSales {
     shopifyqlQuery(
-      query: "FROM sales SHOW total_sales, orders ${campaignWindow(campaign)} WHERE ${dimension} = '${tier}'"
+      query: "FROM sales SHOW total_sales, orders TIMESERIES day ${campaignWindow(campaign)} WHERE ${dimension} = '${tier}' ORDER BY day ASC"
     ) {
       tableData {
         columns {
@@ -648,8 +616,7 @@ export const tierSalesQuery = (campaign, dimension, tier) => `
 // [END campaign-dashboard.tier-queries]
 
 // [START campaign-dashboard.audience-roster]
-// What each member of the audience spent during the campaign. GROUP BY
-// customer_id returns IDs and no names, so the names come from a separate read.
+// GROUP BY customer_id returns IDs and no names.
 export const rosterQuery = (campaign) => `
   query AudienceSpend {
     shopifyqlQuery(
@@ -663,7 +630,7 @@ export const rosterQuery = (campaign) => `
   }
 `;
 
-// Resolve IDs to names when the audience changes rather than on every page load.
+// Resolved when the audience changes rather than on every page load.
 export const CUSTOMER_NAMES = `
   query AudienceNames($ids: [ID!]!) {
     nodes(ids: $ids) {

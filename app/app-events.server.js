@@ -1,7 +1,6 @@
 // [START campaign-dashboard.app-events-token]
-// App Events doesn't use the shop's Admin API session. It needs a
-// client-credentials token minted from the app's own client ID and secret,
-// which is a different auth flow from every other call in this app.
+// App Events doesn't use the shop's Admin API session. It needs a client-credentials
+// token minted from the app's own client ID and secret.
 let cached = {token: null, expiresAt: 0};
 
 async function getAppEventsToken() {
@@ -22,25 +21,23 @@ async function getAppEventsToken() {
   }
 
   const {access_token: token, expires_in: expiresIn} = await response.json();
-  // Tokens last 60 minutes. Refresh a minute early rather than on expiry.
-  cached = {token, expiresAt: Date.now() + (expiresIn - 60) * 1000};
+  // Tokens last 60 minutes. Refresh a minute early, and fall back to that hour if the
+  // response omits it, because NaN compares false and the cache would never hit.
+  cached = {token, expiresAt: Date.now() + ((expiresIn ?? 3600) - 60) * 1000};
   return token;
 }
 // [END campaign-dashboard.app-events-token]
 
 // [START campaign-dashboard.app-events-shared]
-// The whole sequence is one flow, and each touch in it is one template. Both
-// are dimensions, so `flow_id` gathers the sends back together and
-// `template_id` separates them.
+// Both are dimensions: `flow_id` gathers the sends back together and `template_id`
+// separates them.
 const FLOW_ID = 5501;
 
 const FORM_ID = 8801;
 const INCENTIVE_ID = 9401;
 
-// Attributes every marketing touch carries, whatever the channel. Each one is a
-// dimension the user can group by, so send the ones that answer a question. No
-// personal data: the registry types these as identifiers and labels, never
-// names or addresses.
+// Attributes every marketing touch carries, whatever the channel. Each is a dimension
+// the user can group by, and none of them is personal data.
 function marketing(channel, template, extra = {}) {
   return {
     channel,
@@ -54,14 +51,9 @@ function marketing(channel, template, extra = {}) {
 // [END campaign-dashboard.app-events-shared]
 
 // [START campaign-dashboard.app-events-funnel]
-// A campaign is a sequence, not a blast. Nine touches over two weeks, each with
-// its own creative, so `template_id` carries the position in the sequence.
-// Grouping by it answers the question a single send can't: is the list still
-// listening on the fourth email, or are you burning it down.
-//
-// `audience` is who the touch went to, and the rates are what that audience
-// did. They fall as the sequence runs while the unsubscribes climb, which is
-// the shape a real campaign has and the reason to measure one.
+// Nine touches over two weeks, so `template_id` carries the position in the sequence
+// and grouping by it answers what a single send can't: is the list still listening on
+// the fourth email. The rates fall and the unsubscribes climb, like a real campaign.
 export const SEQUENCE = [
   {day: 0, channel: 'email', template: 4101, name: 'Announcement', audience: 52, engaged: 0.42, clicked: 0.28, lost: 1},
   {day: 1, channel: 'sms', template: 4102, name: 'Early access', audience: 21, engaged: 0.24, lost: 0},
@@ -74,14 +66,9 @@ export const SEQUENCE = [
   {day: 13, channel: 'sms', template: 4109, name: 'Final hours', audience: 19, engaged: 0.13, lost: 2},
 ];
 
-// What each channel is able to report. The registry gives push no delivery
-// receipt and no click event, so push reports two stages where email reports
-// six. Model the channel the registry defines rather than padding it out to
-// match the others and drawing a hole where the missing stage would be.
-//
-// `hour` staggers the stages within their day so the timeseries has a shape.
-// `code` is a short tag for the idempotency key, which is capped at 64
-// characters.
+// What each channel can report. The registry gives push no delivery receipt and no
+// click, so push has two stages where email has six. `hour` staggers the stages inside
+// their day, and `code` is a short tag for the 64-character idempotency key.
 const CHANNELS = {
   email: {
     delivery: 0.94,
@@ -167,8 +154,8 @@ const CHANNELS = {
   },
 };
 
-// One touch becomes up to six stages. Anything the channel can't report, or
-// that rounds down to nothing, is left out rather than sent as a zero.
+// One touch becomes up to six stages. Anything the channel can't report, or that rounds
+// down to nothing, is left out rather than sent as a zero.
 function expand(touch) {
   const channel = CHANNELS[touch.channel];
   const delivered = channel.delivery
@@ -204,9 +191,8 @@ function expand(touch) {
   });
 }
 
-// A campaign does two jobs at once: it sells to the list, and it grows the
-// list. Lead capture and marketing are separate categories in the registry, but
-// both accept campaign_id, so one filter reports both halves together.
+// Lead capture and marketing are separate categories in the registry, but both accept
+// `campaign_id`, so one filter reports selling to the list and growing it together.
 const LEAD_CAPTURE = [
   {
     handle: 'shopify.lead_capture.form_submitted',
@@ -219,8 +205,7 @@ const LEAD_CAPTURE = [
       placement: 'popup',
       capture_type: 'newsletter',
       contact_method: index % 4 === 0 ? 'sms' : 'email',
-      // Three people started the form and didn't finish, which is why this
-      // count is higher than the leads captured below.
+      // Three abandoned, which is why this count is higher than the leads below.
       submission_status: index < 11 ? 'completed' : 'abandoned',
       source: 'online_store',
     }),
@@ -260,20 +245,14 @@ const LEAD_CAPTURE = [
 
 const STAGES = [...LEAD_CAPTURE, ...SEQUENCE.flatMap(expand)];
 
-// The idempotency key is the event's identity. A key that's already been used
-// is dropped, payload and all, so re-sending a key with richer attributes keeps
-// the original attributes and silently discards the new ones. A real app never
-// hits this, because each key belongs to one real send. This one replays the
-// same synthetic campaign on every click, so bump this after changing the
-// payload to get a fresh set of keys.
+// A used idempotency key is dropped payload and all, so re-sending one with richer
+// attributes keeps the original. This app replays the same synthetic campaign on every
+// click, so bump this after changing the payload to get a fresh set of keys.
 const RUN = 'r2';
 
-// Every timestamp this app writes is a UTC instant, and Shopify reads it back
-// in the shop's timezone. `2026-07-22T00:00:00Z` is the evening of the 21st in
-// New York, so an event stamped at midnight UTC drops out of a ShopifyQL window
-// that starts on the 22nd, and an annotation stamped the same way lands a day
-// early on the store's charts. Resolve a calendar date to 9am in the shop's own
-// timezone rather than guessing a UTC hour that survives most offsets.
+// Shopify reads every timestamp back in the shop's timezone, so midnight UTC on the
+// 22nd is the evening of the 21st in New York and drops out of a window starting on the
+// 22nd. Resolve a calendar date to 9am in the shop's own timezone instead.
 export function shopMorning(date, timeZone) {
   const guess = new Date(`${date}T09:00:00Z`);
   if (!timeZone) return guess.getTime();
@@ -283,8 +262,7 @@ export function shopMorning(date, timeZone) {
   return guess.getTime() + shift;
 }
 
-// A minute between recipients, so the largest send still finishes inside the
-// hour it started and no event slides into the next day's bucket.
+// A minute between recipients, so the largest send finishes inside the hour it started.
 function stageTimestamp(start, day, hour, index) {
   const offset = day * 86400000 + hour * 3600000 + index * 60000;
   return new Date(start + offset).toISOString();
@@ -304,18 +282,17 @@ async function sendEvent({token, shopId, stage, campaignId, start, index}) {
       // Must match the shopify.extension.toml declaration exactly.
       event_handle: stage.handle,
       timestamp: stageTimestamp(start, stage.day, stage.hour, index),
-      // Stable for each recipient at each stage, so a retry can't double-count.
-      // Capped at 64 characters, so use short codes rather than the handle.
+      // Stable per recipient per stage, so a retry can't double-count. Capped at 64
+      // characters, so use short codes rather than the handle.
       idempotency_key: `${shopId.split('/').pop()}-${campaignId}-${RUN}-${stage.code}-${index}`,
-      // campaign_id is the join. Lead capture and marketing are different
-      // categories with different required attributes, and this is the one
-      // dimension both accept, so one WHERE clause reports the whole campaign.
+      // `campaign_id` is the join: it's the one dimension both categories accept, so a
+      // single WHERE clause reports the whole campaign.
       attributes: {campaign_id: campaignId, ...stage.attributes(index)},
     }),
   });
 
-  // 202 means Shopify received the request, not that the event reached
-  // analytics. A payload that fails validation is still accepted.
+  // 202 means Shopify received the request, not that the event reached analytics. A
+  // payload that fails validation is still accepted.
   if (response.status === 202) return {ok: true};
   return {ok: false, status: response.status, body: await response.text()};
 }
@@ -331,8 +308,8 @@ export async function sendCampaignFunnel({
   const accepted = {};
   const failures = [];
 
-  // One request for each event. App Events has no batch endpoint, so a send to
-  // a real list is a queue, not a loop in a request handler.
+  // One request per event. App Events has no batch endpoint, so a send to a real list is
+  // a queue, not a loop in a request handler.
   for (const stage of STAGES) {
     const results = await Promise.all(
       Array.from({length: stage.count}, (_unused, index) =>

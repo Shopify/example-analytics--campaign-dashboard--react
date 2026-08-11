@@ -2,8 +2,7 @@ import {SEQUENCE} from './app-events.server';
 import {CHANNELS} from './channels';
 import {BOUNCE_ALERT_RATE, clamp} from './campaigns';
 
-// A daily timeseries has one row for each day, so a campaign total is the sum of
-// a column rather than a value on any single row.
+// A daily timeseries has one row per day, so a campaign total is the sum of a column.
 export const sumColumn = (table, metric) =>
   (table.tableData?.rows ?? []).reduce(
     (total, row) => total + Number(row[metric] ?? 0),
@@ -11,9 +10,8 @@ export const sumColumn = (table, metric) =>
   );
 
 // [START campaign-dashboard.sequence-read]
-// Join what the sequence sent to what the shop reported. Grouping by template_id
-// returns one row for each touch, and the row's own channel decides which columns
-// hold its numbers, because a push row has no delivery column to read.
+// Join what the sequence sent to what the shop reported. Grouping by `template_id` gives
+// one row per touch, and the channel decides which columns that row has.
 export function readSequence(table) {
   const byTemplate = new Map(
     (table.tableData?.rows ?? []).map((row) => [Number(row['template_id']), row]),
@@ -25,9 +23,8 @@ export function readSequence(table) {
 
     const metrics = CHANNELS[touch.channel].metrics;
     const sent = Number(row[metrics.sent] ?? 0);
-    // A touch with no sends is a template that belongs to a channel this
-    // campaign didn't run on. Plotting it would put a zero bar between two real
-    // ones and read as a send that failed.
+    // A touch with no sends belongs to a channel this campaign didn't run on, and a
+    // zero bar between two real ones reads as a send that failed.
     if (sent === 0) return null;
 
     const reached = Number(row[metrics.reached] ?? 0);
@@ -40,10 +37,8 @@ export function readSequence(table) {
       reached,
       engaged,
       lost: metrics.lost ? Number(row[metrics.lost] ?? 0) : 0,
-      // Score against what was reached rather than what was sent, so a channel
-      // with a delivery receipt isn't penalized for the sends that bounced. Push
-      // reports no delivery, so its reach is its send count and the rate still
-      // means the same thing.
+      // Score against what was reached, so a channel with a delivery receipt isn't
+      // penalized for the sends that bounced. Push's reach is its send count.
       rate: reached > 0 ? (engaged / reached) * 100 : 0,
       action: CHANNELS[touch.channel].action,
     };
@@ -52,10 +47,8 @@ export function readSequence(table) {
 // [END campaign-dashboard.sequence-read]
 
 // [START campaign-dashboard.outcome-text]
-// What a closed campaign leaves behind on the store's timeline. Write what
-// happened rather than what was planned: the share of the goal it reached in the
-// title, and the money and the engagement trend in the description. Someone
-// reading this marker a year from now has no other record of the campaign.
+// What a closed campaign leaves behind on the store's timeline. Someone reading this
+// marker a year from now has no other record of the campaign.
 export function outcomeText({campaign, revenue, target, sequence, money}) {
   const goal = Number(target ?? 0);
   const percent = goal > 0 ? Math.round((revenue / goal) * 100) : null;
@@ -71,8 +64,8 @@ export function outcomeText({campaign, revenue, target, sequence, money}) {
       : `Earned ${money(revenue)}`,
   ];
 
-  // How far the list moved between the first touch and the last is the one fact
-  // from the sequence worth carrying onto a chart the app doesn't draw.
+  // How far the list moved between the first touch and the last is the one fact from
+  // the sequence worth carrying onto a chart the app doesn't draw.
   const first = sequence.at(0);
   const last = sequence.at(-1);
   if (first && last !== first) {
@@ -93,9 +86,8 @@ export function outcomeText({campaign, revenue, target, sequence, money}) {
 // [END campaign-dashboard.outcome-text]
 
 // [START campaign-dashboard.detect-incident]
-// The app's own numbers can say something went wrong, which is worth telling the
-// user on their charts rather than only inside the app. Both halves of the text
-// come from measured data, so the marker names the kind of bounce it was.
+// Both halves of the text come from measured data, so the marker names the kind of
+// bounce it was rather than saying only that one happened.
 export function detectIncident(campaign, funnel, bounces) {
   const sent = sumColumn(funnel, 'emails_sent');
   const bounced = sumColumn(funnel, 'emails_bounced');

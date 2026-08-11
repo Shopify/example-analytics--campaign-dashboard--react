@@ -1,12 +1,10 @@
 // [START campaign-dashboard.insight-window]
-// The campaign's own weeks plus three weeks of lead-in. Without the lead-in, a
-// product already climbing before launch looks identical to one the campaign
-// lifted.
-//
-// UNTIL runs to today rather than to the last Sunday. A campaign that launched
-// this week would otherwise have every marker it wrote sitting past the last
-// point on the chart.
+// Lead-in weeks, without which a product already climbing before launch looks
+// identical to one the campaign lifted.
 const LEAD_IN_WEEKS = 3;
+
+// UNTIL runs to today rather than to the last Sunday, or a campaign that launched
+// this week has every marker it wrote sitting past the last point on the chart.
 
 export function insightWindow(campaign) {
   const start = new Date(`${campaign.startDate}T00:00:00`);
@@ -17,9 +15,8 @@ export function insightWindow(campaign) {
 // [END campaign-dashboard.insight-window]
 
 // [START campaign-dashboard.insight]
-// Turn the weekly rows into the one sentence worth leading with. A product on a
-// multi-week run is the thing a user wants to know the moment they open the app,
-// and the annotations in the same window are the answer to why.
+// The longest unbroken run in either direction, which is the one sentence worth
+// leading the page with.
 export function findInsight(weekly) {
   const byProduct = new Map();
   for (const row of weekly.tableData.rows) {
@@ -29,10 +26,9 @@ export function findInsight(weekly) {
     byProduct.get(title).set(row['week'], Number(row['gross_sales'] ?? 0));
   }
 
-  // Build the axis by stepping 7 days rather than from the weeks the rows
-  // mention. TIMESERIES returns no row for a week where nothing sold, so a quiet
-  // week disappears and two non-adjacent weeks get compared as though they
-  // weren't. OVERALL is what makes a missing row safe to read as a zero.
+  // Stepping 7 days rather than reading the weeks off the rows. TIMESERIES returns
+  // no row for a week where nothing sold, and OVERALL is what makes that missing
+  // row safe to read as a zero.
   const present = [
     ...new Set(weekly.tableData.rows.map((row) => row['week'])),
   ].sort();
@@ -47,9 +43,8 @@ export function findInsight(weekly) {
     weeks.push(week.toISOString().slice(0, 10));
   }
 
-  // UNTIL today ends mid-week, so the last bucket is short. Rank on the weeks
-  // that have finished, because a three-day bucket always dips next to a full
-  // one and reads as a collapse.
+  // UNTIL today ends mid-week, and a three-day bucket dips next to a full one and
+  // reads as a collapse, so rank on the weeks that have finished.
   const cutoff = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
   const settled = weeks.filter((week) => week <= cutoff);
   if (settled.length < 2) return null;
@@ -59,10 +54,7 @@ export function findInsight(weekly) {
     const series = settled.map((week) => sales.get(week) ?? 0);
     const last = series.length - 1;
 
-    // Count back from the most recent finished week for as long as the direction
-    // holds. A "3rd week up" needs three rising weeks, not three rows. A run
-    // down is worth surfacing too, because that's the one the user has to act
-    // on.
+    // A "3rd week up" needs three rising weeks, not three rows.
     const rising = series[last] > series[last - 1];
     if (series[last] === series[last - 1]) continue;
 
@@ -81,8 +73,7 @@ export function findInsight(weekly) {
     const growth =
       first > 0 ? Math.round(((latest - first) / first) * 100) : null;
 
-    // Rank by the length of the run, then by how much money moved, so a long run
-    // beats a big one-week jump and a $4,000 swing beats a $40 one.
+    // Run length first, then money moved, so a long run beats a one-week jump.
     const swing = Math.abs(latest - first);
     if (
       !best ||
@@ -97,8 +88,8 @@ export function findInsight(weekly) {
         first,
         growth,
         swing,
-        // The chart draws every week in the window, including the short one, so
-        // the markers the campaign wrote this week still have a point to sit on.
+        // Every week, including the short one, so this week's markers have a
+        // point to sit on.
         series: weeks.map((week) => sales.get(week) ?? 0),
         weeks,
         settledWeek: settled.at(-1),

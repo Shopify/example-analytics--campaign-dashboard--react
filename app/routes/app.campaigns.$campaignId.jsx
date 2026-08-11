@@ -10,7 +10,7 @@ import {
 import '@shopify/polaris-viz/build/esm/styles.css';
 import '../chart-tooltip.css';
 import {authenticate} from '../shopify.server';
-import {shopMorning} from '../app-events.server';
+import {sendCampaignFunnel, shopMorning} from '../app-events.server';
 import {
   findCampaign,
   readCampaigns,
@@ -32,6 +32,7 @@ import {
   DEFINITION_QUERY,
   DEFINITION_UPDATE,
   METAFIELDS_SET,
+  SHOP_QUERY,
   TARGETS_DELETE,
   TARGET_CREATE,
   TARGET_UPDATE,
@@ -76,11 +77,9 @@ import {
 import {findInsight, ordinal} from '../insight';
 
 // [START campaign-dashboard.metafield-dimension-read]
-// The two definitions the app owns, and whether each one is a dimension yet.
-// Queryable has two halves and they're separate: `eligible` is whether the owner
-// type and the field type can support it, and `enabled` is whether it's been asked
-// for. A definition that exists is often eligible and not enabled, so read both
-// before rendering a dimension the queries would fail to parse on.
+// The two definitions the app owns. `eligible` is whether the owner and field types
+// can support a dimension, `enabled` is whether it's been asked for, and a definition
+// is often the first without the second.
 const DIMENSIONS = {
   product: {
     owner: 'products',
@@ -129,11 +128,9 @@ async function readDimensions(admin, appId) {
 // [END campaign-dashboard.metafield-dimension-read]
 
 // [START campaign-dashboard.slice-read]
-// The same campaign, sliced two ways. Splitting by `campaign_id` needs the
-// attribute, which is capped at 30 days and can't use the campaign's own window.
-// Splitting by `app_name` reads a property of the event itself, so it takes the
-// campaign window like every other query on the page. Both are optional, because
-// a store with no App Events data returns a parse error rather than empty rows.
+// The same campaign sliced two ways. `campaign_id` is an attribute capped at 30 days,
+// so it can't take the campaign's own window, while `app_name` is a property of the
+// event and can. Both optional: no App Events data parses as an error, not empty rows.
 const readComparisons = (admin, campaign) =>
   Promise.all([
     runOptional(admin, sliceQuery()),
@@ -143,9 +140,8 @@ const readComparisons = (admin, campaign) =>
 
 export async function loader({request, params}) {
   // [START campaign-dashboard.campaign-load]
-  // The record is the input to everything below it. Read it first, and treat a
-  // missing one as a 404 rather than rendering an empty dashboard, because every
-  // query on the page interpolates a window that wouldn't exist.
+  // The record is the input to everything below it, and every query interpolates a
+  // window a missing one wouldn't have. Treat that as a 404.
   const {admin} = await authenticate.admin(request);
   const {appId, campaigns} = await readCampaigns(admin);
   const campaign = findCampaign(campaigns, params.campaignId);
@@ -157,10 +153,8 @@ export async function loader({request, params}) {
   // [END campaign-dashboard.campaign-load]
 
   // [START campaign-dashboard.locale]
-  // Money and dates are formatted against the admin's locale, which arrives as a
-  // search parameter on every embedded request. Formatting on the server keeps the
-  // server and client renders identical, which is what stops React from
-  // rehydrating a number the user already read.
+  // The admin's locale arrives as a search parameter on every embedded request.
+  // Formatting on the server keeps the server and client renders identical.
   const locale = new URL(request.url).searchParams.get('locale') ?? 'en';
   // [END campaign-dashboard.locale]
 
@@ -192,22 +186,20 @@ export async function loader({request, params}) {
     readComparisons(admin, campaign),
     dimensions.product.enabled
       ? runOptional(admin, promotedByQuery(campaign, dimensions.product.dimension))
-      : emptyTable,
+      : emptyTable(),
     dimensions.customer.enabled && isTargetedTier(campaign.audience)
       ? runOptional(
           admin,
           tierSalesQuery(campaign, dimensions.customer.dimension, campaign.audience),
         )
-      : emptyTable,
-    campaign.members?.length ? runOptional(admin, rosterQuery(campaign)) : emptyTable,
+      : emptyTable(),
+    campaign.members?.length ? runOptional(admin, rosterQuery(campaign)) : emptyTable(),
   ]);
 
   // [START campaign-dashboard.parse-errors]
-  // Two failures, reported in two places. A missing scope or ungranted protected
-  // customer data access fails the field itself, so it arrives in `errors` with a
-  // null `shopifyqlQuery` beside it. A ShopifyQL string that doesn't parse
-  // resolves the field and reports on `parseErrors`, with a null `tableData`.
-  // Read rows only after both have been checked.
+  // Two failures in two places. A missing scope or ungranted protected customer data
+  // access fails the field, so it lands in `errors` with a null `shopifyqlQuery`. A
+  // string that doesn't parse resolves the field and reports on `parseErrors`.
   const sales = salesBody.data?.shopifyqlQuery;
   const fatal = !sales
     ? (salesBody.errors?.[0]?.message ??
@@ -219,12 +211,11 @@ export async function loader({request, params}) {
   // [END campaign-dashboard.parse-errors]
 
   // [START campaign-dashboard.measure-targets]
-  // Each target carries its own generated ShopifyQL, so measuring five targets
-  // takes one request rather than five. Alias each generated query in a single
-  // document and read the results back by position. A target whose
-  // `shopifyqlQuery` is null can't be measured at all: Shopify generates the
-  // query by looking the metric up in the schema list, so a metric it can't
-  // place there produces no query. Skip those rather than aliasing a null.
+  // Each target carries its own generated ShopifyQL, so measuring five targets takes
+  // one request rather than five: alias each generated query in one document and read
+  // the results back by position. A null `shopifyqlQuery` means the metric wasn't in
+  // the store's schema list on this request, which is a condition of the request and
+  // not of the target. Skip those rather than aliasing a null.
   const targetNodes = targetsBody.data?.analyticsTargets?.nodes ?? [];
   const measurable = targetNodes.filter((target) => target.shopifyqlQuery);
   const progress = measurable.length
@@ -244,7 +235,7 @@ export async function loader({request, params}) {
           : Math.round((actual / expected) * 100),
       queryError:
         index === -1
-          ? `This target has no generated query, so its progress can't be measured. Check that ${target.metric} is a metric Shopify can target.`
+          ? `Shopify didn't return a query for ${target.metric} on this read, so its progress can't be measured yet. The target itself is still valid. Reload to try again.`
           : (progress[`t${index}`]?.parseErrors?.[0] ?? null),
     };
   });
@@ -261,6 +252,9 @@ export async function loader({request, params}) {
     // The sales dataset has no currency column, so the store's own currency has
     // to come from the shop field the same query already asks for.
     currencyCode: salesBody.data?.shop?.currencyCode ?? 'USD',
+    // The same field carries the store's timezone. ShopifyQL buckets a TIMESERIES by
+    // it, so the browser's would date a marker to a day the chart doesn't have.
+    timeZone: salesBody.data?.shop?.ianaTimezone ?? 'Etc/UTC',
     queryWindow,
     dimensions,
     rows: sales.tableData.rows,
@@ -280,96 +274,83 @@ export async function loader({request, params}) {
 }
 
 // [START campaign-dashboard.store-target]
-// The plainest target there is: no filter, so it measures the whole store over
-// the campaign's window. A target is uniquely identified by its metric, its dates,
-// and its filters, so creating this one twice returns a user error rather than a
-// second target.
+// No filter, so it measures the whole store over the campaign's window. Metric, dates,
+// and filters identify a target, so creating this twice is a user error. Return the ID:
+// targets are shop-scoped, so only the app's own record knows which ones are its.
+async function createTarget(admin, input) {
+  const body = await (
+    await admin.graphql(TARGET_CREATE, {variables: {input}})
+  ).json();
+  return body.data?.analyticsTargetCreate?.analyticsTarget?.id ?? null;
+}
+
 const createStoreTarget = (admin, campaign) =>
-  admin.graphql(TARGET_CREATE, {
-    variables: {
-      input: {
-        name: `${campaign.title}: store-wide sales`,
-        metric: 'total_sales',
-        expectedValue: campaign.revenueTarget,
-        startDate: campaign.startDate,
-        endDate: campaign.endDate,
-      },
-    },
+  createTarget(admin, {
+    name: `${campaign.title}: store-wide sales`,
+    metric: 'total_sales',
+    expectedValue: campaign.revenueTarget,
+    startDate: campaign.startDate,
+    endDate: campaign.endDate,
   });
 // [END campaign-dashboard.store-target]
 
 // [START campaign-dashboard.product-target]
-// A filter is ShopifyQL, not a label, and it's the only thing that separates this
-// target from the store-wide one. `product_id IN (...)` narrows the same metric to
-// the products the campaign promoted, which is what makes "did the campaign sell
-// what it advertised" a different question from "did the store have a good
-// fortnight".
+// A filter is ShopifyQL, not a label. `product_id IN (...)` is what separates "did the
+// campaign sell what it advertised" from "did the store have a good fortnight".
 async function createProductTarget(admin, campaign) {
   const filters = promotedFilter(campaign);
   if (!filters) return null;
 
-  return admin.graphql(TARGET_CREATE, {
-    variables: {
-      input: {
-        name: `${campaign.title}: promoted products`,
-        metric: 'total_sales',
-        expectedValue: campaign.productTarget,
-        startDate: campaign.startDate,
-        endDate: campaign.endDate,
-        filters,
-      },
-    },
+  return createTarget(admin, {
+    name: `${campaign.title}: promoted products`,
+    metric: 'total_sales',
+    expectedValue: campaign.productTarget,
+    startDate: campaign.startDate,
+    endDate: campaign.endDate,
+    filters,
   });
 }
 // [END campaign-dashboard.product-target]
 
 // [START campaign-dashboard.audience-target]
-// The same metric again, filtered on a dimension the app owns. Nothing about the
-// target knows the metafield belongs to this app, so the filter has to name the
-// reserved namespace in full and quote it, because the double dash isn't valid in
-// a bare ShopifyQL identifier.
-// Shopify generates the query that measures a target, so a filter naming a
-// definition that isn't queryable yet produces a query with no such column. Skip
-// the target until the capability is on rather than create one that can't be read.
+// The same metric filtered on a dimension the app owns. Nothing on the target knows the
+// metafield is the app's, so the filter quotes the reserved namespace in full. Skip it
+// until the definition is queryable, or the generated query has no such column.
 async function createAudienceTarget(admin, campaign, definition) {
   if (!isTargetedTier(campaign.audience)) return null;
   if (!definition.enabled) return null;
 
-  return admin.graphql(TARGET_CREATE, {
-    variables: {
-      input: {
-        name: `${campaign.title}: ${tierLabel(campaign.audience)}`,
-        metric: 'total_sales',
-        expectedValue: campaign.audienceTarget,
-        startDate: campaign.startDate,
-        endDate: campaign.endDate,
-        filters: `${definition.dimension} = '${campaign.audience}'`,
-      },
-    },
+  return createTarget(admin, {
+    name: `${campaign.title}: ${tierLabel(campaign.audience)}`,
+    metric: 'total_sales',
+    expectedValue: campaign.audienceTarget,
+    startDate: campaign.startDate,
+    endDate: campaign.endDate,
+    filters: `${definition.dimension} = '${campaign.audience}'`,
   });
 }
 // [END campaign-dashboard.audience-target]
 
 // [START campaign-dashboard.raise-target]
-// A goal that's already been beaten stops telling anyone anything. Round the next
-// one up from what the campaign has actually earned, at a scale that suits the
-// number, so a $12,400 result raises to $13,000 rather than $12,401.
+// A goal that's already been beaten stops telling anyone anything. Round the next one
+// up from what the campaign earned, so $12,400 raises to $13,000 rather than $12,401.
 async function raiseTarget(admin, target) {
   const actual = Number(target.actual ?? 0);
   const step = Math.max(1000, 10 ** (Math.floor(Math.log10(actual)) - 1));
   const raised = String(Math.ceil(actual / step) * step);
 
-  return admin.graphql(TARGET_UPDATE, {
-    variables: {id: target.id, input: {expectedValue: raised}},
-  });
+  const body = await (
+    await admin.graphql(TARGET_UPDATE, {
+      variables: {id: target.id, input: {expectedValue: raised}},
+    })
+  ).json();
+  return body.data?.analyticsTargetUpdate?.userErrors ?? [];
 }
 // [END campaign-dashboard.raise-target]
 
 // [START campaign-dashboard.bundle-mark]
-// A bundle sells as one line and reports as its components, so a campaign that
-// promoted a bundle needs `bundle_launch` rather than `product_launch`, plus a note
-// saying why the numbers won't add up. Only the store's own data knows which it is,
-// so resolve the type here rather than taking it from the plan.
+// A bundle sells as one line and reports as its components, so a campaign that promoted
+// one needs `bundle_launch`. Only the store's own data knows which it is.
 const PLAIN_LAUNCH = {type: 'product_launch', note: ''};
 
 async function resolveLaunchMark(admin, campaign) {
@@ -392,11 +373,9 @@ async function resolveLaunchMark(admin, campaign) {
 // [END campaign-dashboard.bundle-mark]
 
 // [START campaign-dashboard.product-metafield]
-// Stamp each promoted product with the campaign that pushed it. This is what
-// makes "which campaign sold this" answerable later, without the app holding a
-// mapping of its own that the merchant can't see. `$app` resolves to the app's
-// reserved namespace on write, and the same field reads back as
-// `app--<id>.promoted_by`.
+// Stamp each promoted product with the campaign that pushed it, so "which campaign sold
+// this" is answerable later. `$app` resolves to the app's reserved namespace on write,
+// and the field reads back as `app--<id>.promoted_by`.
 const stampProducts = (admin, campaign) =>
   admin.graphql(METAFIELDS_SET, {
     variables: {
@@ -412,15 +391,19 @@ const stampProducts = (admin, campaign) =>
 // [END campaign-dashboard.product-metafield]
 
 // [START campaign-dashboard.stamp-tier]
-// The audience the campaign targeted, written onto the customers themselves. The
-// roster is saved onto the campaign record at the same time, because the metafield
-// says which tier a customer is in and not which campaign put them there.
+// The audience the campaign targeted, written onto the customers themselves. The roster
+// is saved on the record too: the metafield says the tier, not which campaign set it.
 async function stampTier(admin, campaign) {
   const tier = AUDIENCE_TIERS.find((entry) => entry.value === campaign.audience);
   if (!tier?.size) return [];
 
-  const body = await (await admin.graphql(tierRankQuery(tier.size))).json();
-  const ids = (body.data?.customers?.nodes ?? []).map((node) => node.id);
+  const body = await (await admin.graphql(tierRankQuery(tier))).json();
+  // GROUP BY customer_id returns the numeric ID, and every mutation that follows
+  // addresses a customer by GID, so rebuild the GID here rather than in each one.
+  const ids = (body.data?.shopifyqlQuery?.tableData?.rows ?? [])
+    .map((row) => row.customer_id)
+    .filter(Boolean)
+    .map((id) => `gid://shopify/Customer/${id}`);
   if (ids.length === 0) return [];
 
   await admin.graphql(METAFIELDS_SET, {
@@ -446,13 +429,9 @@ async function stampTier(admin, campaign) {
 // [END campaign-dashboard.stamp-tier]
 
 // [START campaign-dashboard.enable-dimension]
-// Eligible isn't queryable. A definition has to be made an analytics dimension
-// explicitly, and until it is, every query naming it fails to parse. Ask once,
-// from the app, rather than telling the merchant to go and find the setting.
-//
-// Create it if it doesn't exist and update it if it does. Neither mutation takes an
-// ID: both address the definition by key and owner type, and `$app` resolves to the
-// namespace only this app can write.
+// Eligible isn't queryable: a definition has to be made a dimension explicitly, and
+// until it is, every query naming it fails to parse. Create or update by key and owner
+// type, because neither mutation takes an ID.
 async function enableDimension(admin, definition) {
   const {ownerType} = definition;
 
@@ -493,31 +472,29 @@ async function enableDimension(admin, definition) {
 // [END campaign-dashboard.enable-dimension]
 
 // [START campaign-dashboard.set-products]
-// Promoted products stay editable until the campaign launches, because the product
-// target filters on their IDs and the product launch marker is named from their
-// titles. After launch, changing them would leave a target measuring one set of
-// products and a marker describing another.
+// Promoted products stay editable until launch, because the target filters on their IDs
+// and the launch marker is named from their titles.
 const setProducts = (admin, campaign, products) =>
   updateCampaign(admin, campaign.id, {products});
 // [END campaign-dashboard.set-products]
 
 // [START campaign-dashboard.audience-edit]
-// The audience is the other pre-launch field, and it moves two things: the tier
-// written onto customers, and the filter on the audience target. Editing it after
-// launch would orphan both, so the record is only writable while the campaign is
-// still planned.
+// The audience moves the tier written onto customers and the audience target's filter,
+// so it's writable only while the campaign is still planned.
 const setAudience = (admin, campaign, audience) =>
   updateCampaign(admin, campaign.id, {audience});
 // [END campaign-dashboard.audience-edit]
 
 // [START campaign-dashboard.close-with-outcome]
-// Closing rewrites the campaign's own marker rather than adding a second one. The
-// span's `endedAt` moves from null to the campaign's last day, and the title picks
-// up the result, so the store's charts carry what happened instead of what was
-// planned.
+// Closing rewrites the campaign's own marker: `endedAt` moves from null to the last day
+// and the title picks up the result, so the charts carry what happened.
 async function closeCampaign(admin, campaign, text, endedAt) {
   const id = campaign.markers?.campaign;
-  if (!id) return [];
+  // No span means the launch never wrote one, and there's nothing to close. Say
+  // so rather than returning no errors, which the action would read as success.
+  if (!id) {
+    return [{message: "This campaign has no span marker to close."}];
+  }
 
   const body = await (
     await admin.graphql(ANNOTATION_UPDATE, {
@@ -529,9 +506,8 @@ async function closeCampaign(admin, campaign, text, endedAt) {
 // [END campaign-dashboard.close-with-outcome]
 
 // [START campaign-dashboard.milestone]
-// The day a goal was hit is worth marking, and it's a moment rather than a span,
-// so `endedAt` is left off entirely. Re-measure on the server first: a client that
-// says the goal was reached is a client, and the annotation outlives the session.
+// The day a goal was hit is a moment rather than a span, so `endedAt` is left off
+// entirely. Re-measure on the server, because the annotation outlives the session.
 async function markMilestone(admin, target, markedAt) {
   const body = await (
     await admin.graphql(measureQuery(target.shopifyqlQuery))
@@ -561,19 +537,16 @@ async function markMilestone(admin, target, markedAt) {
 // [END campaign-dashboard.milestone]
 
 // [START campaign-dashboard.record-mark]
-// Every annotation the app writes goes onto the campaign record under a key.
-// That's what lets a marker written before the campaign ran be found and rewritten
-// afterwards, and it's the exact set that canceling deletes.
+// Every annotation the app writes goes on the record under a key, which is what lets a
+// marker be rewritten later and is the exact set a cancel deletes. Milestones and
+// incidents can repeat, so their keys carry what makes them distinct.
 const recordMark = (admin, campaign, key, id) =>
   id ? rememberMarkers(admin, campaign.id, {[key]: id}) : null;
 // [END campaign-dashboard.record-mark]
 
 // [START campaign-dashboard.flag-incident]
-// The app's own numbers can say something went wrong, and that belongs on the
-// store's charts rather than only inside the app. There's no bounce type in the
-// annotation vocabulary, so it's written as `other` with the reason in the text.
-// Detect it again on the server, because the client is reporting on data the
-// server can read for itself.
+// There's no bounce type in the annotation vocabulary, so it's written as `other` with
+// the reason in the text. Detect it server-side: the client reports on data we can read.
 async function flagIncident(admin, campaign, markedAt) {
   const [funnel, bounces] = await Promise.all([
     runOptional(admin, appEventsQuery(campaign)),
@@ -603,38 +576,73 @@ async function flagIncident(admin, campaign, markedAt) {
 // [END campaign-dashboard.flag-incident]
 
 // [START campaign-dashboard.lifecycle]
-// One action for every write the dashboard makes, because they all share the same
-// three steps: read the record, do the work the intent names, write the record
-// back. Launching is the only intent that touches the store in more than one
-// place, and it's deliberately not idempotent by accident: it checks for its own
-// annotations and its own targets before writing either.
+// One action for every write, because they share three steps: read the record, do what
+// the intent names, write it back. Launch is the only one that touches the store twice.
 export async function action({request, params}) {
   const {admin} = await authenticate.admin(request);
   const form = await request.formData();
   const intent = String(form.get('intent'));
-  const timeZone = String(form.get('timeZone') || 'UTC');
 
-  const {appId, campaigns} = await readCampaigns(admin);
+  const [{appId, campaigns}, shopBody] = await Promise.all([
+    readCampaigns(admin),
+    admin.graphql(SHOP_QUERY).then((response) => response.json()),
+  ]);
   const campaign = findCampaign(campaigns, params.campaignId);
   if (!campaign) throw new Response('Campaign not found', {status: 404});
 
-  // An annotation is timestamped in the shop's own day, not the browser's. A
-  // marker written at 11pm in Los Angeles for a store in Berlin belongs on the
-  // next day's point.
+  const shopId = shopBody.data?.shop?.id ?? null;
+  const timeZone = shopBody.data?.shop?.ianaTimezone ?? 'Etc/UTC';
+
+  // An annotation is timestamped in the shop's own day, not the browser's, so a marker
+  // written at 11pm in Los Angeles for a store in Berlin belongs on the next day's
+  // point. Read the timezone from the store rather than from the form.
   const markedAt = (date) =>
     new Date(shopMorning(date, timeZone)).toISOString();
 
   const dimensions = await readDimensions(admin, appId);
 
   if (intent === 'set-products') {
-    await setProducts(admin, campaign, JSON.parse(String(form.get('products'))));
+    const {userErrors} = await setProducts(
+      admin,
+      campaign,
+      JSON.parse(String(form.get('products'))),
+    );
+    if (userErrors.length) {
+      return {problems: userErrors.map((error) => error.message)};
+    }
     return {ok: true};
   }
 
   if (intent === 'set-audience') {
-    await setAudience(admin, campaign, String(form.get('audience')));
+    const {userErrors} = await setAudience(
+      admin,
+      campaign,
+      String(form.get('audience')),
+    );
+    if (userErrors.length) {
+      return {problems: userErrors.map((error) => error.message)};
+    }
     return {ok: true};
   }
+
+  // [START campaign-dashboard.send-events-action]
+  // Its own intent because the sequence is around 680 events and App Events has no batch
+  // endpoint. A real app queues these as its own sends happen.
+  if (intent === 'send-events') {
+    if (!shopId) return {problems: ['Could not read the store ID.']};
+    const {accepted, failures} = await sendCampaignFunnel({
+      shopId,
+      campaignId: campaign.id,
+      startDate: campaign.startDate,
+      timeZone,
+    });
+    if (failures.length > 0) return {problems: failures};
+    const sent = Object.values(accepted).reduce((total, n) => total + n, 0);
+    // Accepted isn't ingested. The funnel stays empty for a few minutes after
+    // this returns, so say so rather than letting the empty panel read as failure.
+    return {ok: true, sentEvents: sent};
+  }
+  // [END campaign-dashboard.send-events-action]
 
   if (intent === 'enable-dimension') {
     const which = String(form.get('which'));
@@ -647,63 +655,75 @@ export async function action({request, params}) {
   }
 
   if (intent === 'launch') {
-    // Launching twice would write a second set of markers and a duplicate set of
-    // targets, and the targets would fail on the uniqueness check while the
-    // annotations would not.
-    const existing = await (
-      await admin.graphql(annotationsQuery(campaign))
-    ).json();
-    const ours = (
-      existing.data?.shop?.analyticsAnnotations?.nodes ?? []
-    ).filter((annotation) => annotation.createdByApp?.id === appId);
-    const targetsBody = await (
-      await admin.graphql(targetsQuery(campaign))
-    ).json();
-    if (ours.length > 0 || (targetsBody.data?.analyticsTargets?.nodes ?? []).length > 0) {
+    // Launching twice would duplicate the markers and the targets, and only the targets
+    // would fail on uniqueness. Gate on the record's status: a goal the user set on the
+    // same date isn't evidence that this campaign launched.
+    if (campaign.status !== 'planned') {
       return {problems: ['This campaign has already been launched.']};
     }
 
     const launch = await resolveLaunchMark(admin, campaign);
     const markers = {};
-    for (const [key, mark] of Object.entries(campaignMarks(campaign))) {
+    // Persist after each write, so a failure partway through leaves the record pointing
+    // at what landed and a retry or a cancel can still finish.
+    for (const mark of campaignMarks(campaign)) {
+      const isLaunch = mark.key === 'launch';
       const body = await (
         await admin.graphql(ANNOTATION_CREATE, {
           variables: {
             input: {
-              startedAt: markedAt(mark.startedAt),
+              startedAt: markedAt(mark.date),
               // An omitted `endedAt` is a moment. An explicit null is a span
-              // that hasn't finished, which is what the campaign's own marker is
-              // until it closes.
+              // that hasn't finished.
               ...(mark.ranged ? {endedAt: null} : {}),
-              type: key === 'launch' ? launch.type : mark.type,
+              type: isLaunch ? launch.type : mark.type,
               title: mark.title,
-              description:
-                key === 'launch'
-                  ? `${mark.description}${launch.note}`
-                  : mark.description,
+              description: isLaunch
+                ? `${mark.description}${launch.note}`
+                : mark.description,
             },
           },
         })
       ).json();
       const created = body.data?.analyticsAnnotationCreate;
+      if (created?.userErrors?.length) {
+        return {problems: created.userErrors.map((error) => error.message)};
+      }
       if (created?.analyticsAnnotation?.id) {
-        markers[key] = created.analyticsAnnotation.id;
+        markers[mark.key] = created.analyticsAnnotation.id;
+        await rememberMarkers(admin, campaign.id, {
+          [mark.key]: created.analyticsAnnotation.id,
+        });
       }
     }
 
-    await Promise.all([
+    // Keep the ID of every target this app created. Targets aren't app-scoped, so the
+    // saved set is the only way to cancel without touching a goal the user set.
+    const [store, product, audience] = await Promise.all([
       createStoreTarget(admin, campaign),
       createProductTarget(admin, campaign),
       createAudienceTarget(admin, campaign, dimensions.customer),
-      stampProducts(admin, campaign),
     ]);
+    const targets = {};
+    for (const [key, id] of [
+      ['store', store],
+      ['product', product],
+      ['audience', audience],
+    ]) {
+      if (id) targets[key] = id;
+    }
 
+    await stampProducts(admin, campaign);
     const members = await stampTier(admin, campaign);
-    await updateCampaign(admin, campaign.id, {
+    const {userErrors} = await updateCampaign(admin, campaign.id, {
       status: 'running',
       markers,
+      targets,
       members,
     });
+    if (userErrors.length) {
+      return {problems: userErrors.map((error) => error.message)};
+    }
     return {ok: true};
   }
 
@@ -719,14 +739,18 @@ export async function action({request, params}) {
     const measured = await (
       await admin.graphql(measureQuery(target.shopifyqlQuery))
     ).json();
-    await raiseTarget(admin, {
+    const userErrors = await raiseTarget(admin, {
       ...target,
       actual: progressValue(measured.data?.shopifyqlQuery) ?? 0,
     });
+    if (userErrors.length) {
+      return {problems: userErrors.map((error) => error.message)};
+    }
     return {ok: true};
   }
 
   if (intent === 'milestone') {
+    const day = String(form.get('day'));
     const targetsBody = await (
       await admin.graphql(targetsQuery(campaign))
     ).json();
@@ -735,20 +759,31 @@ export async function action({request, params}) {
     );
     if (!target) return {problems: ['That goal no longer exists.']};
 
-    const result = await markMilestone(admin, target, markedAt(form.get('day')));
+    const result = await markMilestone(admin, target, markedAt(day));
     if (result.userErrors?.length) {
       return {problems: result.userErrors.map((error) => error.message)};
     }
-    await recordMark(admin, campaign, 'milestone', result.analyticsAnnotation?.id);
+    await recordMark(
+      admin,
+      campaign,
+      `milestone:${productId(target.id)}:${day}`,
+      result.analyticsAnnotation?.id,
+    );
     return {ok: true};
   }
 
   if (intent === 'flag-incident') {
-    const result = await flagIncident(admin, campaign, markedAt(form.get('day')));
+    const day = String(form.get('day'));
+    const result = await flagIncident(admin, campaign, markedAt(day));
     if (result.userErrors?.length) {
       return {problems: result.userErrors.map((error) => error.message)};
     }
-    await recordMark(admin, campaign, 'incident', result.analyticsAnnotation?.id);
+    await recordMark(
+      admin,
+      campaign,
+      `incident:${day}`,
+      result.analyticsAnnotation?.id,
+    );
     return {ok: true};
   }
 
@@ -795,35 +830,49 @@ export async function action({request, params}) {
   }
 
   if (intent === 'cancel') {
-    // Delete exactly the IDs on the record. Another app's marker can't be
-    // deleted, and the store's own can't either, so the saved set is the only
-    // one this is allowed to touch.
+    // Delete exactly the IDs on the record. An annotation is app-scoped anyway, but
+    // `analyticsTargetsDelete` will delete any target on the shop, so querying by date
+    // and deleting the results would take the user's own goals with it.
     for (const id of Object.values(campaign.markers ?? {})) {
       await admin.graphql(ANNOTATION_DELETE, {variables: {id}});
     }
 
-    const targetsBody = await (
-      await admin.graphql(targetsQuery(campaign))
-    ).json();
-    const ids = (targetsBody.data?.analyticsTargets?.nodes ?? []).map(
-      (node) => node.id,
-    );
+    const ids = Object.values(campaign.targets ?? {});
     if (ids.length > 0) {
       await admin.graphql(TARGETS_DELETE, {variables: {ids}});
     }
 
     // The metafields stay, and so does the event data. Canceling undoes the
     // annotations and the goals, and nothing else.
-    await updateCampaign(admin, campaign.id, {
+    const {userErrors} = await updateCampaign(admin, campaign.id, {
       status: 'canceled',
       markers: {},
+      targets: {},
     });
+    if (userErrors.length) {
+      return {problems: userErrors.map((error) => error.message)};
+    }
     return {ok: true};
   }
 
   return {problems: [`Unknown intent: ${intent}`]};
 }
 // [END campaign-dashboard.lifecycle]
+
+// [START campaign-dashboard.unavailable-note]
+// A panel with no rows because its query never ran looks the same as one with no rows
+// because the store sold nothing, and only one is worth acting on. Pass a heading where
+// the panel wouldn't otherwise render at all.
+function Unavailable({reason, heading}) {
+  if (!reason) return null;
+  const note = (
+    <s-banner tone="info">
+      <s-paragraph>This store didn't return it: {reason}</s-paragraph>
+    </s-banner>
+  );
+  return heading ? <s-section heading={heading}>{note}</s-section> : note;
+}
+// [END campaign-dashboard.unavailable-note]
 
 const SINCE_BY_RANGE = {
   today: 'today',
@@ -838,18 +887,16 @@ export default function CampaignDashboard() {
   const fetcher = useFetcher();
 
   // [START campaign-dashboard.client-only]
-  // Polaris Viz measures the element it draws into, so it can't render on the
-  // server. Gate every chart on a flag that only turns true after mount, and the
-  // page still server-renders its numbers.
+  // Polaris Viz measures the element it draws into, so it can't render on the server.
+  // Gate every chart on a flag that turns true only after mount.
   const [isClient, setIsClient] = useState(false);
   useEffect(() => setIsClient(true), []);
   // [END campaign-dashboard.client-only]
 
   // [START campaign-dashboard.metric-card-ready]
-  // A metric card reads its data through `window.shopify.shopifyQL`, which the
-  // App Bridge analytics script installs after the page loads. Render the card
-  // before that lands and it starts in an error state it never leaves, so wait for
-  // the API rather than for the script tag.
+  // A metric card reads through `window.shopify.shopifyQL`, which App Bridge installs
+  // after load. Render before it lands and the card sits in an error state it never
+  // leaves, so wait for the API rather than for the script tag.
   const [cardReady, setCardReady] = useState(false);
   useEffect(() => {
     let canceled = false;
@@ -897,6 +944,7 @@ export default function CampaignDashboard() {
   const {
     appId,
     currencyCode,
+    timeZone,
     queryWindow,
     dimensions,
     rows,
@@ -915,16 +963,14 @@ export default function CampaignDashboard() {
   } = data;
 
   // [START campaign-dashboard.read]
-  // Every column comes back on the row under the name ShopifyQL generated for it,
-  // and those names are the contract. Read them through one helper so a renamed
-  // column breaks in one place rather than in every chart.
+  // Every column comes back under the name ShopifyQL generated for it, and those names
+  // are the contract. One helper, so a renamed column breaks in one place.
   const cell = (row, name) => row[name];
   // [END campaign-dashboard.read]
 
   // [START campaign-dashboard.format]
-  // ShopifyQL returns money as a string so it doesn't lose precision on the way
-  // out. Format at the edge, against the admin's locale, and keep the raw value
-  // for anything that gets compared or summed.
+  // ShopifyQL returns money as a string so it doesn't lose precision. Format at the edge
+  // and keep the raw value for anything compared or summed.
   const currency = (value) =>
     new Intl.NumberFormat(locale, {
       style: 'currency',
@@ -948,13 +994,21 @@ export default function CampaignDashboard() {
     value === null ? '—' : `${value > 0 ? '+' : ''}${value.toFixed(1)}%`;
 
   const humanize = (value) => String(value ?? '').replace(/_/g, ' ');
+
+  // The app wrote this instant as 9am in the store's timezone, so slicing the UTC string
+  // reports the day before east of UTC. `en-CA` formats a date as YYYY-MM-DD.
+  const shopDay = new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
+  const dayOf = (instant) => shopDay.format(new Date(instant));
   // [END campaign-dashboard.format]
 
   // [START campaign-dashboard.totals]
-  // WITH TOTALS puts the campaign's own total on a generated column rather than
-  // asking the client to add the days up, and COMPARE TO puts the previous period
-  // on a second one. Both are named after the metric, so the names are derived and
-  // not chosen.
+  // WITH TOTALS and COMPARE TO each put their value on a generated column named after
+  // the metric, so these names are derived rather than chosen.
   const totalSales = rows[0]?.['total_sales__totals'] ?? '0';
   const previousTotal = Number(
     rows[0]?.['comparison_total_sales__previous_period__totals'] ?? 0,
@@ -966,10 +1020,8 @@ export default function CampaignDashboard() {
   // [END campaign-dashboard.totals]
 
   // [START campaign-dashboard.goal-copy]
-  // A target's `filters` is a ShopifyQL expression, and showing it to a user reads
-  // as a leaked internal. Say what it narrows to instead, using what the campaign
-  // record already knows, and fall back to the expression only when it names
-  // something the record can't explain.
+  // A target's `filters` is ShopifyQL, and showing it reads as a leaked internal. Say
+  // what it narrows to, and fall back to the expression only when the record can't.
   function goalScope(target) {
     if (!target.filters) return 'Everything the store sold';
     if (target.filters.startsWith('product_id')) {
@@ -984,17 +1036,15 @@ export default function CampaignDashboard() {
   // [END campaign-dashboard.goal-copy]
 
   // [START campaign-dashboard.target-split]
-  // The store-wide goal is the one without a filter, and it's the number the
-  // campaign gets judged on. Everything else is a slice of it, so rank them below
-  // rather than beside it.
+  // The store-wide goal is the one without a filter, and it's the number the campaign
+  // gets judged on. Everything else is a slice of it, so rank them below rather than beside.
   const storeTarget = targets.find((target) => !target.filters) ?? null;
   const scopedTargets = targets.filter((target) => target.filters);
   // [END campaign-dashboard.target-split]
 
   // [START campaign-dashboard.annotations-overlay]
-  // Split the store's annotations by who wrote them. This app's are the ones it
-  // can update and delete, and the others are context it can only read. Give the
-  // others a grey so the chart doesn't imply the app put them there.
+  // Split the store's annotations by who wrote them: this app's are the ones it can
+  // update and delete. Grey the rest so the chart doesn't imply the app put them there.
   const ours = annotations.filter(
     (annotation) => annotation.createdByApp?.id === appId,
   );
@@ -1005,7 +1055,7 @@ export default function CampaignDashboard() {
   // Polaris Viz matches an annotation to a point by the axis label it drew, not by
   // the value in the data, so the key is the formatted day and not the timestamp.
   const chartAnnotations = annotations.map((annotation) => ({
-    startKey: shortDate(annotation.startedAt.slice(0, 10)),
+    startKey: shortDate(dayOf(annotation.startedAt)),
     label: annotation.title,
     content: {
       content: annotation.description ?? annotation.title,
@@ -1016,17 +1066,27 @@ export default function CampaignDashboard() {
   }));
 
   const openCampaign = ours.find((annotation) => !annotation.endedAt) ?? null;
-  const incidentFlagged = ours.some((annotation) => annotation.type === 'other');
+  // Read off the record, not off what's in view. The annotations read is windowed and
+  // any `other` marker satisfies it, so one dated outside the window offers a duplicate.
+  const incidentFlagged = Object.keys(campaign.markers ?? {}).some((key) =>
+    key.startsWith('incident:'),
+  );
   const legend = categoryLegend(annotations, appId);
   // [END campaign-dashboard.annotations-overlay]
 
+  // The same conditions the launch itself applies: a product target needs promoted
+  // products, and an audience target needs both a real tier and a queryable dimension.
+  const plannedTargetCount =
+    1 +
+    (campaign.products.length > 0 ? 1 : 0) +
+    (isTargetedTier(campaign.audience) && dimensions.customer.enabled ? 1 : 0);
+
   // [START campaign-dashboard.timeline]
-  // Two annotations on the same day are two dots at the same position, so group by
-  // day first and let one dot carry both. The busiest day is what decides how tall
-  // the strip has to be.
+  // Two annotations on the same day are two dots in one position, so group by day and
+  // let one dot carry both. The busiest day decides how tall the strip has to be.
   const byDay = new Map();
   for (const annotation of annotations) {
-    const day = annotation.startedAt.slice(0, 10);
+    const day = dayOf(annotation.startedAt);
     if (!byDay.has(day)) byDay.set(day, []);
     byDay.get(day).push(annotation);
   }
@@ -1045,9 +1105,8 @@ export default function CampaignDashboard() {
   // [END campaign-dashboard.timeline]
 
   // [START campaign-dashboard.chart]
-  // One chart with two units on it. Sales are money and orders are a count, so
-  // they can't share an axis, and a ComboChart is the shape that admits that. The
-  // annotations ride on the x-axis, which is the one thing both series share.
+  // Sales are money and orders are a count, so they can't share an axis, and a
+  // ComboChart is the shape that admits it. The annotations ride on the shared x-axis.
   const salesSeries = {
     name: 'Sales',
     data: rows.map((row) => ({
@@ -1065,28 +1124,24 @@ export default function CampaignDashboard() {
   // [END campaign-dashboard.chart]
 
   // [START campaign-dashboard.metric-card]
-  // The card queries are built the same way the chart's was, from the campaign's
-  // own window, and the date picker replaces that window rather than the card
-  // rewriting it. `s-metrics-bar-date-picker` reports the alias it was set to and
-  // nothing else, so the app owns the translation from `last30days` to a SINCE.
+  // `s-metrics-bar-date-picker` reports the alias it was set to and nothing else, so the
+  // app owns the translation from `last30days` to a SINCE and rebuilds each query.
   const since = SINCE_BY_RANGE[range];
   const cardQuery = (metric) =>
     [
       'FROM sales',
       `SHOW ${metric}`,
-      'BY day',
+      'TIMESERIES day',
       `SINCE ${since} UNTIL today`,
       'WITH TOTALS, PERCENT_CHANGE',
       'COMPARE TO previous_period',
-      'VISUALIZE',
+      `VISUALIZE ${metric} TYPE line`,
     ].join(' ');
   // [END campaign-dashboard.metric-card]
 
   // [START campaign-dashboard.funnel-totals]
-  // A daily timeseries has one row for each day, so a campaign total is a column
-  // summed rather than a value read. The rates below are the point of the panel:
-  // how much of what was sent arrived, how much of what arrived was engaged with,
-  // and what the campaign cost the list on the way through.
+  // A daily timeseries has one row per day, so a campaign total is a column summed
+  // rather than a value read. The rates below are the point of the panel.
   const total = (metric) =>
     (funnel.tableData.rows ?? []).reduce(
       (running, row) => running + Number(cell(row, metric) ?? 0),
@@ -1110,11 +1165,9 @@ export default function CampaignDashboard() {
   // [END campaign-dashboard.funnel-totals]
 
   // [START campaign-dashboard.channel-funnels]
-  // Each channel reports a different set of stages, so each gets its own funnel
-  // rather than three series on one. Push reports no delivery at all, which means
-  // its funnel is two stages and comparing its middle to email's would be
-  // comparing a send to a delivery. Drop a channel whose first stage is zero,
-  // because that's a channel the campaign didn't send on.
+  // Each channel reports a different set of stages, so each gets its own funnel: push
+  // has no delivery at all, and comparing its middle to email's would compare a send to
+  // a delivery. A channel whose first stage is zero didn't send.
   const funnels = campaign.channels
     .map((key) => ({
       key,
@@ -1133,10 +1186,8 @@ export default function CampaignDashboard() {
   // [END campaign-dashboard.channel-funnels]
 
   // [START campaign-dashboard.sends-by-day]
-  // The same rows the funnel totalled, kept as a series. Sends by day next to
-  // sales by day is what shows whether the days the campaign pushed are the days
-  // the store sold, and a channel with no sends is left off rather than drawn as a
-  // flat line at zero.
+  // The same rows the funnel totalled, kept as a series. Sends by day beside sales by
+  // day is what shows whether the days the campaign pushed are the days the store sold.
   const sendsByDay = new Map(
     (funnel.tableData.rows ?? []).map((row) => [cell(row, 'day'), row]),
   );
@@ -1154,15 +1205,13 @@ export default function CampaignDashboard() {
   // [END campaign-dashboard.sends-by-day]
 
   // [START campaign-dashboard.sequence-charts]
-  // The sequence read server-side, turned into the two things worth seeing: how
-  // many people each touch reached, and whether the share of them engaging fell as
-  // the campaign kept sending. Falling engagement across a sequence is fatigue, and
-  // it's the finding the panel exists for.
+  // How many people each touch reached, and whether the share engaging fell as the
+  // campaign kept sending. Falling engagement across a sequence is fatigue.
   const sequenceBars = [
     {
       name: 'Reached',
       data: sequence.map((touch) => ({
-        key: `${touch.position}. ${touch.label}`,
+        key: `${touch.position}. ${touch.name}`,
         value: touch.reached,
       })),
     },
@@ -1171,7 +1220,7 @@ export default function CampaignDashboard() {
     {
       name: 'Engaged',
       data: sequence.map((touch) => ({
-        key: `${touch.position}. ${touch.label}`,
+        key: `${touch.position}. ${touch.name}`,
         value: Math.round(touch.rate),
       })),
     },
@@ -1202,10 +1251,8 @@ export default function CampaignDashboard() {
   // [END campaign-dashboard.sequence-charts]
 
   // [START campaign-dashboard.slice-shape]
-  // Splitting by campaign puts this campaign next to the others the app has run,
-  // which is the only comparison that says whether it did well rather than just
-  // what it did. The window is the attribute's 30 days, not the campaign's, so
-  // label it that way.
+  // Splitting by campaign puts this one next to the others the app has run. The window
+  // is the attribute's 30 days rather than the campaign's, so label it that way.
   const sliceRows = (slice.tableData.rows ?? [])
     .map((row) => ({
       id: String(cell(row, 'campaign_id') ?? ''),
@@ -1219,15 +1266,13 @@ export default function CampaignDashboard() {
   // [END campaign-dashboard.slice-shape]
 
   // [START campaign-dashboard.cross-app-rows]
-  // Every app that reported an event in this window, this one included. The store
-  // sees all of them, so a dashboard that shows only its own numbers is telling the
-  // merchant less than their analytics already does.
+  // Every app that reported an event in this window, this one included. The store sees
+  // all of them, so showing only its own tells the merchant less than the admin does.
   const crossAppRows = (crossApp.tableData.rows ?? [])
     .map((row) => ({
       app: String(cell(row, 'app_name') ?? 'Unnamed'),
-      // Every send the app reported, not only its email. An app that sends on one
-      // channel would drop out of the comparison if this counted a column it never
-      // reports into.
+      // Every send the app reported, not only its email. An app that sends on one channel
+      // would drop out of the comparison if this counted a column it never reports.
       sent:
         Number(cell(row, 'emails_sent') ?? 0) +
         Number(cell(row, 'sms_messages_sent') ?? 0) +
@@ -1238,9 +1283,8 @@ export default function CampaignDashboard() {
   // [END campaign-dashboard.cross-app-rows]
 
   // [START campaign-dashboard.insight-chart]
-  // The weekly run, with the campaign's markers on it. Two markers in the same week
-  // land on the same point, so merge them into one rather than stacking labels the
-  // chart will overlap.
+  // The weekly run with the campaign's markers on it. Two markers in one week land on
+  // the same point, so merge them rather than stacking labels the chart will overlap.
   const insightWeekly = insight
     ? [
         {
@@ -1259,7 +1303,7 @@ export default function CampaignDashboard() {
       insight.weeks.findLast((week) => week <= day) ?? insight.weeks[0];
     const merged = new Map();
     for (const annotation of annotations) {
-      const week = weekOf(annotation.startedAt.slice(0, 10));
+      const week = weekOf(dayOf(annotation.startedAt));
       if (!merged.has(week)) merged.set(week, []);
       merged.get(week).push(annotation);
     }
@@ -1276,10 +1320,8 @@ export default function CampaignDashboard() {
   // [END campaign-dashboard.insight-chart]
 
   // [START campaign-dashboard.analytics-link]
-  // The app's charts end where the merchant's questions start. Hand off to the
-  // store's own explorer with the query already in it, built from the types the
-  // app actually wrote, so the markers on the app's chart are the markers on
-  // theirs.
+  // Hand off to the store's own explorer with the query already in it, built from the
+  // types the app wrote, so the markers on the app's chart are the markers on theirs.
   const exploreHref = exploreLink(
     exploreQuery({
       window: queryWindow,
@@ -1289,21 +1331,24 @@ export default function CampaignDashboard() {
   // [END campaign-dashboard.analytics-link]
 
   // [START campaign-dashboard.promoted-split]
-  // What the campaign promoted against what the store sold anyway. The dimension is
-  // the metafield the app stamped onto each product, so this is the app's own data
-  // read back through the store's analytics rather than out of the app's database.
-  const promotedRows = (promoted.tableData.rows ?? []).map((row) => ({
-    title: String(cell(row, 'product_title') ?? 'Untitled'),
-    sales: Number(cell(row, 'gross_sales') ?? 0),
-  }));
-  const promotedSales = promotedRows.reduce((running, row) => running + row.sales, 0);
+  // What the campaign promoted against what the store sold anyway, read back through
+  // the store's analytics rather than out of the app's database. The column is the
+  // query's alias, and products no campaign stamped come back under an empty value.
+  const promotedRows = (promoted.tableData.rows ?? [])
+    .map((row) => ({
+      title: String(cell(row, 'promoted_by') ?? ''),
+      sales: Number(cell(row, 'total_sales') ?? 0),
+    }))
+    .filter((row) => row.title !== '');
+  const promotedSales = promotedRows
+    .filter((row) => row.title === campaign.title)
+    .reduce((running, row) => running + row.sales, 0);
   const promotedShare = rate(promotedSales, Number(totalSales));
   // [END campaign-dashboard.promoted-split]
 
   // [START campaign-dashboard.tier-shape]
-  // The audience goal, measured. A tier the app wrote onto customers is a dimension
-  // like any other once it's queryable, which means the answer comes back from the
-  // store's own sales data rather than from anything the app kept.
+  // A tier the app wrote onto customers is a dimension like any other once it's
+  // queryable, so the answer comes back from the store's sales data.
   const tierRows = (tierSales.tableData.rows ?? []).map((row) => ({
     day: String(cell(row, 'day')),
     sales: Number(cell(row, 'total_sales') ?? 0),
@@ -1313,9 +1358,8 @@ export default function CampaignDashboard() {
   // [END campaign-dashboard.tier-shape]
 
   // [START campaign-dashboard.member-join]
-  // The roster the app saved at launch, joined to what each member spent. The
-  // metafield says which tier a customer is in and not which campaign put them
-  // there, so the record is what makes this campaign's audience nameable at all.
+  // The roster the app saved at launch, joined to what each member spent. The metafield
+  // says the tier and not which campaign set it, so the record is what names this set.
   const spendById = new Map(
     (roster.tableData.rows ?? []).map((row) => [
       String(cell(row, 'customer_id') ?? ''),
@@ -1331,10 +1375,8 @@ export default function CampaignDashboard() {
   // [END campaign-dashboard.member-join]
 
   // [START campaign-dashboard.supply-context]
-  // Two annotation types the app can't write and can read. A supplier change or a
-  // fulfillment service change inside the campaign's window is a competing
-  // explanation for whatever the sales chart did, and leaving it out is how a
-  // dashboard takes credit for someone else's week.
+  // Two annotation types the app can read and can't write. Either one inside the window
+  // is a competing explanation for whatever the sales chart did.
   const supplyTypes = ['supplier_change', 'fulfillment_service_change'];
   const supplyMarks = others.filter((annotation) =>
     supplyTypes.includes(annotation.type),
@@ -1342,13 +1384,9 @@ export default function CampaignDashboard() {
   // [END campaign-dashboard.supply-context]
 
   // [START campaign-dashboard.advice]
-  // Everything above is a number. This is the part that says what to do about it,
-  // and every line is gated on a threshold rather than always shown, because advice
-  // that appears whatever the data says isn't advice.
-  //
-  // A marker's effect is the average of the days on each side of it, not the total.
-  // Comparing a three-day run-up to a ten-day run-out compares the lengths of the
-  // windows and nothing else.
+  // The part that says what to do about the numbers. Every line is gated on a threshold,
+  // because advice that appears whatever the data says isn't advice. A marker's effect is
+  // the average of the days on each side, not the total.
   const days = rows.map((row) => String(cell(row, 'day'))).sort();
   const salesByDay = new Map(
     rows.map((row) => [String(cell(row, 'day')), Number(cell(row, 'total_sales') ?? 0)]),
@@ -1411,10 +1449,11 @@ export default function CampaignDashboard() {
     );
   }
 
-  const launchDay = campaign.markers?.launch
-    ? (ours.find((annotation) => annotation.id === campaign.markers.launch)
-        ?.startedAt ?? '')
-        .slice(0, 10)
+  const launchMarker = campaign.markers?.launch
+    ? ours.find((annotation) => annotation.id === campaign.markers.launch)
+    : null;
+  const launchDay = launchMarker?.startedAt
+    ? dayOf(launchMarker.startedAt)
     : null;
   const launchEffect = launchDay ? averageAround(launchDay) : null;
   if (launchEffect && launchEffect.before > 0) {
@@ -1443,14 +1482,12 @@ export default function CampaignDashboard() {
 
   const problems = fetcher.data?.problems ?? [];
   const busy = fetcher.state !== 'idle';
-  const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-  const today = new Date().toISOString().slice(0, 10);
+  const today = dayOf(Date.now());
 
   const submit = (intent, fields = {}) =>
     fetcher.submit(
       {
         intent,
-        timeZone,
         currency: currencyCode,
         ...fields,
       },
@@ -1489,9 +1526,8 @@ export default function CampaignDashboard() {
       )}
 
       {/* [START campaign-dashboard.status-render] */}
-      {/* The campaign's state decides which writes are offered, because a campaign
-          that hasn't launched has nothing to close and a closed one has nothing
-          left to mark. */}
+      {/* Which writes are offered follows the campaign's state: one that hasn't
+          launched has nothing to close, and a closed one has nothing left to mark. */}
       <s-section>
         <s-stack direction="inline" gap="base" alignItems="center">
           <s-badge
@@ -1528,9 +1564,8 @@ export default function CampaignDashboard() {
       {/* [END campaign-dashboard.status-render] */}
 
       {/* [START campaign-dashboard.incident-banner] */}
-      {/* The app found something wrong in its own data. Writing it to the store's
-          charts is what makes it visible to someone who never opens this app, and
-          the button says that rather than saying "flag". */}
+      {/* Writing a problem to the store's charts is what makes it visible to
+          someone who never opens this app, so the button says that. */}
       {health.bounceRate >= BOUNCE_ALERT_RATE * 100 && (
         <s-section>
           <s-banner
@@ -1563,9 +1598,8 @@ export default function CampaignDashboard() {
       {planned && (
         <Fragment>
           {/* [START campaign-dashboard.setup-render] */}
-          {/* Everything the launch will write, listed before it writes it. The
-              products and the audience stay editable until then, because the
-              targets filter on them and the markers are named from them. */}
+          {/* Everything the launch will write, listed before it writes it. Products
+              and audience stay editable until then because the targets filter on them. */}
           <s-section heading="What launching will do">
             <s-unordered-list>
               <s-list-item>
@@ -1573,14 +1607,16 @@ export default function CampaignDashboard() {
                 analytics, one of them an open span for the campaign itself.
               </s-list-item>
               <s-list-item>
-                Create {isTargetedTier(campaign.audience) ? 3 : 2} analytics
-                targets over {shortDate(campaign.startDate)} to{' '}
-                {shortDate(campaign.endDate)}.
+                Create {plannedTargetCount} analytics{' '}
+                {plannedTargetCount === 1 ? 'target' : 'targets'} over{' '}
+                {shortDate(campaign.startDate)} to {shortDate(campaign.endDate)}.
               </s-list-item>
               <s-list-item>
                 Stamp {campaign.products.length} products with{' '}
-                <s-text>promoted_by</s-text> and tag the{' '}
-                {tierLabel(campaign.audience).toLowerCase()} audience.
+                <s-text>promoted_by</s-text>
+                {isTargetedTier(campaign.audience)
+                  ? ` and tag the ${tierLabel(campaign.audience).toLowerCase()} audience.`
+                  : '. This audience covers the whole store, so no customer is tagged.'}
               </s-list-item>
             </s-unordered-list>
 
@@ -1614,9 +1650,8 @@ export default function CampaignDashboard() {
           {/* [END campaign-dashboard.setup-render] */}
 
           {/* [START campaign-dashboard.planned-goals] */}
-          {/* The three goals as they were typed, before any of them is a target.
-              Each one measures a different question, so show what it will be
-              filtered to rather than three identical rows of money. */}
+          {/* The three goals as typed, before any is a target. Each measures a
+              different question, so show its filter rather than three rows of money. */}
           <s-section heading="Goals this campaign will be measured on">
             <s-table>
               <s-table-header-row>
@@ -1656,9 +1691,8 @@ export default function CampaignDashboard() {
       )}
 
       {/* [START campaign-dashboard.advice-render] */}
-      {/* The dashboard's one section that isn't a number. Nothing here appears
-          unless its threshold was crossed, so an empty list means the campaign is
-          running as it should. */}
+      {/* Nothing here appears unless its threshold was crossed, so an empty list
+          means the campaign is running as it should. */}
       {advice.length > 0 && (
         <s-section heading="What this campaign is telling you">
           <s-unordered-list>
@@ -1671,10 +1705,9 @@ export default function CampaignDashboard() {
       {/* [END campaign-dashboard.advice-render] */}
 
       {/* [START campaign-dashboard.card-render] */}
-      {/* Three numbers the app doesn't calculate. A metrics bar renders whatever
-          cards it's given and sizes them itself, and its date picker reports the
-          range it was set to so the app can rebuild each query. Wait for the
-          ShopifyQL API before rendering, or the cards mount into an error state. */}
+      {/* Three numbers the app doesn't calculate. The date picker reports the range
+          it was set to and the app rebuilds each query from it. Wait for the
+          ShopifyQL API, or the cards mount into an error state they never leave. */}
       <s-section heading="The store, straight from analytics">
         {cardReady ? (
           <s-metrics-bar accessibilityLabel="Store totals over the selected range">
@@ -1698,9 +1731,13 @@ export default function CampaignDashboard() {
       </s-section>
       {/* [END campaign-dashboard.card-render] */}
 
+      <Unavailable
+        heading="The store's weekly trend"
+        reason={weekly.unavailable}
+      />
+
       {/* [START campaign-dashboard.insight-render] */}
-      {/* The one sentence worth leading with, and the chart that backs it. A run of
-          weeks is a finding. A single week's number is a reading. */}
+      {/* A run of weeks is a finding. A single week's number is a reading. */}
       {insight && isClient && (
         <s-section>
           <s-stack direction="block" gap="small-200">
@@ -1790,9 +1827,8 @@ export default function CampaignDashboard() {
       </s-section>
 
       {/* [START campaign-dashboard.target-render] */}
-      {/* A goal is a number and a distance from it. Show the share reached rather
-          than the two amounts, and offer the two things a user can do about it:
-          mark the day it was hit, or move the goal because it stopped being one. */}
+      {/* Show the share reached rather than the two amounts, and offer the two
+          things a user can do: mark the day it was hit, or move a beaten goal. */}
       {targets.length > 0 && (
         <s-section heading="Goals">
           {storeTarget && (
@@ -1828,8 +1864,7 @@ export default function CampaignDashboard() {
                 </s-banner>
               )}
 
-              {/* App Home has no progress bar, so this is a labelled div with the
-                  same tokens the rest of the page uses. */}
+              {/* App Home has no progress bar, so this is a labelled div on the page's tokens. */}
               <div
                 role="progressbar"
                 aria-valuenow={storeTarget.percent ?? 0}
@@ -1914,14 +1949,13 @@ export default function CampaignDashboard() {
       {/* [END campaign-dashboard.target-render] */}
 
       {/* [START campaign-dashboard.close-render] */}
-      {/* The campaign's own marker, still open. Closing it rewrites the marker
-          rather than adding a second one, so the store's charts end up with the
-          result and not with a plan and a result side by side. */}
+      {/* Closing rewrites the campaign's own marker rather than adding a second,
+          so the store's charts carry the result and not a plan beside a result. */}
       {openCampaign && (
         <s-section heading="The campaign's own marker">
           <s-paragraph>
             <s-text>{openCampaign.title}</s-text> has been on the store's charts
-            since {shortDate(openCampaign.startedAt.slice(0, 10))} with no end
+            since {shortDate(dayOf(openCampaign.startedAt))} with no end
             date. Closing the campaign moves its end to{' '}
             {shortDate(campaign.endDate)} and rewrites the title with what it
             earned.
@@ -1936,9 +1970,8 @@ export default function CampaignDashboard() {
       {/* [END campaign-dashboard.close-render] */}
 
       {/* [START campaign-dashboard.timeline-render] */}
-      {/* Every marker in the window, on one strip, in the order they happened. The
-          chart shows where they landed and this shows what they were, which is the
-          part a chart with eight annotations on it can't carry. */}
+      {/* The chart shows where the markers landed. This shows what they were,
+          which a chart with eight annotations on it can't carry. */}
       <s-section heading="Markers in this window">
         <div
           style={{
@@ -2004,8 +2037,7 @@ export default function CampaignDashboard() {
 
       {/* [START campaign-dashboard.marks-render] */}
       {/* What the app wrote, and what it can still do to each one. A span shows its
-          end date or the fact that it hasn't got one, because that's the difference
-          between a campaign that finished and one still running. */}
+          end date or that it hasn't one, which is finished against still running. */}
       {ours.length > 0 && (
         <s-section heading="Markers this app wrote">
           <s-table>
@@ -2020,9 +2052,9 @@ export default function CampaignDashboard() {
                   <s-table-cell>{annotation.title}</s-table-cell>
                   <s-table-cell>{humanize(categoryOf(annotation.type))}</s-table-cell>
                   <s-table-cell>
-                    {shortDate(annotation.startedAt.slice(0, 10))}
+                    {shortDate(dayOf(annotation.startedAt))}
                     {annotation.endedAt
-                      ? ` to ${shortDate(annotation.endedAt.slice(0, 10))}`
+                      ? ` to ${shortDate(dayOf(annotation.endedAt))}`
                       : annotation.endedAt === null && annotation.type === 'campaign'
                         ? ' onwards'
                         : ''}
@@ -2036,10 +2068,8 @@ export default function CampaignDashboard() {
       {/* [END campaign-dashboard.marks-render] */}
 
       {/* [START campaign-dashboard.confounders] */}
-      {/* Markers this app didn't write. A price change or a supplier change inside
-          the campaign's window is a competing explanation for the same chart, and
-          the merchant can see all of them whether or not the app admits they
-          exist. */}
+      {/* Markers this app didn't write. A price or supplier change inside the window
+          is a competing explanation, and the merchant sees it either way. */}
       {others.length > 0 && (
         <s-section heading="Other things that happened in this window">
           <s-paragraph>
@@ -2060,7 +2090,7 @@ export default function CampaignDashboard() {
                     {annotation.createdByApp?.title ?? 'Shopify'}
                   </s-table-cell>
                   <s-table-cell>
-                    {shortDate(annotation.startedAt.slice(0, 10))}
+                    {shortDate(dayOf(annotation.startedAt))}
                   </s-table-cell>
                 </s-table-row>
               ))}
@@ -2070,11 +2100,49 @@ export default function CampaignDashboard() {
       )}
       {/* [END campaign-dashboard.confounders] */}
 
+      {/* [START campaign-dashboard.send-events-render] */}
+      {/* The only panel that writes to App Events rather than reading analytics.
+          Nothing below has data until these exist, and ingestion isn't immediate. */}
+      {(funnel.tableData.rows ?? []).length === 0 && (
+        <s-section heading="The campaign's events">
+          {funnel.unavailable ? (
+            <s-banner tone="info">
+              <s-paragraph>
+                This store can't query App Events yet: {funnel.unavailable}
+              </s-paragraph>
+            </s-banner>
+          ) : (
+            <Fragment>
+              <s-paragraph>
+                Replay this campaign's sends as App Events: nine touches across
+                email, SMS, and push, plus the forms that grew the list. It's
+                around 680 events, and App Events takes one request each, so the
+                send runs for a minute or two.
+              </s-paragraph>
+              <s-paragraph>
+                Shopify accepts an event before it ingests it, so the funnels stay
+                empty for a few minutes after this finishes. Reload the page then.
+              </s-paragraph>
+              {typeof fetcher.data?.sentEvents === 'number' && (
+                <s-banner tone="success">
+                  <s-paragraph>
+                    {integer(fetcher.data.sentEvents)} events accepted. Reload in a
+                    few minutes to see the funnels.
+                  </s-paragraph>
+                </s-banner>
+              )}
+              <s-button loading={busy} onClick={() => submit('send-events')}>
+                Send the campaign's events
+              </s-button>
+            </Fragment>
+          )}
+        </s-section>
+      )}
+      {/* [END campaign-dashboard.send-events-render] */}
+
       {/* [START campaign-dashboard.funnel-render] */}
-      {/* One funnel for each channel the campaign sent on, because each reports a
-          different set of stages and putting them on one chart would compare a
-          send to a delivery. A query container lets the funnels reflow rather than
-          shrinking to a column each. */}
+      {/* One funnel per channel, because each reports a different set of stages and
+          one chart would compare a send to a delivery. */}
       {isClient && funnels.length > 0 && (
         <s-section heading="What each channel did">
           <s-query-container>
@@ -2128,9 +2196,8 @@ export default function CampaignDashboard() {
       {/* [END campaign-dashboard.funnel-render] */}
 
       {/* [START campaign-dashboard.app-events-render] */}
-      {/* The sequence, in the order it sent, with the share of people engaging on
-          each touch. Reach falls because lists shrink. Engagement falling is
-          fatigue, and it's the one finding here the merchant can act on. */}
+      {/* Reach falls because lists shrink. Engagement falling across the sequence
+          is fatigue, and it's the one finding here the merchant can act on. */}
       {sequence.length > 0 && (
         <s-section heading="The sequence, touch by touch">
           {isClient && (
@@ -2152,7 +2219,7 @@ export default function CampaignDashboard() {
               Engagement {fatigue.falling ? 'fell' : 'rose'} from{' '}
               {Math.round(fatigue.from)}% on the first touch to{' '}
               {Math.round(fatigue.to)}% on the last, across {fatigue.touches}{' '}
-              sends. The weakest was {fatigue.worst.label} at{' '}
+              sends. The weakest was {fatigue.worst.name} at{' '}
               {Math.round(fatigue.worst.rate)}%, and {integer(fatigue.lost)}{' '}
               people unsubscribed along the way.
             </s-paragraph>
@@ -2169,7 +2236,7 @@ export default function CampaignDashboard() {
               {sequence.map((touch) => (
                 <s-table-row key={touch.template}>
                   <s-table-cell>
-                    {touch.position}. {touch.label}
+                    {touch.position}. {touch.name}
                   </s-table-cell>
                   <s-table-cell>{integer(touch.sent)}</s-table-cell>
                   <s-table-cell>{integer(touch.reached)}</s-table-cell>
@@ -2186,10 +2253,8 @@ export default function CampaignDashboard() {
       {/* [END campaign-dashboard.app-events-render] */}
 
       {/* [START campaign-dashboard.reach-render] */}
-      {/* Four rates that say whether the campaign was worth running to the list
-          rather than to the store. A campaign can earn money and still cost more
-          contacts than it captured, and that's a result the sales chart can't
-          show. */}
+      {/* A campaign can earn money and still cost more contacts than it captured,
+          which is a result the sales chart can't show. */}
       {sent > 0 && (
         <s-section heading="What it cost the list">
           <s-stack direction="inline" gap="large">
@@ -2221,6 +2286,9 @@ export default function CampaignDashboard() {
               </s-text>
             </s-stack>
           </s-stack>
+
+          <Unavailable reason={slice.unavailable} />
+          <Unavailable reason={crossApp.unavailable} />
 
           {sliceRows.length > 1 && (
             <Fragment>
@@ -2278,9 +2346,7 @@ export default function CampaignDashboard() {
 
       {/* [START campaign-dashboard.metafield-dimension-render] */}
       {/* A metafield the app owns is a dimension only once it's been asked for, and
-          until then every query naming it fails to parse. Say which state each one
-          is in and do the asking from here, because a merchant sent to find this
-          setting won't find it. */}
+          until then every query naming it fails to parse. Do the asking from here. */}
       <s-section heading="Dimensions this app owns">
         <s-table>
           <s-table-header-row>
@@ -2324,6 +2390,8 @@ export default function CampaignDashboard() {
           </s-table-body>
         </s-table>
 
+        <Unavailable reason={promoted.unavailable} />
+
         {promotedRows.length > 0 && (
           <Fragment>
             <s-paragraph>
@@ -2338,7 +2406,7 @@ export default function CampaignDashboard() {
                     direction="horizontal"
                     data={[
                       {
-                        name: 'Promoted',
+                        name: 'Sales by campaign',
                         data: promotedRows.map((row) => ({
                           key: row.title,
                           value: row.sales,
@@ -2355,10 +2423,14 @@ export default function CampaignDashboard() {
       </s-section>
       {/* [END campaign-dashboard.metafield-dimension-render] */}
 
+      <Unavailable
+        heading={`What the ${tierLabel(campaign.audience).toLowerCase()} bought`}
+        reason={tierSales.unavailable}
+      />
+
       {/* [START campaign-dashboard.tier-render] */}
-      {/* The audience goal, read back out of the store's sales data. The tier came
-          from the app and the sales came from the store, and the join happened in
-          ShopifyQL rather than in the app. */}
+      {/* The tier came from the app and the sales came from the store, and the
+          join happened in ShopifyQL rather than in the app. */}
       {tierRows.length > 0 && (
         <s-section heading={`What the ${tierLabel(campaign.audience).toLowerCase()} bought`}>
           <s-paragraph>
@@ -2388,11 +2460,14 @@ export default function CampaignDashboard() {
       )}
       {/* [END campaign-dashboard.tier-render] */}
 
+      <Unavailable
+        heading="The audience this campaign tagged"
+        reason={roster.unavailable}
+      />
+
       {/* [START campaign-dashboard.member-render] */}
-      {/* The roster the app saved when it stamped the tier, against what each
-          member spent. The metafield says which tier someone is in and not which
-          campaign put them there, so without the record this list can't be
-          rebuilt. */}
+      {/* The metafield says which tier someone is in and not which campaign put
+          them there, so without the saved roster this list can't be rebuilt. */}
       {members.length > 0 && (
         <s-section heading="The audience this campaign tagged">
           <s-table>

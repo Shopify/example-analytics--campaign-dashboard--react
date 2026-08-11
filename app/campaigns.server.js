@@ -6,15 +6,9 @@ import {
 } from './campaign-queries.server';
 
 // [START campaign-dashboard.campaign-store]
-// A campaign is a record the app owns: a name, a window, the channels it sends
-// on, the products it promotes, the audience it targets, and the goals it was
-// given. Every query, target, and annotation on the dashboard is derived from
-// these fields, which is what keeps a second campaign from needing a second
-// codebase.
-//
-// The store is one app-data metafield rather than a table, so the tutorial has no
-// database of its own to set up. A real app would use its own storage. The shape
-// is what matters.
+// Every query, target, and annotation on the dashboard is derived from these fields,
+// which is what keeps a second campaign from needing a second codebase. The store is one
+// app-data metafield rather than a table. A real app would use its own storage.
 export const CAMPAIGN_FIELDS = {
   id: 'Integer the App Events attribute is typed as, so it can filter events.',
   title: 'What the user typed. Ends up in every annotation title.',
@@ -26,13 +20,15 @@ export const CAMPAIGN_FIELDS = {
   revenueTarget: 'Store-wide sales goal, as a decimal string.',
   productTarget: 'Sales goal filtered to the promoted products.',
   audienceTarget: 'Sales goal filtered to the targeted tier.',
-  status: 'planned, running, or closed. Decides which actions are offered.',
+  status:
+    'planned, running, closed, or canceled. Decides which actions are offered.',
   markers: 'Annotation IDs the app wrote, keyed by mark, so it can update them.',
+  targets:
+    "Target IDs the app created. Targets aren't app-scoped, so deleting only these is what keeps a cancel off the user's own goals.",
 };
 
-// A canceled campaign keeps its record with `status: 'canceled'` rather than
-// disappearing. Its ID stays spent, because event data can't be deleted and a
-// reused ID would inherit the canceled campaign's funnel.
+// A canceled campaign keeps its record and its ID stays spent, because event data can't
+// be deleted and a reused ID would inherit the canceled campaign's funnel.
 export const FIRST_CAMPAIGN_ID = 4210;
 
 export const emptyState = () => ({campaigns: []});
@@ -45,10 +41,8 @@ export const nextCampaignId = (campaigns) =>
 // [END campaign-dashboard.campaign-store]
 
 // [START campaign-dashboard.campaign-read]
-// One read returns the app's own ID alongside the records, because almost
-// everything else on the page needs it: the app-owned metafield namespace is
-// built from it, and telling this app's annotations from another app's is a
-// comparison against it.
+// One read returns the app's own ID alongside the records, because the app-owned
+// metafield namespace is built from it and annotation ownership compares against it.
 export async function readCampaigns(admin) {
   const body = await (await admin.graphql(STATE_QUERY)).json();
   const installation = body.data?.currentAppInstallation;
@@ -77,8 +71,8 @@ export const findCampaign = (campaigns, campaignId) =>
 // [END campaign-dashboard.campaign-read]
 
 // [START campaign-dashboard.campaign-write]
-// metafieldsSet overwrites the whole value, so a write sends the whole list. The
-// json type holds up to 128 KB, which is a few hundred campaigns.
+// metafieldsSet overwrites the whole value, so a write sends the whole list. The `json`
+// type holds up to 128 KB, which is a few hundred campaigns.
 async function writeState(admin, installationId, state) {
   const response = await admin.graphql(METAFIELDS_SET, {
     variables: {
@@ -97,8 +91,8 @@ async function writeState(admin, installationId, state) {
   return body.data?.metafieldsSet?.userErrors ?? [];
 }
 
-// Read, change the one record, write the list back. Every action on the detail
-// page goes through this, so a change to the shape lands in one place.
+// Read, change the one record, write the list back. Every action on the detail page
+// goes through this, so a change to the shape lands in one place.
 export async function updateCampaign(admin, campaignId, change) {
   const {installationId, campaigns} = await readCampaigns(admin);
   const updated = campaigns.map((campaign) =>
@@ -121,20 +115,11 @@ export async function rememberMarkers(admin, campaignId, markers) {
     markers: {...(campaign?.markers ?? {}), ...markers},
   });
 }
-
-export async function forgetMarker(admin, campaignId, key) {
-  const {campaigns} = await readCampaigns(admin);
-  const markers = {...(findCampaign(campaigns, campaignId)?.markers ?? {})};
-  delete markers[key];
-  return updateCampaign(admin, campaignId, {markers});
-}
 // [END campaign-dashboard.campaign-write]
 
 // [START campaign-dashboard.seed-campaign]
-// A dashboard with nothing on it can't be checked against the store's analytics,
-// so the first load seeds one campaign over the last two weeks. Its window is
-// relative to today, which means the queries return whatever the development
-// store has actually sold rather than nothing at all.
+// The first load seeds one campaign over the last two weeks. The window is relative to
+// today, so the queries return whatever the development store has actually sold.
 function seedRecord() {
   const end = new Date();
   const start = new Date(end);
@@ -154,23 +139,28 @@ function seedRecord() {
     audienceTarget: '2500.00',
     status: 'planned',
     markers: {},
+    targets: {},
   };
 }
 
 export async function ensureCampaign(admin) {
   const state = await readCampaigns(admin);
-  if (state.campaigns.length > 0) return state;
+  if (state.campaigns.length > 0) return {...state, userErrors: []};
 
   const campaign = seedRecord();
-  await writeState(admin, state.installationId, {campaigns: [campaign]});
-  return {...state, campaigns: [campaign]};
+  // A failed seed write leaves nothing to show, so return the reason rather than a
+  // campaign the store doesn't have.
+  const userErrors = await writeState(admin, state.installationId, {
+    campaigns: [campaign],
+  });
+  if (userErrors.length > 0) return {...state, campaigns: [], userErrors};
+  return {...state, campaigns: [campaign], userErrors: []};
 }
 // [END campaign-dashboard.seed-campaign]
 
 // [START campaign-dashboard.spawn-campaign]
-// The second campaign is what proves the dashboard reads a record rather than a
-// constant. Its ID is what every App Events attribute filter and every campaign
-// comparison keys on, so it has to be an integer and it has to be new.
+// The ID is what every App Events attribute filter and every campaign comparison keys
+// on, so it has to be an integer and it has to be new.
 export async function createCampaign(admin, fields) {
   const {installationId, campaigns} = await readCampaigns(admin);
 
@@ -187,6 +177,7 @@ export async function createCampaign(admin, fields) {
     audienceTarget: fields.audienceTarget,
     status: 'planned',
     markers: {},
+    targets: {},
   };
 
   const userErrors = await writeState(admin, installationId, {

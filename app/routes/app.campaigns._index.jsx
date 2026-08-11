@@ -7,15 +7,13 @@ import {CHANNELS, CHANNEL_KEYS} from '../channels';
 
 export const loader = async ({request}) => {
   const {admin} = await authenticate.admin(request);
-  const {campaigns} = await ensureCampaign(admin);
-  return {campaigns};
+  const {campaigns, userErrors} = await ensureCampaign(admin);
+  return {campaigns, seedErrors: userErrors.map((error) => error.message)};
 };
 
 // [START campaign-dashboard.spawn-action]
-// Creating a campaign writes a record and nothing else. No annotation, no
-// target, no event. Everything that touches the store waits for the launch, so
-// a campaign can be set up, edited, and thrown away without leaving a mark on
-// the store's analytics.
+// Creating a campaign writes a record and nothing else. Everything that touches the
+// store waits for the launch, so a campaign can be thrown away without leaving a mark.
 export const action = async ({request}) => {
   const {admin} = await authenticate.admin(request);
   const form = await request.formData();
@@ -45,8 +43,8 @@ export const action = async ({request}) => {
   if (fields.channels.length === 0) {
     problems.push('Pick at least one channel to send on.');
   }
-  // A target's expected value has to be greater than zero, and the mutation
-  // rejects it rather than clamping, so catch it before the launch.
+  // A target's expected value has to be greater than zero, and the mutation rejects it
+  // rather than clamping, so catch it before the launch.
   if (Number(fields.revenueTarget) <= 0) {
     problems.push('The revenue goal has to be more than zero.');
   }
@@ -62,7 +60,7 @@ export const action = async ({request}) => {
 // [END campaign-dashboard.spawn-action]
 
 export default function CampaignsIndex() {
-  const {campaigns} = useLoaderData();
+  const {campaigns, seedErrors} = useLoaderData();
   const fetcher = useFetcher();
   const [products, setProducts] = useState([]);
   const [channels, setChannels] = useState(CHANNEL_KEYS);
@@ -70,24 +68,23 @@ export default function CampaignsIndex() {
   const creating = fetcher.state !== 'idle';
 
   // [START campaign-dashboard.product-picker]
-  // The store's own product search, opened from the app. It returns the same
-  // resources the admin would, so the app never builds a product list of its
-  // own.
+  // The store's own product search, opened from the app, so the app never builds a
+  // product list of its own.
   async function pickProducts() {
     const selection = await shopify.resourcePicker({
       type: 'product',
       // Reopening with the current selection keeps the picker's checkboxes in
-      // step with what the form already holds.
+      // step with the form.
       selectionIds: products.map((product) => ({id: product.id})),
       multiple: 5,
     });
 
-    // Canceling returns undefined rather than an empty array, and treating
-    // those the same clears a selection the user meant to keep.
+    // Canceling returns undefined rather than an empty array, and treating those the
+    // same clears a selection the user meant to keep.
     if (!selection) return;
 
-    // Keep the GID and the title. A target filters on the numeric part of the
-    // GID, and the title is what the campaign's annotations are written from.
+    // Keep both: a target filters on the numeric part of the GID, and the annotations
+    // are written from the title.
     setProducts(
       selection.map((product) => ({id: product.id, title: product.title})),
     );
@@ -98,6 +95,9 @@ export default function CampaignsIndex() {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     form.set('products', JSON.stringify(products));
+    // The choice list submits under its own name, so clear that before appending the
+    // state the component tracks, or every channel arrives twice.
+    form.delete('channels');
     for (const channel of channels) form.append('channels', channel);
     fetcher.submit(form, {method: 'post'});
   }
@@ -105,6 +105,15 @@ export default function CampaignsIndex() {
   return (
     <s-page heading="Campaigns">
       <s-section heading="Campaigns on record">
+        {seedErrors.length > 0 && (
+          <s-banner tone="critical" heading="The first campaign couldn't be saved">
+            <s-unordered-list>
+              {seedErrors.map((problem) => (
+                <s-list-item key={problem}>{problem}</s-list-item>
+              ))}
+            </s-unordered-list>
+          </s-banner>
+        )}
         {campaigns.length === 0 ? (
           <s-paragraph>No campaigns yet.</s-paragraph>
         ) : (
@@ -126,9 +135,8 @@ export default function CampaignsIndex() {
 
       <form onSubmit={submit}>
         {/* [START campaign-dashboard.spawn-form] */}
-        {/* Everything the dashboard needs, collected before anything is written.
-            The record this produces is what every query, target, and annotation
-            on the campaign's page is derived from. */}
+        {/* The record this produces is what every query, target, and annotation on
+            the campaign's page is derived from. */}
         <s-section heading="Create a campaign">
           {problems.length > 0 && (
             <s-banner tone="critical" heading="Fix these first">
@@ -164,9 +172,8 @@ export default function CampaignsIndex() {
               ))}
             </s-select>
 
-            {/* Three goals, because a campaign that lifts the store and a
-                campaign that sells the products it promoted are different
-                results. Each becomes its own target at launch. */}
+            {/* Three goals, because lifting the store and selling the promoted
+                products are different results. Each becomes a target at launch. */}
             <s-money-field
               label="Store-wide revenue goal"
               name="revenueTarget"
@@ -212,10 +219,8 @@ export default function CampaignsIndex() {
         {/* [END campaign-dashboard.picker-render] */}
 
         {/* [START campaign-dashboard.channel-picker] */}
-        {/* What the campaign sends on decides which funnels the dashboard can
-            draw. Each channel reports a different set of stages, so show what
-            the choice measures rather than implying all three count the same
-            way. */}
+        {/* What the campaign sends on decides which funnels the dashboard can draw.
+            Each channel reports a different set of stages, so say which. */}
         <s-section heading="Channels">
           <s-choice-list
             label="Send on"

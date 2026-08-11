@@ -1,22 +1,22 @@
 // [START campaign-dashboard.audience-tiers]
-// The audience a campaign is aimed at, written onto each customer as an
-// app-owned metafield at launch. The value is what Step 13 filters the sales
-// dataset by, so it has to be a plain scalar a ShopifyQL comparison can hold.
+// The audience a campaign is aimed at, written onto each customer as an app-owned
+// metafield at launch. A ShopifyQL comparison holds the value, so it stays a scalar.
 export const AUDIENCE_TIERS = [
   {
     value: 'vip',
     label: 'VIP',
-    // Rank the audience with the sales dataset rather than the customer list.
-    // CustomerSortKeys has no spend key, so the tier comes from what people
-    // actually spent over the last year.
+    // Ranked from the sales dataset, because CustomerSortKeys has no spend key.
     description: 'The 10 customers who spent the most in the last year.',
     size: 10,
   },
   {
-    value: 'lapsed',
-    label: 'Lapsed',
-    description: 'Customers who bought last year and not in the last 90 days.',
+    value: 'regulars',
+    label: 'Regulars',
+    // Below the VIPs rather than alongside, so one tier isn't measured on the other's
+    // customers. `skip` becomes the ranking query's OFFSET.
+    description: 'The next 25 customers by spend, below the VIPs.',
     size: 25,
+    skip: 10,
   },
   {
     value: 'everyone',

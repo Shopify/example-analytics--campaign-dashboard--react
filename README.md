@@ -16,7 +16,7 @@ An embedded Shopify app that answers whether a marketing campaign worked, and th
 
 **Reports its own funnel.** Fifteen standard events sent with a `campaign_id` and a `template_id`, queried back with `FROM app_events`. Lead capture and marketing are separate categories in the [standard event registry](https://shopify.dev/docs/apps/build/app-events/analytics/standard-event-registry), and both accept `campaign_id`, so one `WHERE` clause reports the signups that grew the list alongside the sends that followed. Bounces and unsubscribes sit next to opens and clicks, because the stages that go wrong are the ones worth seeing.
 
-**Draws the sequence, not the blast.** A campaign is nine touches over two weeks. Each carries its own `template_id`, so `GROUP BY template_id` returns one row for each send in the order they went out, and the engagement line across them says whether the list was still listening by the last touch. Each channel gets its own funnel chart, and they're deliberately different lengths, because the registry gives email six events, SMS four, and push two.
+**Draws the sequence, not the blast.** A campaign is nine touches over two weeks. Each carries its own `template_id`, so `GROUP BY template_id` returns one row for each send in the order they went out, and the engagement line across them says whether the list was still listening by the last touch. Each channel gets its own funnel chart, and they're deliberately different lengths: email draws four stages, SMS three, and push two, because the registry gives push no delivery receipt.
 
 **Marks the campaign on the store's timeline.** Nine annotations for a campaign sending on all three channels, spanning six types: the campaign itself, the collection going live, the landing page, the discount, one marker per channel, the paid boost, and the creator collaboration. The campaign is open-ended and stays open until it's closed. Everything inside it is a point in time. The types span several categories, so [`ANNOTATE`](https://shopify.dev/docs/api/shopifyql/2026-10/syntax/annotate) can filter them apart.
 
@@ -107,7 +107,7 @@ The first load seeds one planned campaign called `Summer launch` over the last t
 A planned campaign has written nothing to the store yet. Before launching it:
 
 - Click **Select products** to choose up to five products the campaign promotes. The product target and the `promoted_by` stamp both need them.
-- Choose an **Audience** tier. `VIP` and `Lapsed` each add a roster of customers to tag, and a third target once the customer dimension below is queryable. `Everyone` adds neither.
+- Choose an **Audience** tier. `VIP` and `Regulars` each add a roster of customers to tag, and a third target once the customer dimension below is queryable. `Everyone` adds neither.
 - Under **Dimensions this app owns**, click **Create it as a dimension** on each row. The app creates each definition with the `analyticsQueryable` capability already on. A definition that already exists without the capability gets **Make it queryable** instead.
 
 These two definitions can't be declared in `shopify.app.toml`, and the reason is a pair of rules that meet badly. TOML supports only the `adminFilterable`, `uniqueValues`, and `cartToOrderCopyable` capabilities, so it can't turn `analyticsQueryable` on. A definition declared in TOML is also read-only through the GraphQL Admin API, so `metafieldDefinitionUpdate` can't turn it on afterwards either. A declared definition could never become a dimension, so the app creates its own.
