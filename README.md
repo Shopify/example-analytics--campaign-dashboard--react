@@ -54,11 +54,11 @@ Companion code for [Build a campaign performance dashboard](https://shopify.dev/
    npm run dev
    ```
 
-Open the app from the store's admin. It opens on the campaign list.
+Press `p` to open the app, or open it from the store's admin. It opens on the campaign list.
 
 Wait a few minutes after step 4 before you report any events. A released configuration takes time to reach the store, and an event that arrives before its declaration is live is marked ineligible for analytics on arrival. That verdict is never revisited.
 
-Shopify CLI doesn't report the `analytics_app_events` extension on startup, so the Funnel panel is the signal that the declaration landed. While it reports that it can't reach the dataset, don't send. That message covers both a declaration that hasn't propagated yet and an org without App Events access, so if it doesn't clear after a few minutes, confirm your access before assuming it's propagation.
+The Dev Console lists the extension as `App Events` once the configuration is released, but that only confirms the CLI knows about it, not that the declaration has reached the store. The Funnel panel is the signal for that. While it reports that it can't reach the dataset, don't send. That message covers both a declaration that hasn't propagated yet and an org without App Events access, so if it doesn't clear after a few minutes, confirm your access before assuming it's propagation.
 
 This repository ships no credentials. `client_id` in `shopify.app.toml` is empty, and `.env` and `.env.*` are in `.gitignore`. Step 2 writes your own `client_id`, `application_url`, and `redirect_urls` into `shopify.app.toml`, and `shopify app dev` provides your `SHOPIFY_API_KEY` and `SHOPIFY_API_SECRET` to the running process. Never put a client secret in `shopify.app.toml`, which is a tracked file.
 

@@ -73,8 +73,9 @@ export default function CampaignsIndex() {
   const fetcher = useFetcher();
   const [products, setProducts] = useState([]);
   const [channels, setChannels] = useState(CHANNEL_KEYS);
+  const [composing, setComposing] = useState(false);
   const problems = fetcher.data?.problems ?? [];
-  const creating = fetcher.state !== 'idle';
+  const saving = fetcher.state !== 'idle';
 
   // [START campaign-dashboard.product-picker]
   // The store's own product search, opened from the app, so the app never builds a
@@ -113,9 +114,26 @@ export default function CampaignsIndex() {
 
   return (
     <s-page heading="Campaigns">
-      <s-section heading="Campaigns on record">
+      {composing ? (
+        <s-button slot="secondary-actions" onClick={() => setComposing(false)}>
+          Cancel
+        </s-button>
+      ) : (
+        <s-button
+          slot="primary-action"
+          variant="primary"
+          onClick={() => setComposing(true)}
+        >
+          Create campaign
+        </s-button>
+      )}
+
+      <s-section>
         {seedErrors.length > 0 && (
-          <s-banner tone="critical" heading="The first campaign couldn't be saved">
+          <s-banner
+            tone="critical"
+            heading="The first campaign couldn't be saved"
+          >
             <s-unordered-list>
               {seedErrors.map((problem) => (
                 <s-list-item key={problem}>{problem}</s-list-item>
@@ -126,137 +144,152 @@ export default function CampaignsIndex() {
         {campaigns.length === 0 ? (
           <s-paragraph>No campaigns yet.</s-paragraph>
         ) : (
-          <s-stack direction="block" gap="small-200">
-            {campaigns.map((campaign) => (
-              <s-stack key={campaign.id} direction="inline" gap="base">
-                <s-link href={`/app/campaigns/${campaign.id}`}>
-                  {campaign.title}
-                </s-link>
-                <s-text tone="subdued">
-                  {campaign.startDate} to {campaign.endDate}
-                </s-text>
-                <s-badge>{campaign.status}</s-badge>
-              </s-stack>
-            ))}
-          </s-stack>
+          <s-table variant="auto">
+            <s-table-header-row>
+              <s-table-header listSlot="primary">Campaign</s-table-header>
+              <s-table-header listSlot="labeled">Dates</s-table-header>
+              <s-table-header listSlot="inline">Status</s-table-header>
+            </s-table-header-row>
+            <s-table-body>
+              {campaigns.map((campaign) => (
+                <s-table-row key={campaign.id}>
+                  <s-table-cell>
+                    <s-link href={`/app/campaigns/${campaign.id}`}>
+                      {campaign.title}
+                    </s-link>
+                  </s-table-cell>
+                  <s-table-cell>
+                    {campaign.startDate} to {campaign.endDate}
+                  </s-table-cell>
+                  <s-table-cell>
+                    <s-badge>{campaign.status}</s-badge>
+                  </s-table-cell>
+                </s-table-row>
+              ))}
+            </s-table-body>
+          </s-table>
         )}
       </s-section>
 
-      <form onSubmit={submit}>
-        {/* [START campaign-dashboard.spawn-form] */}
-        {/* The record this produces is what every query, target, and annotation on
+      {composing && (
+        <form onSubmit={submit}>
+          {/* [START campaign-dashboard.spawn-form] */}
+          {/* The record this produces is what every query, target, and annotation on
             the campaign's page is derived from. */}
-        <s-section heading="Create a campaign">
-          {problems.length > 0 && (
-            <s-banner tone="critical" heading="Fix these first">
+          <s-section heading="Create a campaign">
+            {problems.length > 0 && (
+              <s-banner tone="critical" heading="Fix these first">
+                <s-unordered-list>
+                  {problems.map((problem) => (
+                    <s-list-item key={problem}>{problem}</s-list-item>
+                  ))}
+                </s-unordered-list>
+              </s-banner>
+            )}
+
+            <s-stack direction="block" gap="base">
+              <s-text-field
+                label="Campaign name"
+                name="title"
+                placeholder="Summer launch"
+                details="Used in the title of every annotation the campaign writes."
+              />
+              <s-stack direction="inline" gap="base">
+                <s-date-field label="Starts" name="startDate" />
+                <s-date-field label="Ends" name="endDate" />
+              </s-stack>
+
+              <s-select
+                label="Audience"
+                name="audience"
+                details="Written onto each customer at launch, and what the audience goal is measured against."
+              >
+                {AUDIENCE_TIERS.map((tier) => (
+                  <s-option key={tier.value} value={tier.value}>
+                    {tier.label}
+                  </s-option>
+                ))}
+              </s-select>
+
+              {/* Three goals, because lifting the store and selling the promoted
+                products are different results. Each becomes a target at launch. */}
+              <s-money-field
+                label="Store-wide revenue goal"
+                name="revenueTarget"
+                placeholder="5000.00"
+              />
+              <s-money-field
+                label="Promoted product goal"
+                name="productTarget"
+                placeholder="5000.00"
+                details="Measured with a filter on the products below."
+              />
+              <s-money-field
+                label="Audience goal"
+                name="audienceTarget"
+                placeholder="2500.00"
+                details="Measured with a filter on the audience above."
+              />
+
+              <s-button variant="primary" type="submit" loading={saving}>
+                Create campaign
+              </s-button>
+            </s-stack>
+          </s-section>
+          {/* [END campaign-dashboard.spawn-form] */}
+
+          {/* [START campaign-dashboard.picker-render] */}
+          <s-section heading="Promoted products">
+            <s-paragraph>
+              The products this campaign pushes. Their IDs filter the promoted
+              product goal, and their titles name the product launch annotation.
+            </s-paragraph>
+            {products.length > 0 && (
               <s-unordered-list>
-                {problems.map((problem) => (
-                  <s-list-item key={problem}>{problem}</s-list-item>
+                {products.map((product) => (
+                  <s-list-item key={product.id}>{product.title}</s-list-item>
                 ))}
               </s-unordered-list>
-            </s-banner>
-          )}
-
-          <s-stack direction="block" gap="base">
-            <s-text-field
-              label="Campaign name"
-              name="title"
-              placeholder="Summer launch"
-              details="Used in the title of every annotation the campaign writes."
-            />
-            <s-stack direction="inline" gap="base">
-              <s-date-field label="Starts" name="startDate" />
-              <s-date-field label="Ends" name="endDate" />
-            </s-stack>
-
-            <s-select
-              label="Audience"
-              name="audience"
-              details="Written onto each customer at launch, and what the audience goal is measured against."
-            >
-              {AUDIENCE_TIERS.map((tier) => (
-                <s-option key={tier.value} value={tier.value}>
-                  {tier.label}
-                </s-option>
-              ))}
-            </s-select>
-
-            {/* Three goals, because lifting the store and selling the promoted
-                products are different results. Each becomes a target at launch. */}
-            <s-money-field
-              label="Store-wide revenue goal"
-              name="revenueTarget"
-              placeholder="5000.00"
-            />
-            <s-money-field
-              label="Promoted product goal"
-              name="productTarget"
-              placeholder="5000.00"
-              details="Measured with a filter on the products below."
-            />
-            <s-money-field
-              label="Audience goal"
-              name="audienceTarget"
-              placeholder="2500.00"
-              details="Measured with a filter on the audience above."
-            />
-
-            <s-button variant="primary" type="submit" loading={creating}>
-              Create campaign
+            )}
+            <s-button onClick={pickProducts}>
+              {products.length > 0 ? 'Change products' : 'Select products'}
             </s-button>
-          </s-stack>
-        </s-section>
-        {/* [END campaign-dashboard.spawn-form] */}
+          </s-section>
+          {/* [END campaign-dashboard.picker-render] */}
 
-        {/* [START campaign-dashboard.picker-render] */}
-        <s-section heading="Promoted products">
-          <s-paragraph>
-            The products this campaign pushes. Their IDs filter the promoted
-            product goal, and their titles name the product launch annotation.
-          </s-paragraph>
-          {products.length > 0 && (
-            <s-unordered-list>
-              {products.map((product) => (
-                <s-list-item key={product.id}>{product.title}</s-list-item>
-              ))}
-            </s-unordered-list>
-          )}
-          <s-button onClick={pickProducts}>
-            {products.length > 0 ? 'Change products' : 'Select products'}
-          </s-button>
-        </s-section>
-        {/* [END campaign-dashboard.picker-render] */}
-
-        {/* [START campaign-dashboard.channel-picker] */}
-        {/* What the campaign sends on decides which funnels the dashboard can draw.
+          {/* [START campaign-dashboard.channel-picker] */}
+          {/* What the campaign sends on decides which funnels the dashboard can draw.
             Each channel reports a different set of stages, so say which. */}
-        <s-section heading="Channels">
-          <s-choice-list
-            label="Send on"
-            name="channels"
-            multiple
-            onChange={(event) => setChannels([...event.currentTarget.values])}
-          >
-            {CHANNEL_KEYS.map((key) => (
-              <s-choice
-                key={key}
-                value={key}
-                selected={channels.includes(key) || undefined}
-              >
-                {CHANNELS[key].label}
-                <s-text slot="details">
-                  Reports{' '}
-                  {CHANNELS[key].stages
-                    .map((stage) => stage.label.toLowerCase())
-                    .join(', ')}
-                  .
-                </s-text>
-              </s-choice>
-            ))}
-          </s-choice-list>
-        </s-section>
-        {/* [END campaign-dashboard.channel-picker] */}
-      </form>
+          <s-section heading="Channels">
+            <s-choice-list
+              label="Send on"
+              name="channels"
+              multiple
+              onChange={(event) => setChannels([...event.currentTarget.values])}
+            >
+              {CHANNEL_KEYS.map((key) => (
+                // `selected` is read-only on a choice. `defaultSelected` is the one
+                // that sets the initial state.
+                <s-choice
+                  key={key}
+                  value={key}
+                  defaultSelected={channels.includes(key) || undefined}
+                >
+                  {CHANNELS[key].label}
+                  <s-text slot="details">
+                    Reports{' '}
+                    {CHANNELS[key].stages
+                      .map((stage) => stage.label.toLowerCase())
+                      .join(', ')}
+                    .
+                  </s-text>
+                </s-choice>
+              ))}
+            </s-choice-list>
+          </s-section>
+          {/* [END campaign-dashboard.channel-picker] */}
+        </form>
+      )}
     </s-page>
   );
 }

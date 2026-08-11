@@ -1705,9 +1705,9 @@ export default function CampaignDashboard() {
           <s-section heading="Goals this campaign will be measured on">
             <s-table>
               <s-table-header-row>
-                <s-table-header>Goal</s-table-header>
-                <s-table-header>Measures</s-table-header>
-                <s-table-header>Amount</s-table-header>
+                <s-table-header listSlot="primary">Goal</s-table-header>
+                <s-table-header listSlot="labeled">Measures</s-table-header>
+                <s-table-header listSlot="labeled">Amount</s-table-header>
               </s-table-header-row>
               <s-table-body>
                 <s-table-row>
@@ -1836,16 +1836,26 @@ export default function CampaignDashboard() {
           </s-stack>
         </s-stack>
 
+        {/* [START campaign-dashboard.chart-render] */}
+        {/* Each group gets its own axis, so money and a count can share the chart.
+            `series` holds the data, and `data` holds the groups. */}
         {isClient && (
           <div className="chart-tooltip-fix" style={{height: '320px'}}>
             <PolarisVizProvider>
               <ComboChart
-                series={[
+                data={[
                   {
                     shape: 'Bar',
-                    data: sends.length > 0 ? sends : [ordersSeries],
+                    name: sends.length > 0 ? 'Messages sent' : 'Orders',
+                    yAxisOptions: {integersOnly: true},
+                    series: sends.length > 0 ? sends : [ordersSeries],
                   },
-                  {shape: 'Line', data: [salesSeries]},
+                  {
+                    shape: 'Line',
+                    name: 'Sales',
+                    yAxisOptions: {labelFormatter: currency},
+                    series: [salesSeries],
+                  },
                 ]}
                 annotations={chartAnnotations}
                 theme="Light"
@@ -1853,6 +1863,7 @@ export default function CampaignDashboard() {
             </PolarisVizProvider>
           </div>
         )}
+        {/* [END campaign-dashboard.chart-render] */}
 
         <s-stack direction="inline" gap="base">
           {legend.map((entry) => (
@@ -1970,9 +1981,9 @@ export default function CampaignDashboard() {
           {scopedTargets.length > 0 && (
             <s-table>
               <s-table-header-row>
-                <s-table-header>Goal</s-table-header>
-                <s-table-header>Measures</s-table-header>
-                <s-table-header>Reached</s-table-header>
+                <s-table-header listSlot="primary">Goal</s-table-header>
+                <s-table-header listSlot="labeled">Measures</s-table-header>
+                <s-table-header listSlot="labeled">Reached</s-table-header>
               </s-table-header-row>
               <s-table-body>
                 {scopedTargets.map((target) => (
@@ -2017,13 +2028,13 @@ export default function CampaignDashboard() {
       {/* [END campaign-dashboard.close-render] */}
 
       {/* [START campaign-dashboard.timeline-render] */}
-      {/* The chart shows where the markers landed. This shows what they were,
-          which a chart with eight annotations on it can't carry. */}
+      {/* Every marker in the window, on one strip, in the order the store saw them.
+          The chart above only has room to label a few. */}
       <s-section heading="Markers in this window">
         <div
           style={{
             position: 'relative',
-            height: `${busiestDay * 28 + 20}px`,
+            height: `${busiestDay * 16 + 16}px`,
             borderTop: '1px solid var(--s-color-border)',
             marginTop: '12px',
           }}
@@ -2037,17 +2048,21 @@ export default function CampaignDashboard() {
           )}
           {timelineDays.map(([day, list]) =>
             list.map((annotation, index) => (
-              <s-clickable
+              // The position rides on a plain span. A Polaris element doesn't take
+              // one from an inline style, so putting it on `s-clickable` leaves every
+              // marker in normal flow at the left edge and overruns the strip.
+              <span
                 key={`dot-${annotation.id}`}
-                interestFor={`tip-${annotation.id}`}
-                accessibilityLabel={`${annotation.title} on ${shortDate(day)}`}
                 style={{
                   position: 'absolute',
                   left: `${Math.min(98, Math.max(0, dayOffset(day)))}%`,
-                  top: `${index * 28 + 8}px`,
+                  top: `${index * 16 + 8}px`,
                 }}
               >
-                <s-stack direction="inline" gap="small-500" alignItems="center">
+                <s-clickable
+                  interestFor={`tip-${annotation.id}`}
+                  accessibilityLabel={`${annotation.title} on ${shortDate(day)}`}
+                >
                   <div
                     style={{
                       width: '10px',
@@ -2056,9 +2071,8 @@ export default function CampaignDashboard() {
                       backgroundColor: annotationColor(annotation, appId),
                     }}
                   />
-                  <s-text tone="subdued">{annotation.title}</s-text>
-                </s-stack>
-              </s-clickable>
+                </s-clickable>
+              </span>
             )),
           )}
         </div>
@@ -2089,9 +2103,9 @@ export default function CampaignDashboard() {
         <s-section heading="Markers this app wrote">
           <s-table>
             <s-table-header-row>
-              <s-table-header>Marker</s-table-header>
-              <s-table-header>Category</s-table-header>
-              <s-table-header>When</s-table-header>
+              <s-table-header listSlot="primary">Marker</s-table-header>
+              <s-table-header listSlot="labeled">Category</s-table-header>
+              <s-table-header listSlot="labeled">When</s-table-header>
             </s-table-header-row>
             <s-table-body>
               {ours.map((annotation) => (
@@ -2125,9 +2139,9 @@ export default function CampaignDashboard() {
           </s-paragraph>
           <s-table>
             <s-table-header-row>
-              <s-table-header>Marker</s-table-header>
-              <s-table-header>Written by</s-table-header>
-              <s-table-header>When</s-table-header>
+              <s-table-header listSlot="primary">Marker</s-table-header>
+              <s-table-header listSlot="labeled">Written by</s-table-header>
+              <s-table-header listSlot="labeled">When</s-table-header>
             </s-table-header-row>
             <s-table-body>
               {others.map((annotation) => (
@@ -2189,7 +2203,8 @@ export default function CampaignDashboard() {
 
       {/* [START campaign-dashboard.funnel-render] */}
       {/* One funnel per channel, because each reports a different set of stages and
-          one chart would compare a send to a delivery. */}
+          one chart would compare a send to a delivery. Both formatters are needed:
+          without them the count keeps its grouping and the share renders unrounded. */}
       {isClient && funnels.length > 0 && (
         <s-section heading="What each channel did">
           <s-query-container>
@@ -2209,6 +2224,8 @@ export default function CampaignDashboard() {
                             })),
                           },
                         ]}
+                        labelFormatter={integer}
+                        percentageFormatter={(value) => `${Math.round(value)}%`}
                         theme="Light"
                       />
                     </PolarisVizProvider>
@@ -2230,6 +2247,8 @@ export default function CampaignDashboard() {
                             })),
                           },
                         ]}
+                        labelFormatter={integer}
+                        percentageFormatter={(value) => `${Math.round(value)}%`}
                         theme="Light"
                       />
                     </PolarisVizProvider>
@@ -2251,9 +2270,21 @@ export default function CampaignDashboard() {
             <div className="chart-tooltip-fix" style={{height: '280px'}}>
               <PolarisVizProvider>
                 <ComboChart
-                  series={[
-                    {shape: 'Bar', data: sequenceBars},
-                    {shape: 'Line', data: sequenceRate},
+                  data={[
+                    {
+                      shape: 'Bar',
+                      name: 'Reached',
+                      yAxisOptions: {integersOnly: true},
+                      series: sequenceBars,
+                    },
+                    {
+                      shape: 'Line',
+                      name: 'Engaged',
+                      yAxisOptions: {
+                        labelFormatter: (value) => `${Math.round(value)}%`,
+                      },
+                      series: sequenceRate,
+                    },
                   ]}
                   theme="Light"
                 />
@@ -2274,10 +2305,10 @@ export default function CampaignDashboard() {
 
           <s-table>
             <s-table-header-row>
-              <s-table-header>Touch</s-table-header>
-              <s-table-header>Sent</s-table-header>
-              <s-table-header>Reached</s-table-header>
-              <s-table-header>Engaged</s-table-header>
+              <s-table-header listSlot="primary">Touch</s-table-header>
+              <s-table-header listSlot="labeled">Sent</s-table-header>
+              <s-table-header listSlot="labeled">Reached</s-table-header>
+              <s-table-header listSlot="labeled">Engaged</s-table-header>
             </s-table-header-row>
             <s-table-body>
               {sequence.map((touch) => (
@@ -2346,9 +2377,9 @@ export default function CampaignDashboard() {
               </s-paragraph>
               <s-table>
                 <s-table-header-row>
-                  <s-table-header>Campaign</s-table-header>
-                  <s-table-header>Sent</s-table-header>
-                  <s-table-header>Opened</s-table-header>
+                  <s-table-header listSlot="primary">Campaign</s-table-header>
+                  <s-table-header listSlot="labeled">Sent</s-table-header>
+                  <s-table-header listSlot="labeled">Opened</s-table-header>
                 </s-table-header-row>
                 <s-table-body>
                   {sliceRows.map((row) => (
@@ -2373,8 +2404,8 @@ export default function CampaignDashboard() {
               </s-paragraph>
               <s-table>
                 <s-table-header-row>
-                  <s-table-header>App</s-table-header>
-                  <s-table-header>Sent</s-table-header>
+                  <s-table-header listSlot="primary">App</s-table-header>
+                  <s-table-header listSlot="labeled">Sent</s-table-header>
                 </s-table-header-row>
                 <s-table-body>
                   {crossAppRows.map((row) => (
@@ -2397,9 +2428,9 @@ export default function CampaignDashboard() {
       <s-section heading="Dimensions this app owns">
         <s-table>
           <s-table-header-row>
-            <s-table-header>Dimension</s-table-header>
-            <s-table-header>State</s-table-header>
-            <s-table-header />
+            <s-table-header listSlot="primary">Dimension</s-table-header>
+            <s-table-header listSlot="labeled">State</s-table-header>
+            <s-table-header listSlot="inline" />
           </s-table-header-row>
           <s-table-body>
             {['product', 'customer'].map((which) => {
@@ -2519,8 +2550,8 @@ export default function CampaignDashboard() {
         <s-section heading="The audience this campaign tagged">
           <s-table>
             <s-table-header-row>
-              <s-table-header>Customer</s-table-header>
-              <s-table-header>Spent in this window</s-table-header>
+              <s-table-header listSlot="primary">Customer</s-table-header>
+              <s-table-header listSlot="labeled">Spent in this window</s-table-header>
             </s-table-header-row>
             <s-table-body>
               {members.map((member) => (

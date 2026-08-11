@@ -6,5 +6,8 @@ import {authenticate} from '../shopify.server';
 // route unauthenticated.
 export async function loader({request}) {
   await authenticate.admin(request);
-  return redirect('/app/campaigns');
+  // Carry the search params across: App Bridge reads shop and host off the
+  // page URL, and a redirect that drops them leaves it unable to initialize.
+  const {search} = new URL(request.url);
+  return redirect(`/app/campaigns${search}`);
 }
