@@ -2,7 +2,7 @@
 
 An embedded Shopify app that answers whether a marketing campaign worked, then writes the answer back onto the store's own analytics. It reports its own funnel with [App Events](https://shopify.dev/docs/apps/build/app-events/analytics), queries that funnel and the store's sales with [ShopifyQL](https://shopify.dev/docs/api/shopifyql), and records the outcome as [annotations](https://shopify.dev/docs/api/admin-graphql/2026-10/mutations/analyticsAnnotationCreate) and [targets](https://shopify.dev/docs/api/admin-graphql/2026-10/mutations/analyticsTargetCreate) on the store's analytics timeline.
 
-This is the companion code for [Build a campaign performance dashboard](https://shopify.dev/docs/apps/build/analytics/build-a-campaign-dashboard). The tutorial explains why each piece is built the way it is. This README gets it running.
+Companion code for [Build a campaign performance dashboard](https://shopify.dev/docs/apps/build/analytics/build-a-campaign-dashboard), which explains why each piece is built this way. This README gets it running.
 
 ## Requirements
 
@@ -21,8 +21,6 @@ This is the companion code for [Build a campaign performance dashboard](https://
   **Without App Events access, the app still runs and nothing fails.** Sales, goals, timeline, and insight all work, and the campaign still writes its annotations and targets. The Funnel and Sequence panels are the two that need the dataset. They report that they can't reach it and stay empty, and **Send the campaign's events** has nothing to query back.
 
 ## Run it
-
-This repository ships no credentials. `client_id` in `shopify.app.toml` is empty, and `.env` and `.env.*` are in `.gitignore`. Step 2 writes your own `client_id`, `application_url`, and `redirect_urls` into `shopify.app.toml`, and `shopify app dev` provides your `SHOPIFY_API_KEY` and `SHOPIFY_API_SECRET` to the running process. Never put a client secret in `shopify.app.toml`, which is a tracked file.
 
 1. Clone the repository and install dependencies:
 
@@ -44,7 +42,7 @@ This repository ships no credentials. `client_id` in `shopify.app.toml` is empty
    npm run setup
    ```
 
-4. Deploy the configuration, so the access scopes, the webhook subscription, and the App Events declarations reach Shopify:
+4. Release the configuration, so the access scopes, the webhook subscription, and the App Events declarations reach Shopify:
 
    ```shell
    npm run deploy
@@ -58,49 +56,34 @@ This repository ships no credentials. `client_id` in `shopify.app.toml` is empty
 
 Open the app from the store's admin. It opens on the campaign list.
 
-Wait a few minutes after step 4 before you report any events. A deployed configuration takes time to reach the store, and an event that arrives before its declaration is live is marked ineligible for analytics on arrival. That verdict is never revisited.
+Wait a few minutes after step 4 before you report any events. A released configuration takes time to reach the store, and an event that arrives before its declaration is live is marked ineligible for analytics on arrival. That verdict is never revisited.
+
+Shopify CLI doesn't report the `analytics_app_events` extension on startup, so the Funnel panel is the signal that the declaration landed. While it reports that it can't reach the dataset, don't send. That message covers both a declaration that hasn't propagated yet and an org without App Events access, so if it doesn't clear after a few minutes, confirm your access before assuming it's propagation.
+
+This repository ships no credentials. `client_id` in `shopify.app.toml` is empty, and `.env` and `.env.*` are in `.gitignore`. Step 2 writes your own `client_id`, `application_url`, and `redirect_urls` into `shopify.app.toml`, and `shopify app dev` provides your `SHOPIFY_API_KEY` and `SHOPIFY_API_SECRET` to the running process. Never put a client secret in `shopify.app.toml`, which is a tracked file.
 
 ## Use the dashboard
 
-The first load seeds one planned campaign called `Summer launch` over the last two weeks, so the queries return whatever your development store has actually sold rather than nothing at all. Open it from the list.
+The first load seeds one planned campaign called `Summer launch` over the last two weeks, so the queries return whatever your development store has actually sold. Open it from the list.
 
-A planned campaign hasn't written anything to the store yet. Set it up first:
+A planned campaign hasn't written anything to the store yet, so set it up first:
 
-1. Click **Select products** to choose up to five products the campaign promotes. The product target and the `promoted_by` stamp both need them.
-2. Choose an **Audience** tier. `VIP` and `Regulars` each add a roster of customers to tag, and a third target after the customer dimension is queryable. `Everyone` adds neither.
-3. Under **Dimensions this app owns**, click **Create it as a dimension** on each row. The app creates each definition with the `analyticsQueryable` capability already on. A definition that already exists without the capability gets **Make it queryable** instead.
+1. Click **Select products** and choose up to five.
+2. Choose an **Audience** tier.
+3. Under **Dimensions this app owns**, click **Create it as a dimension** on each row.
 
-Then run the campaign:
-
-4. Click **Launch the campaign**. It writes nine markers, creates between one and three targets, and stamps the products and the customers. The markers and goals appear on the next render.
-5. Click **Send the campaign's events**. This is a separate control because the replay is around 680 events and App Events takes one request for each event, so it runs for a minute or two. Shopify accepts an event before it ingests it, so the funnel panels stay empty for a few minutes afterwards. Reload until they fill in.
-
-The rest of the controls depend on the result:
-
-- **Close the campaign with its result** rewrites the campaign marker with the revenue it earned, and sets its end date.
-- **Raise the goal** and **Mark the day it was hit** both appear after the store-wide goal reaches 100%. The first moves the goal to the next round number. The second records the win as a `revenue_milestone` annotation, in the operations category rather than among the marketing markers.
-- **Add a marker to the store's analytics** appears in a banner when the bounce rate crosses 2%. There's no bounce type in the annotation vocabulary, so the app writes it as `other` with the rate and the hard and soft split in the text.
-- **Open these weeks in the store's analytics** leaves the app for the store's own charts, filtered to the campaign's window.
-- **Cancel the campaign** deletes the markers and the targets recorded against the campaign. The `promoted_by` and `tier` stamps stay, and so do the events the app already sent, because App Events data can't be deleted.
-
-Each write re-measures on the server before it commits, so an annotation only lands if the numbers still support it. Open the store's analytics in the Shopify admin after each one to watch it land outside the app.
+Then click **Launch the campaign**, followed by **Send the campaign's events**. The replay is around 680 events and runs for a minute or two, and the funnel panels stay empty for a few minutes after it finishes while Shopify ingests them.
 
 ## What each panel shows
 
 | Panel | What it shows |
 |-------|---------------|
-| Sales | Revenue and orders over the campaign's window. The charts read the `tableData` response, and the [metric cards](https://shopify.dev/docs/api/shopifyql/2026-10/web-components/metric-card) run their own queries from the browser off one shared date picker. |
-| Goals | Progress against up to three targets. One store-wide, one filtered to the promoted products, and one scoped to the targeted audience. |
-| Funnel | One chart for each channel, from `FROM app_events`. Email draws four stages, SMS three, and push two, because push has no delivery receipt. |
-| Sequence | Each of the nine touches on its own, so you can see whether the list was still listening by the last send. |
+| Sales | Revenue and orders over the campaign's window, with [metric cards](https://shopify.dev/docs/api/shopifyql/2026-10/web-components/metric-card) on a shared date picker. |
+| Goals | Progress against up to three targets, one store-wide, one for the promoted products, and one for the targeted audience. |
+| Funnel | One chart for each channel, from `FROM app_events`. |
+| Sequence | Each of the nine touches on its own. |
 | Timeline | The store's annotations for the campaign's weeks, the app's own markers alongside anyone else's. |
-| Insight | The longest unbroken run up or down in each product's weekly sales, with the annotations from those weeks pinned to the points they explain. |
-
-## Run a second campaign
-
-The form on the campaign list creates another campaign with its own name, window, channels, products, audience, and goals. Every query, target, and annotation on the dashboard is derived from that record, so a second campaign needs no code change.
-
-New campaigns take the next unused integer ID, starting at `4210`. A canceled campaign keeps its record, and its ID stays spent, because event data can't be deleted and a reused ID would inherit the canceled campaign's funnel.
+| Insight | The longest unbroken run up or down in each product's weekly sales. |
 
 ## How it's built
 
@@ -115,19 +98,9 @@ Every GraphQL document is in `app/campaign-queries.server.js`. Campaign records 
 
 A campaign is a record in one app-data metafield rather than a row in a table, so there's no schema to design and no migration to run. A real app would use its own storage, and `CAMPAIGN_FIELDS` documents the shape field by field.
 
+App Events data can't be deleted, and a reused idempotency key is dropped along with its payload. After you change an event payload, bump the `RUN` constant in `app/app-events.server.js` so the replay gets a fresh set of keys.
+
 For a smaller starting point that covers the ShopifyQL half on its own, see [Build a sales dashboard with the GraphQL Admin API](https://shopify.dev/docs/apps/build/shopifyql/graphql-admin-api/build-a-sales-dashboard) and its companion repository, [`example-shopifyql--sales-dashboard--react`](https://github.com/Shopify/example-shopifyql--sales-dashboard--react).
-
-## Before you change the code
-
-**App Events data can't be deleted**, and an idempotency key that's already been used is dropped along with its payload. After you change an event payload, bump the `RUN` constant in `app/app-events.server.js` so the replay gets a fresh set of keys.
-
-**Event metrics are scoped to the app that declared them.** `FROM app_events` resolves for any app, but its columns only exist for the app whose extension declares those events. Running the funnel query from another app, or from Shopify CLI, returns `Column Not Found`.
-
-**An event timestamp is a UTC instant, and ShopifyQL buckets it into a day using the store's timezone.** An event stamped `2026-07-22T00:00:00Z` lands on July 21 for a store in New York, which drops it out of a window that starts on the 22nd. `sendCampaignFunnel` anchors each touch to 9am in the store's own timezone so the first send stays inside the window.
-
-**An app-owned metafield namespace is `app--` followed by the app's numeric ID.** A bare ShopifyQL identifier can't hold the double hyphen, so quote the namespace everywhere it appears in a query, or the query fails with `no viable alternative`.
-
-**The two metafield definitions aren't declared in `shopify.app.toml`.** [TOML configuration supports a subset of capabilities](https://shopify.dev/docs/apps/build/metafields/use-metafield-capabilities) that doesn't currently include `analyticsQueryable`, and a definition declared in TOML is read-only through the GraphQL Admin API, so `metafieldDefinitionUpdate` can't turn the capability on afterwards either. The app creates both definitions itself. Check that list against your API version before assuming this still holds.
 
 ## Contributions
 

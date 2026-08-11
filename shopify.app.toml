@@ -1,28 +1,24 @@
-# This file stores configuration for your Shopify app.
-# `shopify app config link` populates client_id, application_url, and redirect_urls.
+# `shopify app config link` fills in client_id and the app URLs.
 # Learn more: https://shopify.dev/docs/apps/tools/cli/configuration
 client_id = ""
 
 embedded = true
 
+# [START campaign-dashboard.access-scopes]
 [access_scopes]
-# Granted at install. Changing this list re-prompts every user on next load.
-#
-# read_reports runs shopifyqlQuery. write_reports creates and measures analytics
-# targets. The two annotation scopes read and write markers on the store's charts.
-# write_products and write_customers are what let the app stamp its own metafields
-# onto products and customers, and create the definitions behind them.
+# Granted at install. A change re-prompts every user on next load.
 scopes = "read_reports,write_reports,read_analytics_annotations,write_analytics_annotations,write_products,write_customers"
+# [END campaign-dashboard.access-scopes]
 
-# The metric cards fetch their own data from the browser through App Bridge rather
-# than through a loader, so direct API access has to be on for them to render.
+# [START campaign-dashboard.direct-api]
+# The metric cards query from the browser, so they need this.
 [access.admin]
 direct_api_mode = "online"
 embedded_app_direct_api_access = true
+# [END campaign-dashboard.direct-api]
 
-# The two metafield definitions this app owns are deliberately not declared here.
-# TOML supports neither the analyticsQueryable capability nor edits through the
-# GraphQL Admin API, so app/campaign-queries.server.js creates them at runtime.
+# The metafield definitions aren't declared here: TOML supports
+# neither analyticsQueryable nor later GraphQL edits.
 
 [webhooks]
 api_version = "2026-10"

@@ -14,7 +14,6 @@ export function insightWindow(campaign) {
 }
 // [END campaign-dashboard.insight-window]
 
-// [START campaign-dashboard.insight]
 // The longest unbroken run in either direction, which is the one sentence worth
 // leading the page with.
 export function findInsight(weekly) {
@@ -101,4 +100,3 @@ export function findInsight(weekly) {
 
 const ORDINALS = ['', '1st', '2nd', '3rd', '4th', '5th'];
 export const ordinal = (n) => ORDINALS[n] ?? `${n}th`;
-// [END campaign-dashboard.insight]

@@ -489,12 +489,10 @@ async function enableDimension(admin, definition) {
 }
 // [END campaign-dashboard.enable-dimension]
 
-// [START campaign-dashboard.set-products]
 // Promoted products stay editable until launch, because the target filters on their IDs
 // and the launch marker is named from their titles.
 const setProducts = (admin, campaign, products) =>
   updateCampaign(admin, campaign.id, {products});
-// [END campaign-dashboard.set-products]
 
 // [START campaign-dashboard.audience-edit]
 // The audience moves the tier written onto customers and the audience target's filter,
@@ -678,6 +676,29 @@ export async function action({request, params}) {
     // same date isn't evidence that this campaign launched.
     if (campaign.status !== 'planned') {
       return {problems: ['This campaign has already been launched.']};
+    }
+
+    // Each goal is checked against the condition that creates its target, because the
+    // dashboard can add products or a tier after creation. Catching it here uses what
+    // the action already read. Catching it downstream means nine markers are up first.
+    const unset = [];
+    if (Number(campaign.revenueTarget) <= 0) unset.push('store-wide revenue');
+    if (promotedFilter(campaign) && Number(campaign.productTarget) <= 0) {
+      unset.push('promoted product');
+    }
+    if (
+      isTargetedTier(campaign.audience) &&
+      dimensions.customer?.enabled &&
+      Number(campaign.audienceTarget) <= 0
+    ) {
+      unset.push(`${tierLabel(campaign.audience)} audience`);
+    }
+    if (unset.length) {
+      return {
+        problems: unset.map(
+          (goal) => `Set the ${goal} goal above zero before launching.`,
+        ),
+      };
     }
 
     const launch = await resolveLaunchMark(admin, campaign);
@@ -1401,16 +1422,13 @@ export default function CampaignDashboard() {
     .sort((a, b) => b.spend - a.spend);
   // [END campaign-dashboard.member-join]
 
-  // [START campaign-dashboard.supply-context]
   // Two annotation types the app can read and can't write. Either one inside the window
   // is a competing explanation for whatever the sales chart did.
   const supplyTypes = ['supplier_change', 'fulfillment_service_change'];
   const supplyMarks = others.filter((annotation) =>
     supplyTypes.includes(annotation.type),
   );
-  // [END campaign-dashboard.supply-context]
 
-  // [START campaign-dashboard.advice]
   // The part that says what to do about the numbers. Every line is gated on a threshold,
   // because advice that appears whatever the data says isn't advice. A marker's effect is
   // the average of the days on each side, not the total.
@@ -1505,7 +1523,6 @@ export default function CampaignDashboard() {
       } landed inside this window. Read the result against that before crediting the campaign.`,
     );
   }
-  // [END campaign-dashboard.advice]
 
   const problems = fetcher.data?.problems ?? [];
   // Problems alongside `ok` mean the action landed with something rejected inside it.
@@ -1633,7 +1650,6 @@ export default function CampaignDashboard() {
 
       {planned && (
         <Fragment>
-          {/* [START campaign-dashboard.setup-render] */}
           {/* Everything the launch will write, listed before it writes it. Products
               and audience stay editable until then because the targets filter on them. */}
           <s-section heading="What launching will do">
@@ -1683,9 +1699,7 @@ export default function CampaignDashboard() {
               </s-stack>
             </s-stack>
           </s-section>
-          {/* [END campaign-dashboard.setup-render] */}
 
-          {/* [START campaign-dashboard.planned-goals] */}
           {/* The three goals as typed, before any is a target. Each measures a
               different question, so show its filter rather than three rows of money. */}
           <s-section heading="Goals this campaign will be measured on">
@@ -1722,11 +1736,9 @@ export default function CampaignDashboard() {
               </s-table-body>
             </s-table>
           </s-section>
-          {/* [END campaign-dashboard.planned-goals] */}
         </Fragment>
       )}
 
-      {/* [START campaign-dashboard.advice-render] */}
       {/* Nothing here appears unless its threshold was crossed, so an empty list
           means the campaign is running as it should. */}
       {advice.length > 0 && (
@@ -1738,7 +1750,6 @@ export default function CampaignDashboard() {
           </s-unordered-list>
         </s-section>
       )}
-      {/* [END campaign-dashboard.advice-render] */}
 
       {/* [START campaign-dashboard.card-render] */}
       {/* Three numbers the app doesn't calculate. The date picker reports the range

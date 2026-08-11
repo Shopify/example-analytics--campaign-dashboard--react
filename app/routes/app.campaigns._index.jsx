@@ -2,7 +2,7 @@ import {useState} from 'react';
 import {redirect, useFetcher, useLoaderData} from 'react-router';
 import {authenticate} from '../shopify.server';
 import {createCampaign, ensureCampaign} from '../campaigns.server';
-import {AUDIENCE_TIERS} from '../audiences';
+import {AUDIENCE_TIERS, isTargetedTier, tierLabel} from '../audiences';
 import {CHANNELS, CHANNEL_KEYS} from '../channels';
 
 export const loader = async ({request}) => {
@@ -44,9 +44,18 @@ export const action = async ({request}) => {
     problems.push('Pick at least one channel to send on.');
   }
   // A target's expected value has to be greater than zero, and the mutation rejects it
-  // rather than clamping, so catch it before the launch.
+  // rather than clamping. Check each goal the launch will actually create a target for:
+  // the product one needs products, and the audience one needs a tier below everyone.
   if (Number(fields.revenueTarget) <= 0) {
-    problems.push('The revenue goal has to be more than zero.');
+    problems.push('The store-wide revenue goal has to be more than zero.');
+  }
+  if (fields.products.length > 0 && Number(fields.productTarget) <= 0) {
+    problems.push('The promoted product goal has to be more than zero.');
+  }
+  if (isTargetedTier(fields.audience) && Number(fields.audienceTarget) <= 0) {
+    problems.push(
+      `The ${tierLabel(fields.audience)} audience goal has to be more than zero.`,
+    );
   }
   if (problems.length > 0) return {problems};
 
