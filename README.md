@@ -2,8 +2,6 @@
 
 An embedded Shopify app that answers whether a marketing campaign worked, and then writes the answer back onto the store's own analytics. It's the companion code for the tutorial [Build a campaign performance dashboard](https://shopify.dev/docs/apps/build/analytics/build-a-campaign-dashboard).
 
-Shopify Analytics runs in both directions, and this app closes the loop:
-
 1. [App Events](https://shopify.dev/docs/apps/build/app-events/analytics) report what the app did. Fifteen standard events across email, SMS, push, and lead capture, every one tagged with the same `campaign_id`.
 2. [ShopifyQL](https://shopify.dev/docs/api/shopifyql) queries those events back, in the same query language as the store's sales, so the funnel and the revenue read side by side.
 3. [Annotations](https://shopify.dev/docs/api/admin-graphql/2026-10/mutations/analyticsAnnotationCreate) put the verdict on the store's timeline. Every field on an annotation is mutable, so the app writes its marker before the campaign runs and rewrites it afterwards with the result it measured.
@@ -43,7 +41,7 @@ Every GraphQL document is in `app/campaign-queries.server.js`. Campaign records 
 
 `shopify.app.toml` sets six access scopes, enables Direct API access so the metric cards can query from the browser, and adds an `analytics_app_events` extension. `@shopify/polaris-viz` draws the charts the app renders itself.
 
-A campaign is a record in one app-data metafield rather than a row in a table, so there's no schema to design and no migration to run. A real app would use its own storage. The shape is what matters, and `CAMPAIGN_FIELDS` documents it field by field.
+A campaign is a record in one app-data metafield rather than a row in a table, so there's no schema to design and no migration to run. A real app would use its own storage, and `CAMPAIGN_FIELDS` documents the shape field by field.
 
 For a smaller starting point that covers the ShopifyQL half on its own, see [Build a sales dashboard with the GraphQL Admin API](https://shopify.dev/docs/apps/build/shopifyql/graphql-admin-api/build-a-sales-dashboard) and its companion repository, [`example-shopifyql--sales-dashboard--react`](https://github.com/Shopify/example-shopifyql--sales-dashboard--react).
 
@@ -131,7 +129,7 @@ Each write re-measures on the server before it commits, so an annotation only la
 
 The form on the campaign list creates a second campaign with its own name, window, channels, products, audience, and goals. Every query, target, and annotation on the dashboard is derived from that record, so a second campaign needs no code change. That's what the two-route split buys: the dashboard reads a campaign rather than a constant.
 
-New campaigns get the next unused integer ID, starting at `4210`. A cancelled campaign keeps its record, and its ID stays spent, because event data can't be deleted and a reused ID would inherit the cancelled campaign's funnel.
+New campaigns get the next unused integer ID, starting at `4210`. A canceled campaign keeps its record, and its ID stays spent, because event data can't be deleted and a reused ID would inherit the canceled campaign's funnel.
 
 ## Things worth knowing before you change the code
 

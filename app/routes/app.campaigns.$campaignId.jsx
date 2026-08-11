@@ -222,8 +222,9 @@ export async function loader({request, params}) {
   // Each target carries its own generated ShopifyQL, so measuring five targets
   // takes one request rather than five. Alias each generated query in a single
   // document and read the results back by position. A target whose
-  // `shopifyqlQuery` is null can't be measured at all, and its filter is the
-  // reason, because filters aren't validated when the target is created.
+  // `shopifyqlQuery` is null can't be measured at all: Shopify generates the
+  // query by looking the metric up in the schema list, so a metric it can't
+  // place there produces no query. Skip those rather than aliasing a null.
   const targetNodes = targetsBody.data?.analyticsTargets?.nodes ?? [];
   const measurable = targetNodes.filter((target) => target.shopifyqlQuery);
   const progress = measurable.length
@@ -243,7 +244,7 @@ export async function loader({request, params}) {
           : Math.round((actual / expected) * 100),
       queryError:
         index === -1
-          ? 'This target has no generated query, so its filter is invalid.'
+          ? `This target has no generated query, so its progress can't be measured. Check that ${target.metric} is a metric Shopify can target.`
           : (progress[`t${index}`]?.parseErrors?.[0] ?? null),
     };
   });
@@ -257,6 +258,9 @@ export async function loader({request, params}) {
     locale,
     fatal: null,
     appId,
+    // The sales dataset has no currency column, so the store's own currency has
+    // to come from the shop field the same query already asks for.
+    currencyCode: salesBody.data?.shop?.currencyCode ?? 'USD',
     queryWindow,
     dimensions,
     rows: sales.tableData.rows,
@@ -884,6 +888,7 @@ export default function CampaignDashboard() {
 
   const {
     appId,
+    currencyCode,
     queryWindow,
     dimensions,
     rows,
@@ -915,7 +920,7 @@ export default function CampaignDashboard() {
   const currency = (value) =>
     new Intl.NumberFormat(locale, {
       style: 'currency',
-      currency: rows[0]?.['currency'] ?? 'USD',
+      currency: currencyCode,
       maximumFractionDigits: 0,
     }).format(Number(value ?? 0));
 
@@ -1433,7 +1438,7 @@ export default function CampaignDashboard() {
       {
         intent,
         timeZone,
-        currency: rows[0]?.['currency'] ?? 'USD',
+        currency: currencyCode,
         ...fields,
       },
       {method: 'post'},
