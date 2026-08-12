@@ -1,22 +1,21 @@
 // [START campaign-dashboard.insight-window]
-// Lead-in weeks, without which a product already climbing before launch looks
-// identical to one the campaign lifted.
+// Sales before launch, to tell a lifted product from one already climbing.
 const LEAD_IN_WEEKS = 3;
 
-// UNTIL runs to today rather than to the last Sunday, or a campaign that launched
-// this week has every marker it wrote sitting past the last point on the chart.
-
+// Lead-in weeks, then the campaign so far.
 export function insightWindow(campaign) {
   const start = new Date(`${campaign.startDate}T00:00:00`);
   const days = Math.max(0, (Date.now() - start.getTime()) / 86400000);
   const weeks = Math.ceil(days / 7) + LEAD_IN_WEEKS;
-  return `SINCE startOfWeek(-${weeks}w) UNTIL today`;
+  // Running past a closed campaign ranks the weeks after it against those inside it.
+  const ended = new Date(`${campaign.endDate}T00:00:00`).getTime() < Date.now();
+  return `SINCE startOfWeek(-${weeks}w) UNTIL ${ended ? campaign.endDate : 'today'}`;
 }
 // [END campaign-dashboard.insight-window]
 
-// The longest unbroken run in either direction, which is the one sentence worth
-// leading the page with.
-export function findInsight(weekly) {
+// The store's best seller going in, before and during. Ranking on the lead-in weeks
+// stops the campaign picking its own subject.
+export function findInsight(weekly, campaign) {
   const byProduct = new Map();
   for (const row of weekly.tableData.rows) {
     const title = row['product_title'];
@@ -25,9 +24,7 @@ export function findInsight(weekly) {
     byProduct.get(title).set(row['week'], Number(row['gross_sales'] ?? 0));
   }
 
-  // Stepping 7 days rather than reading the weeks off the rows. TIMESERIES returns
-  // no row for a week where nothing sold, and OVERALL is what makes that missing
-  // row safe to read as a zero.
+  // TIMESERIES returns no row for a week with no sales. Step 7 days to fill the gaps.
   const present = [
     ...new Set(weekly.tableData.rows.map((row) => row['week'])),
   ].sort();
@@ -42,61 +39,41 @@ export function findInsight(weekly) {
     weeks.push(week.toISOString().slice(0, 10));
   }
 
-  // UNTIL today ends mid-week, and a three-day bucket dips next to a full one and
-  // reads as a collapse, so rank on the weeks that have finished.
+  // A part-week bucket beside a full one reads as a collapse. Finished weeks only.
   const cutoff = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
   const settled = weeks.filter((week) => week <= cutoff);
-  if (settled.length < 2) return null;
+  if (settled.length < 2 || campaign.startDate > settled.at(-1)) return null;
+
+  const launchWeek = settled.findLast((week) => week <= campaign.startDate);
+  const before = settled.filter((week) => week < launchWeek);
+  const during = settled.filter((week) => week >= launchWeek);
+  if (before.length === 0) return null;
+
+  const mean = (sales, range) =>
+    range.reduce((total, week) => total + (sales.get(week) ?? 0), 0) /
+    range.length;
 
   let best = null;
   for (const [title, sales] of byProduct) {
-    const series = settled.map((week) => sales.get(week) ?? 0);
-    const last = series.length - 1;
-
-    // A "3rd week up" needs three rising weeks, not three rows.
-    const rising = series[last] > series[last - 1];
-    if (series[last] === series[last - 1]) continue;
-
-    let streak = 1;
-    while (
-      streak < series.length &&
-      (rising
-        ? series[last - streak + 1] > series[last - streak]
-        : series[last - streak + 1] < series[last - streak])
-    ) {
-      streak += 1;
-    }
-
-    const latest = series[last];
-    const first = series[last - streak + 1];
-    const growth =
-      first > 0 ? Math.round(((latest - first) / first) * 100) : null;
-
-    // Run length first, then money moved, so a long run beats a one-week jump.
-    const swing = Math.abs(latest - first);
-    if (
-      !best ||
-      streak > best.streak ||
-      (streak === best.streak && swing > best.swing)
-    ) {
+    // A zero lead-in divides into infinite growth.
+    const leadIn = mean(sales, before);
+    const after = mean(sales, during);
+    if (leadIn <= 0 || after <= 0) continue;
+    if (!best || leadIn > best.leadIn) {
       best = {
         title,
-        streak,
-        rising,
-        latest,
-        first,
-        growth,
-        swing,
-        // Every week, including the short one, so this week's markers have a
-        // point to sit on.
-        series: weeks.map((week) => sales.get(week) ?? 0),
-        weeks,
-        settledWeek: settled.at(-1),
+        leadIn,
+        during: after,
+        series: settled.map((week) => sales.get(week) ?? 0),
+        weeks: settled,
+        leadInWeeks: before.length,
+        campaignWeeks: during.length,
       };
     }
   }
+  if (!best) return null;
+
+  best.growth = Math.round(((best.during - best.leadIn) / best.leadIn) * 100);
+  best.rising = best.growth > 0;
   return best;
 }
-
-const ORDINALS = ['', '1st', '2nd', '3rd', '4th', '5th'];
-export const ordinal = (n) => ORDINALS[n] ?? `${n}th`;

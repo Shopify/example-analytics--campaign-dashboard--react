@@ -5,20 +5,6 @@ handle = "app-events"
 
 namespace = "campaign-dashboard"
 
-# How the list was built. Lead capture takes campaign_id, so the acquisition
-# that fed a send joins to the send that followed it.
-[[extensions.events]]
-name = "shopify.lead_capture.form_submitted"
-kind = "standard"
-
-[[extensions.events]]
-name = "shopify.lead_capture.lead_captured"
-kind = "standard"
-
-[[extensions.events]]
-name = "shopify.lead_capture.incentive_issued"
-kind = "standard"
-
 # The email funnel, in order.
 [[extensions.events]]
 name = "shopify.marketing.email_sent"

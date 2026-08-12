@@ -2,7 +2,7 @@ import {SEQUENCE} from './app-events.server';
 import {CHANNELS} from './channels';
 import {BOUNCE_ALERT_RATE, clamp} from './campaigns';
 
-// A daily timeseries has one row per day, so a campaign total is the sum of a column.
+// A daily timeseries has one row per day. A campaign total is the sum of a column.
 export const sumColumn = (table, metric) =>
   (table.tableData?.rows ?? []).reduce(
     (total, row) => total + Number(row[metric] ?? 0),
@@ -10,8 +10,7 @@ export const sumColumn = (table, metric) =>
   );
 
 // [START campaign-dashboard.sequence-read]
-// Join what the sequence sent to what the shop reported. Grouping by `template_id` gives
-// one row per touch, and the channel decides which columns that row has.
+// Join what the sequence sent to what the shop reported, one row per touch.
 export function readSequence(table) {
   const byTemplate = new Map(
     (table.tableData?.rows ?? []).map((row) => [Number(row['template_id']), row]),
@@ -23,8 +22,7 @@ export function readSequence(table) {
 
     const metrics = CHANNELS[touch.channel].metrics;
     const sent = Number(row[metrics.sent] ?? 0);
-    // A touch with no sends belongs to a channel this campaign didn't run on, and a
-    // zero bar between two real ones reads as a send that failed.
+    // A channel this campaign didn't run on. A zero bar reads as a failed send.
     if (sent === 0) return null;
 
     const reached = Number(row[metrics.reached] ?? 0);
@@ -37,8 +35,7 @@ export function readSequence(table) {
       reached,
       engaged,
       lost: metrics.lost ? Number(row[metrics.lost] ?? 0) : 0,
-      // Score against what was reached, so a channel with a delivery receipt isn't
-      // penalized for the sends that bounced. Push's reach is its send count.
+      // Scored against what was reached, not sent. Bounces don't count against it.
       rate: reached > 0 ? (engaged / reached) * 100 : 0,
       action: CHANNELS[touch.channel].action,
     };
@@ -47,8 +44,7 @@ export function readSequence(table) {
 // [END campaign-dashboard.sequence-read]
 
 // [START campaign-dashboard.outcome-text]
-// What a closed campaign leaves behind on the store's timeline. Someone reading this
-// marker a year from now has no other record of the campaign.
+// What a closed campaign leaves behind on the store's timeline.
 export function outcomeText({campaign, revenue, target, sequence, money}) {
   const goal = Number(target ?? 0);
   const percent = goal > 0 ? Math.round((revenue / goal) * 100) : null;
@@ -60,12 +56,11 @@ export function outcomeText({campaign, revenue, target, sequence, money}) {
 
   const sentences = [
     goal > 0
-      ? `Earned ${money(revenue)} against a ${money(goal)} goal`
+      ? `Earned ${money(revenue)} against a ${money(goal)} target`
       : `Earned ${money(revenue)}`,
   ];
 
-  // How far the list moved between the first touch and the last is the one fact from
-  // the sequence worth carrying onto a chart the app doesn't draw.
+  // How far the list moved between the first touch and the last.
   const first = sequence.at(0);
   const last = sequence.at(-1);
   if (first && last !== first) {
@@ -76,8 +71,7 @@ export function outcomeText({campaign, revenue, target, sequence, money}) {
     );
   }
 
-  // Titles are capped at 75 characters and descriptions at 150, and both are
-  // built from a name the user typed.
+  // Titles cap at 75 characters, descriptions at 150.
   return {
     title: clamp(title, 75),
     description: clamp(`${sentences.join('. ')}.`, 150),
@@ -86,8 +80,7 @@ export function outcomeText({campaign, revenue, target, sequence, money}) {
 // [END campaign-dashboard.outcome-text]
 
 // [START campaign-dashboard.detect-incident]
-// Both halves of the text come from measured data, so the marker names the kind of
-// bounce it was rather than saying only that one happened.
+// Names the kind of bounce, not only that one happened.
 export function detectIncident(campaign, funnel, bounces) {
   const sent = sumColumn(funnel, 'emails_sent');
   const bounced = sumColumn(funnel, 'emails_bounced');

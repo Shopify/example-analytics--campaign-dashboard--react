@@ -1,20 +1,20 @@
 // [START campaign-dashboard.annotate-clause]
-// ANNOTATE takes `category.type` while the GraphQL Admin API takes the bare type,
-// so the overlay needs the mapping between them.
+// ANNOTATE takes `category.type`. The GraphQL Admin API takes the bare type.
 export const CATEGORIES = {
   campaign: 'marketing_events',
   product_launch: 'product_events',
   bundle_launch: 'product_events',
   landing_page_launch: 'online_store_events',
-  seasonal_promotion: 'discount_events',
+  buy_x_get_y_discount: 'discount_events',
+  loyalty_program_offer: 'discount_events',
   ad_spend_change: 'marketing_events',
   influencer_collaboration: 'marketing_events',
+  brand_collaboration: 'marketing_events',
   revenue_milestone: 'operation_events',
   other: 'custom_events',
 };
 
-// Built from the types the app resolved rather than the ones it planned. A clause
-// asking for product_events.product_launch filters out a bundle_launch marker.
+// Built from the types the app resolved, not the ones it planned.
 export function annotateClause(types) {
   return [
     ...new Set(
@@ -27,8 +27,7 @@ export function annotateClause(types) {
 // [END campaign-dashboard.annotate-clause]
 
 // [START campaign-dashboard.category-colors]
-// Coloured by category rather than by type, so two markers the user can filter
-// together look the same and the strip doubles as a legend for the ANNOTATE clause.
+// Coloured by category, which makes the strip a legend for the ANNOTATE clause.
 const CATEGORY_COLORS = {
   marketing_events: '#005bd3',
   product_events: '#29845a',
@@ -54,8 +53,7 @@ export const CATEGORY_LABELS = {
   custom_events: 'Custom',
 };
 
-// One swatch per category on the strip, so the legend never explains a colour the
-// user can't see. The count comes with it because an overlapping strip hides it.
+// One swatch per category present, with a count an overlapping strip would hide.
 export function categoryLegend(annotations, appId) {
   const seen = new Map();
   for (const annotation of annotations) {
@@ -76,9 +74,7 @@ export function categoryLegend(annotations, appId) {
 // [END campaign-dashboard.category-colors]
 
 // [START campaign-dashboard.explore-link]
-// The explore report reads its window from the query's own SINCE and UNTIL, so
-// handing it a query rather than a date range is what lands the user on this
-// campaign.
+// The report reads its window from the query's own SINCE and UNTIL.
 export function exploreLink(query) {
   return `shopify://admin/analytics/reports/explore?ql=${encodeURIComponent(query)}`;
 }
