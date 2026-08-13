@@ -69,8 +69,9 @@ import {
   promotedNames,
   safeLocale,
   touchMarks,
+  withinWindow,
 } from '../campaigns';
-import {CHANNELS} from '../channels';
+import {CHANNEL_KEYS, CHANNELS} from '../channels';
 import {AUDIENCE_TIERS, TIER_METAFIELD, isTargetedTier, tierLabel} from '../audiences';
 import {
   annotationColor,
@@ -157,7 +158,12 @@ export async function loader({request, params}) {
   // [START campaign-dashboard.measure-targets]
   // Alias each target's generated query into one document and read the results back
   // by position. A null `shopifyqlQuery` is a condition of the request. Skip those.
-  const targetNodes = targetsBody.data?.analyticsTargets?.nodes ?? [];
+  // The store returns every target on the campaign's start date. A second campaign
+  // starting that day has its own there. The recorded IDs say which are this one's.
+  const recorded = new Set(Object.values(campaign.targets ?? {}));
+  const targetNodes = (targetsBody.data?.analyticsTargets?.nodes ?? []).filter(
+    (target) => recorded.has(target.id),
+  );
   const measurable = targetNodes.filter((target) => target.shopifyqlQuery);
   const progress = measurable.length
     ? ((await (await admin.graphql(progressQuery(measurable))).json()).data ?? {})
@@ -1185,18 +1191,6 @@ export default function CampaignDashboard() {
     previousTotal === 0
       ? null
       : ((Number(totalSales) - previousTotal) / Math.abs(previousTotal)) * 100;
-
-  // `previous_period` is the same length immediately before. Name the dates it picked.
-  const previousWindow = (() => {
-    const day = 86400000;
-    const start = Date.parse(`${campaign.startDate}T00:00:00Z`);
-    const end = Date.parse(`${campaign.endDate}T00:00:00Z`);
-    const length = end - start + day;
-    return {
-      start: new Date(start - length).toISOString().slice(0, 10),
-      end: new Date(start - day).toISOString().slice(0, 10),
-    };
-  })();
   // [END campaign-dashboard.totals]
 
   // [START campaign-dashboard.target-copy]
@@ -1245,8 +1239,9 @@ export default function CampaignDashboard() {
 
   // Keyed on the formatted day, because Polaris Viz matches the axis label it drew and
   // holds one annotation per key. A count costs one row where nine titles cost nine.
-  const chartLabel = (title) =>
-    clamp(title.replace(` for ${campaign.title}`, '').replace(` on ${campaign.title}`, ''), 24);
+  // Drop the trailing clause. The full title stays on the tooltip, and a pill only has
+  // room for the mark's name.
+  const chartLabel = (title) => clamp(title.replace(/ (?:for|on) .+$/, ''), 24);
   const chartAnnotations = annotationDays.map(([day, list]) => ({
     startKey: shortDate(day),
     label:
@@ -1380,7 +1375,8 @@ export default function CampaignDashboard() {
   // [END campaign-dashboard.channel-funnels]
 
   // [START campaign-dashboard.sends-by-day]
-  // The funnel's rows kept as a series. Sends by day beside sales by day.
+  // An app_events metric put on the sales axis. Keyed off the sales rows, not the
+  // event rows, so a day this app sent nothing still plots as a zero.
   const sendsByDay = new Map(
     (funnel.tableData.rows ?? []).map((row) => [cell(row, 'day'), row]),
   );
@@ -1398,41 +1394,65 @@ export default function CampaignDashboard() {
   // [END campaign-dashboard.sends-by-day]
 
   // [START campaign-dashboard.sequence-charts]
-  // Whether the share engaging fell as the campaign kept sending. That's fatigue.
-  const sequenceBars = [
-    {
-      name: 'Reached',
-      data: sequence.map((touch) => ({
-        key: `${touch.position}. ${touch.name}`,
-        value: touch.reached,
-      })),
-    },
-  ];
-  const sequenceRate = [
-    {
-      name: 'Engaged',
-      data: sequence.map((touch) => ({
-        key: `${touch.position}. ${touch.name}`,
-        value: Math.round(touch.rate),
-      })),
-    },
-  ];
+  // One chart per channel, keyed on the day each send went out. Nine sends on one
+  // chart reads a channel change as a rate change, because an open rate and a click
+  // rate don't measure the same act.
+  const sequenceCharts = CHANNEL_KEYS.map((key) => {
+    const touches = sequence
+      .filter((touch) => touch.channel === key)
+      .map((touch) => ({
+        ...touch,
+        axis: shortDate(withinWindow(campaign, touch.day)),
+      }));
+    if (touches.length === 0) return null;
 
-  const firstTouch = sequence.at(0);
-  const lastTouch = sequence.at(-1);
-  const fatigue =
-    firstTouch && lastTouch && lastTouch !== firstTouch
-      ? {
-          from: firstTouch.rate,
-          to: lastTouch.rate,
-          falling: lastTouch.rate < firstTouch.rate,
-          lost: sequence.reduce((running, touch) => running + touch.lost, 0),
-          touches: sequence.length,
-          worst: sequence.reduce((low, touch) =>
-            touch.rate < low.rate ? touch : low,
-          ),
-        }
-      : null;
+    return {
+      channel: key,
+      label: CHANNELS[key].label,
+      reached: [
+        {
+          name: 'Reached',
+          data: touches.map((touch) => ({
+            key: touch.axis,
+            value: touch.reached,
+          })),
+        },
+      ],
+      rate: [
+        {
+          name: 'Engagement',
+          data: touches.map((touch) => ({
+            key: touch.axis,
+            value: Math.round(touch.rate),
+          })),
+        },
+      ],
+      // Only the marks dated to this channel's send days. Polaris Viz keys an
+      // annotation to a label it drew, and the other days aren't on this axis.
+      annotations: chartAnnotations.filter((annotation) =>
+        touches.some((touch) => touch.axis === annotation.startKey),
+      ),
+    };
+  }).filter(Boolean);
+
+  // The weakest send measured against its own channel's best. First against last would
+  // read a dip that recovered as a decline, and would miss a bad send in the middle.
+  const weakest = sequenceCharts
+    .map((chart) => {
+      const own = sequence.filter((touch) => touch.channel === chart.channel);
+      if (own.length < 2) return null;
+      const best = own.reduce((top, touch) => (touch.rate > top.rate ? touch : top));
+      const worst = own.reduce((low, touch) => (touch.rate < low.rate ? touch : low));
+      if (best === worst) return null;
+      return {
+        label: chart.label,
+        name: worst.name,
+        rate: worst.rate,
+        bestName: best.name,
+        bestRate: best.rate,
+      };
+    })
+    .filter((entry) => entry && entry.bestRate - entry.rate >= 5);
 
   const bounceReasons = (bounces.tableData.rows ?? [])
     .filter((row) => Number(cell(row, 'emails_bounced')) > 0)
@@ -1628,14 +1648,23 @@ export default function CampaignDashboard() {
 
   // Bounces are the banner's subject, on the same threshold. Not repeated here.
 
-  if (fatigue?.falling && fatigue.from - fatigue.to >= 10) {
+  // The widest gap on any single channel. A rate mixed across channels would name a
+  // channel change here instead of a weak send.
+  const widest = weakest.reduce(
+    (worst, entry) =>
+      !worst || entry.bestRate - entry.rate > worst.bestRate - worst.rate
+        ? entry
+        : worst,
+    null,
+  );
+  if (widest && widest.bestRate - widest.rate >= 10) {
     advice.push({
       icon: 'alert-triangle',
       tone: 'caution',
-      text: `Engagement fell from ${Math.round(
-        fatigue.from,
-      )}% on the first send to ${Math.round(fatigue.to)}% on send ${
-        fatigue.touches
+      text: `${widest.label}'s ${widest.name} send reached ${Math.round(
+        widest.rate,
+      )}% engagement against ${Math.round(widest.bestRate)}% on ${
+        widest.bestName
       }.`,
     });
   }
@@ -2147,11 +2176,6 @@ export default function CampaignDashboard() {
                 </s-badge>
               </s-stack>
             )}
-            <s-text color="subdued">
-              {percentChange === null
-                ? `Nothing sold ${shortDate(previousWindow.start)} to ${shortDate(previousWindow.end)}.`
-                : `Against ${currency(previousTotal)} over ${shortDate(previousWindow.start)} to ${shortDate(previousWindow.end)}.`}
-            </s-text>
           </s-stack>
 
           {/* [START campaign-dashboard.chart-render] */}
@@ -2431,7 +2455,7 @@ export default function CampaignDashboard() {
         {/* [END campaign-dashboard.incident-banner] */}
 
         {/* [START campaign-dashboard.app-events-render] */}
-        {/* Reach falls because lists shrink. Engagement falling is fatigue. */}
+        {/* Reach falls because lists shrink. Engagement tracks the offer. */}
         {sequence.length > 0 && (
           <s-section>
             <PanelHeader
@@ -2440,51 +2464,69 @@ export default function CampaignDashboard() {
                 appEvents: 'One event stream per send, published by this app at send time.',
                 shopifyql:
                   "Groups those events by send so each one's reach stands on its own.",
+                annotations:
+                  "The campaign's own marks, drawn on the day each send went out.",
               }}
             />
             {isClient && (
-              <div className="chart-tooltip-fix" style={{height: '280px'}}>
-                <PolarisVizProvider>
-                  <ComboChart
-                    data={[
-                      {
-                        shape: 'Bar',
-                        name: 'Reached',
-                        yAxisOptions: {integersOnly: true},
-                        series: sequenceBars,
-                      },
-                      {
-                        shape: 'Line',
-                        name: 'Engaged',
-                        yAxisOptions: {
-                          labelFormatter: (value) => `${Math.round(value)}%`,
-                        },
-                        series: sequenceRate,
-                      },
-                    ]}
-                    theme="Light"
-                  />
-                </PolarisVizProvider>
-              </div>
+              <s-query-container>
+                <s-grid gridTemplateColumns="repeat(auto-fit, minmax(280px, 1fr))" gap="base">
+                  {sequenceCharts.map((chart) => (
+                    <s-grid-item key={chart.channel}>
+                      <s-heading>{chart.label}</s-heading>
+                      <div
+                        className="chart-tooltip-fix"
+                        style={{height: '220px'}}
+                      >
+                        <PolarisVizProvider>
+                          <ComboChart
+                            data={[
+                              {
+                                shape: 'Bar',
+                                // No `name`. A named group draws a rotated axis
+                                // title the legend already carries, and three
+                                // narrow charts have no room for one.
+                                yAxisOptions: {integersOnly: true},
+                                series: chart.reached,
+                              },
+                              {
+                                shape: 'Line',
+                                yAxisOptions: {
+                                  labelFormatter: (value) =>
+                                    `${Math.round(value)}%`,
+                                },
+                                series: chart.rate,
+                              },
+                            ]}
+                            annotations={chart.annotations}
+                            theme="Light"
+                          />
+                        </PolarisVizProvider>
+                      </div>
+                    </s-grid-item>
+                  ))}
+                </s-grid>
+              </s-query-container>
             )}
 
-            {fatigue && (
+            {weakest.length > 0 && (
               <s-paragraph>
-                Engagement {fatigue.falling ? 'fell' : 'rose'} from{' '}
-                {Math.round(fatigue.from)}% on the first send to{' '}
-                {Math.round(fatigue.to)}% on the last, across {fatigue.touches}{' '}
-                sends. The weakest was {fatigue.worst.name} at{' '}
-                {Math.round(fatigue.worst.rate)}%. {integer(fatigue.lost)} people
-                unsubscribed.
+                {weakest
+                  .map(
+                    (entry) =>
+                      `${entry.label}'s ${entry.name} send reached ${Math.round(entry.rate)}% against ${Math.round(entry.bestRate)}% on ${entry.bestName}.`,
+                  )
+                  .join(' ')}
               </s-paragraph>
             )}
 
             <s-table>
               <s-table-header-row>
                 <s-table-header listSlot="primary">Send</s-table-header>
+                <s-table-header listSlot="secondary">Channel</s-table-header>
                 <s-table-header listSlot="labeled">Sent</s-table-header>
                 <s-table-header listSlot="labeled">Reached</s-table-header>
-                <s-table-header listSlot="labeled">Engaged</s-table-header>
+                <s-table-header listSlot="labeled">Engagement</s-table-header>
               </s-table-header-row>
               <s-table-body>
                 {sequence.map((touch) => (
@@ -2492,11 +2534,39 @@ export default function CampaignDashboard() {
                     <s-table-cell>
                       {touch.position}. {touch.name}
                     </s-table-cell>
-                    <s-table-cell>{integer(touch.sent)}</s-table-cell>
-                    <s-table-cell>{integer(touch.reached)}</s-table-cell>
                     <s-table-cell>
-                      {integer(touch.engaged)} {touch.action} ·{' '}
-                      {Math.round(touch.rate)}%
+                      {CHANNELS[touch.channel].label}
+                    </s-table-cell>
+                    <s-table-cell>{integer(touch.sent)}</s-table-cell>
+                    <s-table-cell>
+                      {/* Push has no delivery receipt. Repeating the sent count
+                          here would read as a perfect delivery rate. */}
+                      {CHANNELS[touch.channel].metrics.reached ===
+                      CHANNELS[touch.channel].metrics.sent
+                        ? 'Not reported'
+                        : integer(touch.reached)}
+                    </s-table-cell>
+                    <s-table-cell>
+                      <s-stack gap="small-500">
+                        <s-text>
+                          {integer(touch.engaged)} {touch.action} ·{' '}
+                          {Math.round(touch.rate)}%
+                        </s-text>
+                        <s-box
+                          background="base"
+                          borderRadius="large"
+                          blockSize="8px"
+                          overflow="hidden"
+                          accessibilityVisibility="hidden"
+                        >
+                          <s-box
+                            background="strong"
+                            borderRadius="large"
+                            blockSize="8px"
+                            inlineSize={`${Math.min(100, Math.round(touch.rate))}%`}
+                          />
+                        </s-box>
+                      </s-stack>
                     </s-table-cell>
                   </s-table-row>
                 ))}

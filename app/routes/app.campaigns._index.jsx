@@ -30,22 +30,30 @@ export const loader = async ({request}) => {
     runOptional(admin, sliceQuery()),
   ]);
 
+  // Which campaign owns which target, from the IDs launching recorded. Start dates
+  // don't decide it: two campaigns can open on the same day.
+  const owner = new Map();
+  for (const campaign of campaigns) {
+    for (const id of Object.values(campaign.targets ?? {})) {
+      owner.set(id, String(campaign.id));
+    }
+  }
+
   // A target with no generated query can't be measured. Dropped, not counted as zero.
   const nodes = targetsBody.data?.analyticsTargets?.nodes ?? [];
-  const measurable = nodes.filter((target) => target.shopifyqlQuery);
+  const measurable = nodes.filter(
+    (target) => target.shopifyqlQuery && owner.has(target.id),
+  );
   const progress = measurable.length
     ? ((await (await admin.graphql(progressQuery(measurable))).json()).data ?? {})
     : {};
 
   // Alias back by position, indexed off `measurable` rather than a filtered copy.
-  const started = new Set(campaigns.map((campaign) => campaign.startDate));
-  const targets = measurable
-    .map((target, index) => ({
-      startDate: target.startDate,
-      expected: Number(target.expectedValue),
-      actual: progressValue(progress[`t${index}`]),
-    }))
-    .filter((target) => started.has(target.startDate));
+  const targets = measurable.map((target, index) => ({
+    campaignId: owner.get(target.id),
+    expected: Number(target.expectedValue),
+    actual: progressValue(progress[`t${index}`]),
+  }));
 
   return {
     campaigns,
@@ -148,7 +156,7 @@ function writtenBack(campaign) {
 // Every target the campaign created, as one share.
 function targetProgress(campaign, targets) {
   const mine = targets.filter(
-    (target) => target.startDate === campaign.startDate,
+    (target) => target.campaignId === String(campaign.id),
   );
   const expected = mine.reduce((total, target) => total + target.expected, 0);
   if (mine.length === 0 || expected <= 0) return null;

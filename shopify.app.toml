@@ -7,7 +7,7 @@ embedded = true
 # [START campaign-dashboard.access-scopes]
 [access_scopes]
 # Granted at install. A change re-prompts every user on next load.
-scopes = "read_reports,write_reports,read_analytics_annotations,write_analytics_annotations,write_products,write_customers"
+scopes = "read_reports,write_reports,read_analytics_annotations,write_analytics_annotations,write_products,write_customers,write_orders"
 # [END campaign-dashboard.access-scopes]
 
 # [START campaign-dashboard.direct-api]

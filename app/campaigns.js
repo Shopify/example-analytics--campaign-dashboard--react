@@ -81,7 +81,7 @@ export const metafieldDimension = (owner, appId, key) => {
 
 // Keeps a derived date inside the campaign's window. UTC arithmetic, because a local
 // midnight date reports as the previous day east of UTC.
-function withinWindow(campaign, offsetDays) {
+export function withinWindow(campaign, offsetDays) {
   const [year, month, date] = campaign.startDate.split('-').map(Number);
   const shifted = new Date(Date.UTC(year, month - 1, date + offsetDays));
   const day = shifted.toISOString().slice(0, 10);

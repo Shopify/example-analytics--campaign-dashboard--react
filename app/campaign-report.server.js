@@ -60,14 +60,17 @@ export function outcomeText({campaign, revenue, target, sequence, money}) {
       : `Earned ${money(revenue)}`,
   ];
 
-  // How far the list moved between the first touch and the last.
-  const first = sequence.at(0);
-  const last = sequence.at(-1);
-  if (first && last !== first) {
+  // The strongest send, named with its channel. First against last would compare an
+  // email open rate to an SMS click rate and report the channel as the change.
+  const best = sequence.reduce(
+    (top, touch) => (!top || touch.rate > top.rate ? touch : top),
+    null,
+  );
+  if (best && sequence.length > 1) {
     sentences.push(
-      `Engagement ${last.rate < first.rate ? 'fell' : 'rose'} from ${Math.round(
-        first.rate,
-      )}% to ${Math.round(last.rate)}% over ${sequence.length} touches`,
+      `Best of ${sequence.length} sends was ${best.name} on ${
+        CHANNELS[best.channel].label
+      } at ${Math.round(best.rate)}%`,
     );
   }
 

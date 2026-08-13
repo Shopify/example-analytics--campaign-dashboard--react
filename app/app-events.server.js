@@ -45,16 +45,18 @@ function marketing(channel, template, extra = {}) {
 
 // [START campaign-dashboard.app-events-funnel]
 // Nine sends over two weeks. `template_id` carries the position in the sequence.
+// Engagement dips on undifferentiated repeats and recovers when the offer changes, which
+// is what gives the annotations something to explain.
 export const SEQUENCE = [
   {day: 0, channel: 'email', template: 4101, name: 'Announcement', audience: 52, engaged: 0.42, clicked: 0.28, lost: 1},
-  {day: 1, channel: 'sms', template: 4102, name: 'Early access', audience: 21, engaged: 0.24, lost: 0},
-  {day: 3, channel: 'email', template: 4103, name: 'Non-openers', audience: 33, engaged: 0.31, clicked: 0.26, lost: 1},
+  {day: 1, channel: 'sms', template: 4102, name: 'Early access', audience: 21, engaged: 0.34, lost: 0},
+  {day: 3, channel: 'email', template: 4103, name: 'Non-openers', audience: 33, engaged: 0.24, clicked: 0.22, lost: 3},
   {day: 5, channel: 'push', template: 4104, name: 'App exclusive', audience: 26, engaged: 0.38},
-  {day: 7, channel: 'email', template: 4105, name: 'Restock', audience: 51, engaged: 0.26, clicked: 0.3, lost: 2},
-  {day: 8, channel: 'sms', template: 4106, name: 'Reminder', audience: 20, engaged: 0.18, lost: 1},
-  {day: 11, channel: 'push', template: 4107, name: 'Last call', audience: 25, engaged: 0.26},
-  {day: 12, channel: 'email', template: 4108, name: 'Last chance', audience: 49, engaged: 0.19, clicked: 0.25, lost: 4},
-  {day: 13, channel: 'sms', template: 4109, name: 'Final hours', audience: 19, engaged: 0.13, lost: 2},
+  {day: 7, channel: 'email', template: 4105, name: 'Restock', audience: 51, engaged: 0.31, clicked: 0.3, lost: 2},
+  {day: 8, channel: 'sms', template: 4106, name: 'BOGO offer', audience: 20, engaged: 0.41, lost: 1},
+  {day: 11, channel: 'push', template: 4107, name: 'Influencer drop', audience: 25, engaged: 0.45},
+  {day: 12, channel: 'email', template: 4108, name: 'Last chance', audience: 49, engaged: 0.36, clicked: 0.25, lost: 2},
+  {day: 13, channel: 'sms', template: 4109, name: 'Final hours', audience: 19, engaged: 0.29, lost: 2},
 ];
 
 // What each channel can report. Push has two stages where email has six, because the
@@ -187,7 +189,7 @@ const STAGES = SEQUENCE.flatMap(expand);
 export const EVENT_TOTAL = STAGES.reduce((total, stage) => total + stage.count, 0);
 
 // A used idempotency key is dropped, payload and all. Bump this after changing one.
-const RUN = 'r2';
+const RUN = 'r3';
 
 // Timestamps read back in the shop's timezone, where midnight UTC can be the day
 // before. Resolve a calendar date to 9am there instead.
