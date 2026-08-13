@@ -34,9 +34,21 @@ You'll also need:
 git clone https://github.com/Shopify/example-analytics--campaign-dashboard--react.git
 cd example-analytics--campaign-dashboard--react
 npm install
-npm run config:link   # connect to your Partner account and pick a development store
+npm run config:link   # create the app in the Developer Dashboard
+```
+
+Now put the access scopes back. `config:link` pulls the configuration down from the app it just created, and a new app has no scopes, so it overwrites `scopes` in `shopify.app.toml` with an empty string. Restore this line before you deploy:
+
+```toml
+[access_scopes]
+scopes = "read_reports,write_reports,read_analytics_annotations,write_analytics_annotations,write_products,write_customers"
+```
+
+Deploying with an empty `scopes` installs the app with no permissions, and every query and every write fails. `config:link` also strips the comments from the file, including the ones that mark the excerpts the tutorial quotes. Nothing depends on them locally.
+
+```shell
 npm run setup         # create the local SQLite database that holds OAuth sessions
-npm run deploy        # release the scopes, the webhook, and the App Events declarations
+npm run deploy        # release the scopes, the webhooks, and the App Events declarations
 npm run dev           # start the app, then install it when the CLI prompts you
 ```
 

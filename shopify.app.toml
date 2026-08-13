@@ -29,15 +29,16 @@ api_version = "2026-10"
   uri = "/webhooks/app/uninstalled"
 
   # Required of every app that holds customer data. Launching a campaign saves a
-  # customer ID and display name per tier member onto the record.
+  # customer ID and display name per tier member onto the record. These three go in
+  # `compliance_topics` rather than `topics`, which rejects them at release.
   [[webhooks.subscriptions]]
-  topics = ["customers/data_request"]
+  compliance_topics = ["customers/data_request"]
   uri = "/webhooks/customers/data_request"
 
   [[webhooks.subscriptions]]
-  topics = ["customers/redact"]
+  compliance_topics = ["customers/redact"]
   uri = "/webhooks/customers/redact"
 
   [[webhooks.subscriptions]]
-  topics = ["shop/redact"]
+  compliance_topics = ["shop/redact"]
   uri = "/webhooks/shop/redact"
