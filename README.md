@@ -20,7 +20,7 @@ Without App Events access the app still runs and nothing fails. Sales, targets, 
 You'll also need:
 
 - A [Shopify Partner account](https://www.shopify.com/partners) and a development store.
-- Node.js 20.19 or later, or 22.12 or later.
+- Node.js 22.12 or later. Shopify CLI requires it, and every `npm run` script below shells out to the CLI. On an earlier version the CLI installs with only a warning, then fails on its first run with a `SyntaxError` that doesn't mention Node.
 - API version `2026-10` or later. Annotations and targets aren't available before it.
 - [Shopify CLI](https://shopify.dev/docs/api/shopify-cli) installed globally. Every `npm run` script below shells out to it:
 
