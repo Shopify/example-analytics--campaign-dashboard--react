@@ -4,6 +4,11 @@ import {login} from '../../shopify.server';
 
 import styles from './styles.module.css';
 
+const SHOP_ERRORS = {
+  MISSING_SHOP: 'Enter your store domain.',
+  INVALID_SHOP: "That doesn't look like a store domain.",
+};
+
 export const loader = async ({request}) => {
   const url = new URL(request.url);
 
@@ -11,11 +16,16 @@ export const loader = async ({request}) => {
     throw redirect(`/app?${url.searchParams.toString()}`);
   }
 
-  return {showForm: Boolean(login)};
+  // `/auth/login` sends a rejected domain back here rather than rendering a page of its
+  // own.
+  return {
+    showForm: Boolean(login),
+    error: SHOP_ERRORS[url.searchParams.get('shop_error')] ?? null,
+  };
 };
 
 export default function App() {
-  const {showForm} = useLoaderData();
+  const {showForm, error} = useLoaderData();
 
   return (
     <div className={styles.index}>
@@ -32,6 +42,7 @@ export default function App() {
               <input className={styles.input} type="text" name="shop" />
               <span>e.g: my-shop-domain.myshopify.com</span>
             </label>
+            {error && <p className={styles.text}>{error}</p>}
             <button className={styles.button} type="submit">
               Log in
             </button>

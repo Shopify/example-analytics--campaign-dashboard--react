@@ -182,6 +182,10 @@ function expand(touch) {
 
 const STAGES = SEQUENCE.flatMap(expand);
 
+// One request per event. Counted here rather than written into the copy that offers the
+// replay, where a change to `SEQUENCE` leaves the number behind.
+export const EVENT_TOTAL = STAGES.reduce((total, stage) => total + stage.count, 0);
+
 // A used idempotency key is dropped, payload and all. Bump this after changing one.
 const RUN = 'r2';
 

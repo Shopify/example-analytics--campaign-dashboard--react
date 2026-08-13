@@ -10,6 +10,7 @@ export const SHOP_QUERY = `
     shop {
       id
       ianaTimezone
+      currencyCode
     }
   }
 `;

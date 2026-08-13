@@ -16,6 +16,8 @@ export const CAMPAIGN_FIELDS = {
   channels: 'Subset of email, sms, push. Decides which funnels render.',
   products: 'GID and title for each promoted product, from the resource picker.',
   audience: 'Tier value written onto each targeted customer at launch.',
+  members:
+    'Customer ID and display name per tier member, saved at launch. Redaction removes them.',
   creatorCodes:
     'Discount code and the creator who hands it out, for each code made by hand in the admin.',
   revenueTarget: 'Store-wide sales target, as a decimal string.',
@@ -41,6 +43,11 @@ export const nextCampaignId = (campaigns) =>
 // [END campaign-dashboard.campaign-store]
 
 // [START campaign-dashboard.campaign-read]
+// A throttled or rejected request answers with `errors` and a null `data`. There are no
+// nested `userErrors` to find, which is what makes an unchecked call read as a clean one.
+export const transportErrors = (body) =>
+  (body.errors ?? []).map((error) => ({message: error.message}));
+
 // Returns the app's own ID alongside the records. The namespace is built from it.
 export async function readCampaigns(admin) {
   const body = await (await admin.graphql(STATE_QUERY)).json();
@@ -58,6 +65,9 @@ export async function readCampaigns(admin) {
   }
 
   return {
+    // An empty list from a failed read is indistinguishable from a store with no
+    // campaigns. Every write below refuses rather than guess which one it got.
+    failed: transportErrors(body),
     appId: installation?.app?.id ?? null,
     // The value `app_name` carries in App Events, which every app writes to.
     appName: installation?.app?.title ?? null,
@@ -88,12 +98,18 @@ async function writeState(admin, installationId, state) {
     },
   });
   const body = await response.json();
+  const failed = transportErrors(body);
+  if (failed.length) return failed;
   return body.data?.metafieldsSet?.userErrors ?? [];
 }
 
 // Read, change the one record, write the list back.
 export async function updateCampaign(admin, campaignId, change) {
-  const {installationId, campaigns} = await readCampaigns(admin);
+  const {installationId, campaigns, failed} = await readCampaigns(admin);
+  // The write replaces the whole value. Writing what a failed read returned would
+  // erase every record the store has.
+  if (failed.length) return {campaign: null, userErrors: failed};
+
   const updated = campaigns.map((campaign) =>
     String(campaign.id) === String(campaignId)
       ? {...campaign, ...change}
@@ -114,6 +130,21 @@ export async function rememberMarkers(admin, campaignId, markers) {
   });
 }
 // [END campaign-dashboard.campaign-write]
+
+// The roster is the only customer data this app keeps of its own. The tier metafield
+// goes with the customer. This is what's left.
+export async function forgetCustomer(admin, customerId) {
+  const {installationId, campaigns, failed} = await readCampaigns(admin);
+  if (failed.length) return failed;
+
+  const without = campaigns.map((campaign) => ({
+    ...campaign,
+    members: (campaign.members ?? []).filter(
+      (member) => member.id !== customerId,
+    ),
+  }));
+  return writeState(admin, installationId, {campaigns: without});
+}
 
 // [START campaign-dashboard.seed-campaign]
 // Both start planned. One is dated mid-flight, the other starts weeks out.
@@ -171,6 +202,8 @@ function seedRecords() {
 
 export async function ensureCampaign(admin) {
   const state = await readCampaigns(admin);
+  // Seeding on a failed read would overwrite the store's own campaigns.
+  if (state.failed.length) return {...state, userErrors: state.failed};
   if (state.campaigns.length > 0) return {...state, userErrors: []};
 
   const campaigns = seedRecords();
@@ -184,7 +217,10 @@ export async function ensureCampaign(admin) {
 // [START campaign-dashboard.spawn-campaign]
 // Every App Events filter keys on the ID. It has to be an integer, and it has to be new.
 export async function createCampaign(admin, fields) {
-  const {installationId, campaigns} = await readCampaigns(admin);
+  const {installationId, campaigns, failed} = await readCampaigns(admin);
+  // `nextCampaignId` counts from what it read. A failed read hands out an ID that
+  // already has App Events data behind it.
+  if (failed.length) return {campaign: null, userErrors: failed};
 
   const campaign = {
     id: nextCampaignId(campaigns),

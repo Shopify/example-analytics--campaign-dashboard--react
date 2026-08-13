@@ -12,9 +12,13 @@ const channelLabel = (channel) => CHANNELS[channel]?.label ?? channel;
 // The picker hands back GIDs. ShopifyQL wants the numeric part.
 export const productId = (gid) => String(gid).split('/').at(-1);
 
-// IN takes bare numbers. Quoting them fails at query time, not at create time.
+// IN takes bare numbers. Quoting them fails at query time, not at create time. The IDs
+// are interpolated into a ShopifyQL filter rather than bound to it, which is why only
+// digits get through.
 export function promotedFilter(campaign) {
-  const ids = (campaign.products ?? []).map((product) => productId(product.id));
+  const ids = (campaign.products ?? [])
+    .map((product) => productId(product.id))
+    .filter((id) => /^\d+$/.test(id));
   if (ids.length === 0) return null;
   return `product_id IN (${ids.join(', ')})`;
 }
@@ -22,6 +26,23 @@ export function promotedFilter(campaign) {
 export const promotedNames = (campaign) =>
   (campaign.products ?? []).map((product) => product.title).join(', ');
 // [END campaign-dashboard.promoted-products]
+
+// `Number('abc')` is NaN, and every comparison against NaN is false. A bare `<= 0`
+// waves non-numeric input through to a mutation that rejects it on arrival.
+export const isPositiveAmount = (value) =>
+  Number.isFinite(Number(value)) && Number(value) > 0;
+
+// `Intl` throws on a malformed tag rather than falling back to a default. The locale
+// arrives on a query parameter that nothing validates on the way in.
+export function safeLocale(value) {
+  if (!value) return 'en';
+  try {
+    Intl.NumberFormat.supportedLocalesOf(value);
+    return value;
+  } catch {
+    return 'en';
+  }
+}
 
 // A running campaign's window runs past today. Days that haven't happened report zero,
 // which reads as a collapse on the chart and drags every average with it.

@@ -11,7 +11,7 @@ scopes = "read_reports,write_reports,read_analytics_annotations,write_analytics_
 # [END campaign-dashboard.access-scopes]
 
 # [START campaign-dashboard.direct-api]
-# The metric cards query from the browser, so they need this.
+# The metric cards query from the browser, which needs direct access.
 [access.admin]
 direct_api_mode = "online"
 embedded_app_direct_api_access = true
@@ -27,3 +27,17 @@ api_version = "2026-10"
   [[webhooks.subscriptions]]
   topics = ["app/uninstalled"]
   uri = "/webhooks/app/uninstalled"
+
+  # Required of every app that holds customer data. Launching a campaign saves a
+  # customer ID and display name per tier member onto the record.
+  [[webhooks.subscriptions]]
+  topics = ["customers/data_request"]
+  uri = "/webhooks/customers/data_request"
+
+  [[webhooks.subscriptions]]
+  topics = ["customers/redact"]
+  uri = "/webhooks/customers/redact"
+
+  [[webhooks.subscriptions]]
+  topics = ["shop/redact"]
+  uri = "/webhooks/shop/redact"

@@ -10,11 +10,12 @@ import {
 import '@shopify/polaris-viz/build/esm/styles.css';
 import '../chart-tooltip.css';
 import {authenticate} from '../shopify.server';
-import {sendCampaignFunnel, shopMorning} from '../app-events.server';
+import {EVENT_TOTAL, sendCampaignFunnel, shopMorning} from '../app-events.server';
 import {
   findCampaign,
   readCampaigns,
   rememberMarkers,
+  transportErrors,
   updateCampaign,
 } from '../campaigns.server';
 import {
@@ -61,10 +62,12 @@ import {
   codeFilter,
   creatorCodes,
   creatorTouches,
+  isPositiveAmount,
   lastTouch,
   productId,
   promotedFilter,
   promotedNames,
+  safeLocale,
   touchMarks,
 } from '../campaigns';
 import {CHANNELS} from '../channels';
@@ -92,7 +95,7 @@ export async function loader({request, params}) {
 
   // [START campaign-dashboard.locale]
   // The admin's locale rides in on the request. Formatting here matches the client.
-  const locale = new URL(request.url).searchParams.get('locale') ?? 'en';
+  const locale = safeLocale(new URL(request.url).searchParams.get('locale'));
   // [END campaign-dashboard.locale]
 
   const dimensions = await readDimensions(admin, appId);
@@ -186,6 +189,7 @@ export async function loader({request, params}) {
     locale,
     fatal: null,
     appId,
+    eventTotal: EVENT_TOTAL,
     // The sales dataset has no currency column. Read it off the shop field.
     currencyCode: salesBody.data?.shop?.currencyCode ?? 'USD',
     // TIMESERIES buckets by the store's timezone. The browser's would misdate a marker.
@@ -222,7 +226,7 @@ async function createTarget(admin, input) {
   const created = body.data?.analyticsTargetCreate;
   return {
     id: created?.analyticsTarget?.id ?? null,
-    userErrors: created?.userErrors ?? [],
+    userErrors: [...transportErrors(body), ...(created?.userErrors ?? [])],
   };
 }
 
@@ -283,7 +287,10 @@ async function raiseTarget(admin, target) {
       variables: {id: target.id, input: {expectedValue: raised}},
     })
   ).json();
-  return body.data?.analyticsTargetUpdate?.userErrors ?? [];
+  return [
+    ...transportErrors(body),
+    ...(body.data?.analyticsTargetUpdate?.userErrors ?? []),
+  ];
 }
 // [END campaign-dashboard.raise-target]
 
@@ -311,15 +318,22 @@ async function resolveLaunchMark(admin, campaign) {
 // [END campaign-dashboard.bundle-mark]
 
 // [START campaign-dashboard.clear-marks]
-// The store outlives the record's marker IDs. Reconcile against `createdByApp`, the
-// one claim of ownership that can't go stale.
+// Exactly this campaign's markers. The window is shared: a campaign running over the
+// same days has its own marks in this list, and they aren't this one's to delete.
+// Reading the store first also skips an ID already gone from the timeline, rather than
+// reporting the delete that can't find it as a failure.
 async function clearOwnMarks(admin, campaign, appId) {
+  const recorded = new Set(Object.values(campaign.markers ?? {}));
   const body = await (await admin.graphql(annotationsQuery(campaign))).json();
+  const failed = transportErrors(body);
+  if (failed.length) return failed;
+
   const nodes = body.data?.shop?.analyticsAnnotations?.nodes ?? [];
   const problems = [];
 
   for (const annotation of nodes) {
     if (annotation.createdByApp?.id !== appId) continue;
+    if (!recorded.has(annotation.id)) continue;
     const deleted = await (
       await admin.graphql(ANNOTATION_DELETE, {variables: {id: annotation.id}})
     ).json();
@@ -359,8 +373,9 @@ async function writeMarks(admin, campaign, appId, markedAt) {
       })
     ).json();
     const created = body.data?.analyticsAnnotationCreate;
-    if (created?.userErrors?.length) {
-      return {markers, problems: created.userErrors.map((error) => error.message)};
+    const errors = [...transportErrors(body), ...(created?.userErrors ?? [])];
+    if (errors.length) {
+      return {markers, problems: errors.map((error) => error.message)};
     }
     if (created?.analyticsAnnotation?.id) {
       markers[mark.key] = created.analyticsAnnotation.id;
@@ -570,18 +585,13 @@ export async function action({request, params}) {
   const form = await request.formData();
   const intent = String(form.get('intent'));
 
-  // Annotation text is written here, and the sales dataset has no currency column.
-  const money = (value) =>
-    new Intl.NumberFormat('en', {
-      style: 'currency',
-      currency: String(form.get('currency') || 'USD'),
-      maximumFractionDigits: 0,
-    }).format(value);
-
-  const [{appId, campaigns}, shopBody] = await Promise.all([
+  const [{appId, campaigns, failed}, shopBody] = await Promise.all([
     readCampaigns(admin),
     admin.graphql(SHOP_QUERY).then((response) => response.json()),
   ]);
+  // Redirecting on a failed read would report the campaign gone.
+  if (failed.length) return {problems: failed.map((error) => error.message)};
+
   const campaign = findCampaign(campaigns, params.campaignId);
   if (!campaign) {
     return redirect(`/app/campaigns${new URL(request.url).search}`);
@@ -589,6 +599,16 @@ export async function action({request, params}) {
 
   const shopId = shopBody.data?.shop?.id ?? null;
   const timeZone = shopBody.data?.shop?.ianaTimezone ?? 'Etc/UTC';
+
+  // Annotation text is written here, and the sales dataset has no currency column. Read
+  // it off the shop rather than the form: the value lands in permanent annotation text,
+  // and an unknown code throws instead of formatting.
+  const money = (value) =>
+    new Intl.NumberFormat('en', {
+      style: 'currency',
+      currency: shopBody.data?.shop?.currencyCode ?? 'USD',
+      maximumFractionDigits: 0,
+    }).format(value);
 
   // Timestamped in the shop's own day, not the browser's.
   const markedAt = (date) =>
@@ -608,7 +628,7 @@ export async function action({request, params}) {
     const {userErrors} = await setProducts(
       admin,
       campaign,
-      JSON.parse(String(form.get('products'))),
+      JSON.parse(String(form.get('products') || '[]')),
     );
     if (userErrors.length) {
       return {problems: userErrors.map((error) => error.message)};
@@ -629,7 +649,7 @@ export async function action({request, params}) {
   }
 
   // [START campaign-dashboard.send-events-action]
-  // Around 680 events, one request each. A real app queues these as its sends happen.
+  // One request per event. A real app queues these as its sends happen.
   if (intent === 'send-events') {
     if (!shopId) return {problems: ['Could not read the store ID.']};
     const {accepted, failures} = await sendCampaignFunnel({
@@ -653,16 +673,16 @@ export async function action({request, params}) {
     }
 
     // Checked against the condition that creates each target. Catching it downstream
-    // means nine markers are already up.
+    // means every marker is already up.
     const unset = [];
-    if (Number(campaign.revenueTarget) <= 0) unset.push('store-wide revenue');
-    if (promotedFilter(campaign) && Number(campaign.productTarget) <= 0) {
+    if (!isPositiveAmount(campaign.revenueTarget)) unset.push('store-wide revenue');
+    if (promotedFilter(campaign) && !isPositiveAmount(campaign.productTarget)) {
       unset.push('promoted product');
     }
     if (
       isTargetedTier(campaign.audience) &&
       dimensions.customer?.enabled &&
-      Number(campaign.audienceTarget) <= 0
+      !isPositiveAmount(campaign.audienceTarget)
     ) {
       unset.push(`${tierLabel(campaign.audience)} segment`);
     }
@@ -810,8 +830,10 @@ export async function action({request, params}) {
       admin.graphql(targetsQuery(closing)).then((response) => response.json()),
     ]);
 
+    // The ID the launch recorded. A target the user made on the same date
+    // measures the same days without being this campaign's.
     const store = (targetsBody.data?.analyticsTargets?.nodes ?? []).find(
-      (node) => !node.filters,
+      (node) => node.id === campaign.targets?.store,
     );
     const measured = store?.shopifyqlQuery
       ? await (await admin.graphql(measureQuery(store.shopifyqlQuery))).json()
@@ -852,14 +874,47 @@ export async function action({request, params}) {
 
   if (intent === 'cancel') {
     // Exactly the IDs on the record. `analyticsTargetsDelete` will delete any target
-    // on the shop, including the user's own.
-    for (const id of Object.values(campaign.markers ?? {})) {
-      await admin.graphql(ANNOTATION_DELETE, {variables: {id}});
+    // on the shop, including the user's own. Each ID drops off the record as its delete
+    // comes back clean, which leaves a retry facing only what's still up: deleting an ID
+    // twice fails on the annotation that's already gone.
+    const undone = [];
+    const markers = {};
+    for (const [key, id] of Object.entries(campaign.markers ?? {})) {
+      const body = await (
+        await admin.graphql(ANNOTATION_DELETE, {variables: {id}})
+      ).json();
+      const errors = [
+        ...transportErrors(body),
+        ...(body.data?.analyticsAnnotationDelete?.userErrors ?? []),
+      ];
+      if (errors.length) {
+        markers[key] = id;
+        undone.push(...errors);
+      }
     }
 
-    const ids = Object.values(campaign.targets ?? {});
+    const targets = {...campaign.targets};
+    const ids = Object.values(targets);
     if (ids.length > 0) {
-      await admin.graphql(TARGETS_DELETE, {variables: {ids}});
+      const body = await (
+        await admin.graphql(TARGETS_DELETE, {variables: {ids}})
+      ).json();
+      const result = body.data?.analyticsTargetsDelete;
+      undone.push(...transportErrors(body), ...(result?.userErrors ?? []));
+      for (const deleted of result?.deletedIds ?? []) {
+        const key = Object.keys(targets).find((name) => targets[name] === deleted);
+        if (key) delete targets[key];
+      }
+    }
+
+    // Clearing the record on a failed delete abandons what's still on the timeline. The
+    // IDs are the only handle the app has on it.
+    if (undone.length) {
+      const {userErrors} = await updateCampaign(admin, campaign.id, {
+        markers,
+        targets,
+      });
+      return {problems: [...undone, ...userErrors].map((error) => error.message)};
     }
 
     // Canceling undoes the annotations and the targets, and nothing else.
@@ -1059,6 +1114,7 @@ export default function CampaignDashboard() {
 
   const {
     appId,
+    eventTotal,
     currencyCode,
     timeZone,
     queryWindow,
@@ -1700,7 +1756,6 @@ export default function CampaignDashboard() {
     fetcher.submit(
       {
         intent,
-        currency: currencyCode,
         ...fields,
       },
       {method: 'post'},
@@ -2268,8 +2323,8 @@ export default function CampaignDashboard() {
               <Fragment>
                 <s-paragraph>
                   Replay this campaign's sends as App Events: nine sends across
-                  email, SMS, and push, plus the forms that grew the list. That's
-                  around 680 events at one request each. Expect a minute or two.
+                  email, SMS, and push. That's {eventTotal} events at one request
+                  each. Expect a minute or two.
                 </s-paragraph>
                 <s-paragraph>
                   Shopify accepts an event before it ingests it. The funnels stay

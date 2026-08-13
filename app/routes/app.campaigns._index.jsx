@@ -1,5 +1,5 @@
 import {Fragment, useEffect, useState} from 'react';
-import {redirect, useFetcher, useLoaderData} from 'react-router';
+import {redirect, useFetcher, useLoaderData, useRouteError} from 'react-router';
 import {BarChart, PolarisVizProvider} from '@shopify/polaris-viz';
 import '@shopify/polaris-viz/build/esm/styles.css';
 import '../chart-tooltip.css';
@@ -13,7 +13,7 @@ import {
   sliceQuery,
 } from '../campaign-queries.server';
 import {enableDimension, readDimensions} from '../dimensions.server';
-import {parseCreatorCodes} from '../campaigns';
+import {isPositiveAmount, parseCreatorCodes, safeLocale} from '../campaigns';
 import {AUDIENCE_TIERS, isTargetedTier, tierLabel} from '../audiences';
 import {CHANNELS, CHANNEL_KEYS} from '../channels';
 
@@ -53,7 +53,7 @@ export const loader = async ({request}) => {
     dimensions,
     targets,
     // The admin's locale rides in on the request. Formatting here matches the client.
-    locale: new URL(request.url).searchParams.get('locale') ?? 'en',
+    locale: safeLocale(new URL(request.url).searchParams.get('locale')),
     sends: sends.tableData.rows ?? [],
     seedErrors: userErrors.map((error) => error.message),
   };
@@ -103,16 +103,23 @@ export const action = async ({request}) => {
   }
   if (fields.channels.length === 0) {
     problems.push('Pick at least one channel to send on.');
+  } else if (fields.channels.some((key) => !CHANNEL_KEYS.includes(key))) {
+    problems.push('Pick channels from the list this app can send on.');
+  }
+  // The tier becomes a ShopifyQL comparison and a target filter, both built as strings.
+  // Only a value this app defines can reach them.
+  if (!AUDIENCE_TIERS.some((tier) => tier.value === fields.audience)) {
+    problems.push('Pick a customer segment from the list.');
   }
   // Expected values have to be above zero, and the mutation rejects rather than clamps.
   // Check each amount the launch will turn into a target.
-  if (Number(fields.revenueTarget) <= 0) {
+  if (!isPositiveAmount(fields.revenueTarget)) {
     problems.push('The store-wide revenue target has to be more than zero.');
   }
-  if (fields.products.length > 0 && Number(fields.productTarget) <= 0) {
+  if (fields.products.length > 0 && !isPositiveAmount(fields.productTarget)) {
     problems.push('The promoted product target has to be more than zero.');
   }
-  if (isTargetedTier(fields.audience) && Number(fields.audienceTarget) <= 0) {
+  if (isTargetedTier(fields.audience) && !isPositiveAmount(fields.audienceTarget)) {
     problems.push(
       `The ${tierLabel(fields.audience)} segment target has to be more than zero.`,
     );
@@ -637,6 +644,22 @@ export default function CampaignsIndex() {
           {/* [END campaign-dashboard.channel-picker] */}
         </form>
       )}
+    </s-page>
+  );
+}
+
+// React Router replaces the nearest route with a boundary. Without one here, a failed
+// load takes AppProvider and the app's navigation with it.
+export function ErrorBoundary() {
+  const error = useRouteError();
+  const detail = error?.data ?? error?.message ?? 'The load failed.';
+  return (
+    <s-page heading="Campaigns">
+      <s-section>
+        <s-banner tone="critical" heading="The campaign list didn't load">
+          <s-paragraph>{String(detail)}</s-paragraph>
+        </s-banner>
+      </s-section>
     </s-page>
   );
 }
