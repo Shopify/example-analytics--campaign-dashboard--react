@@ -6,47 +6,57 @@ It reports its own funnel with [App Events](https://shopify.dev/docs/apps/build/
 
 Companion code for [Build a campaign performance dashboard](https://shopify.dev/docs/apps/build/analytics/build-a-campaign-dashboard).
 
-## Quickstart
+## Setup
 
-You'll need Node 20.19+ or 22.12+, a [Shopify Partner account](https://www.shopify.com/partners), a development store, and [Shopify CLI](https://shopify.dev/docs/api/shopify-cli):
+You'll need Node 20.19+ or 22.12+, a [Shopify Partner account](https://www.shopify.com/partners), a development store, and [Shopify CLI](https://shopify.dev/docs/api/shopify-cli).
 
-```shell
-npm install -g @shopify/cli@latest
-```
+1. Install Shopify CLI:
 
-Clone and link:
+   ```shell
+   npm install -g @shopify/cli@latest
+   ```
 
-```shell
-git clone https://github.com/Shopify/example-analytics--campaign-dashboard--react.git
-cd example-analytics--campaign-dashboard--react
-npm install
-npm run config:link
-```
+2. Clone the repository and install its dependencies:
 
-`config:link` empties `access_scopes.scopes`. Restore it in `shopify.app.toml` before you deploy, because an app installed with no scopes fails every query and every write:
+   ```shell
+   git clone https://github.com/Shopify/example-analytics--campaign-dashboard--react.git
+   cd example-analytics--campaign-dashboard--react
+   npm install
+   ```
 
-```toml
-[access_scopes]
-scopes = "read_reports,write_reports,read_analytics_annotations,write_analytics_annotations,write_products,write_customers,write_orders"
-```
+3. Create the app record and link this directory to it:
 
-Now request [the access the panels need](#access-to-request). Both requests are against the app that `config:link` created, and every sales panel stays empty until the first one lands.
+   ```shell
+   npm run config:link
+   ```
 
-Then:
+4. Restore `access_scopes.scopes` in `shopify.app.toml`. `config:link` empties it, and an app installed with no scopes fails every query and every write:
 
-```shell
-npm run setup
-npm run deploy
-npm run dev
-```
+   ```toml
+   [access_scopes]
+   scopes = "read_reports,write_reports,read_analytics_annotations,write_analytics_annotations,write_products,write_customers,write_orders"
+   ```
 
-Press `p` to open the preview URL, then click **Install app**. The install prompt lists the scopes above. The app opens on the campaign list.
+5. Request [Level 2 protected customer data](#level-2-protected-customer-data) and [App Events in Analytics](#app-events-in-analytics) for the app you just created. Every sales panel stays empty until the first one lands.
 
-Don't send events for a few minutes after `npm run deploy`. An event is [eligible for analytics](https://shopify.dev/docs/apps/build/app-events/analytics#how-analytics-eligibility-works) only if it matches an accepted declaration, and a reused idempotency key is dropped. Events sent too early can't be resent under the same keys. The **Channel metrics** panel reaching its dataset is the signal that the declaration landed.
+6. Create the local database, then deploy the app and its event declarations:
+
+   ```shell
+   npm run setup
+   npm run deploy
+   ```
+
+7. Start the app, press `p` to open the preview URL, then click **Install app**. The prompt lists the scopes from step 4, and the app opens on the campaign list:
+
+   ```shell
+   npm run dev
+   ```
+
+Wait a few minutes after `npm run deploy` before sending any events. An event is [eligible for analytics](https://shopify.dev/docs/apps/build/app-events/analytics#how-analytics-eligibility-works) only if it matches an accepted declaration, and a reused idempotency key is dropped with its payload. Events sent too early can't be resent under the same keys. The **Channel metrics** panel reaching its dataset is the signal that the declaration landed.
 
 ## Access to request
 
-Neither gates whether the app runs. Both gate what the panels show.
+Neither request gates whether the app runs. Both gate what the panels show.
 
 | Access | What stays empty without it |
 |--------|-----------------------------|
@@ -57,11 +67,11 @@ Neither gates whether the app runs. Both gate what the panels show.
 
 This app needs Level 2 because the audience roster reads `Customer.displayName`, a protected name field. On a development store it's self-serve, with no review to wait on:
 
-1. [Select a distribution method](https://shopify.dev/docs/apps/launch/distribution/select-distribution-method) for the app. You can't request customer data access without one, and a freshly linked app doesn't have one. Pick **Custom distribution**. It needs no approval, it covers your own development store, and its only limitation is the Billing API, which this app doesn't use. You can't change the choice afterward.
-2. Open the app that `config:link` created in the [Dev Dashboard](https://dev.shopify.com/dashboard). Shopify CLI creates its app records there, and the Dev Dashboard has replaced the Partner Dashboard for app configuration.
-3. [Request access to protected customer data](https://shopify.dev/docs/apps/launch/protected-customer-data#request-access-to-protected-customer-data) and select the **Name** field. That's the only protected field this app reads.
+1. Open the app that `config:link` created in the [Dev Dashboard](https://dev.shopify.com/dashboard). Shopify CLI creates its app records there.
+2. [Select a distribution method](https://shopify.dev/docs/apps/launch/distribution/select-distribution-method) and pick **Custom distribution**. You can't request customer data access without one, and you can't change the choice afterward. Custom distribution needs no approval and covers your own development store.
+3. [Request access to protected customer data](https://shopify.dev/docs/apps/launch/protected-customer-data#request-access-to-protected-customer-data) and select the **Name** field, the only protected field this app reads.
 
-Access lands when the request is saved. An app installed only on a development store doesn't get submitted for review.
+Access lands when the request is saved. An app installed only on a development store isn't submitted for review.
 
 ### App Events in Analytics
 
@@ -94,13 +104,13 @@ Then run the remaining writes and watch each one reach those same charts. **Clos
 
 Campaign records live in an app-data metafield on the store's app installation, not in the local database. Re-cloning doesn't reset them. The seed only runs against an empty metafield, and a fresh app installation gives you one.
 
-## Getting numbers on the charts
+## Get numbers on the charts
 
 A development store with no orders reports `$0` everywhere. That's the app working, not a broken install.
 
 - Place test orders inside `Summer launch`'s window. Its nine sends land between 20 and 7 days before you install.
 - Cluster the orders in the days right after a send rather than spreading them evenly, and put the largest cluster in the last few days. Orders placed only in the opening week make every follow-up read as having moved nothing.
-- **Creator revenue** groups sales by `discount_code`, which counts a code only when a buyer enters it at checkout. Create `AVERY10`, `AVERYSUMMER`, and `JUNO15` under **Discounts**, then place storefront orders that use them. A discount added to an order in the admin is recorded as a manual discount with no code on it, and analytics attributes it to no code at all. The panel stays hidden until one code lands.
+- Create `AVERY10`, `AVERYSUMMER`, and `JUNO15` under **Discounts**, then place storefront orders that use them. **Creator revenue** groups sales by `discount_code`, which counts a code only when a buyer enters it at checkout. A discount added to an order in the admin carries no code at all. The panel stays hidden until one code lands.
 
 ## What it does
 
