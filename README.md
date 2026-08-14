@@ -30,6 +30,8 @@ npm run config:link
 scopes = "read_reports,write_reports,read_analytics_annotations,write_analytics_annotations,write_products,write_customers,write_orders"
 ```
 
+Now request [the access the panels need](#access-to-request). Both requests are against the app that `config:link` created, and every sales panel stays empty until the first one lands.
+
 Then:
 
 ```shell
@@ -38,18 +40,34 @@ npm run deploy
 npm run dev
 ```
 
-Press `p`. The app opens on the campaign list.
+Press `p` to open the preview URL, then click **Install app**. The install prompt lists the scopes above. The app opens on the campaign list.
 
 Don't send events for a few minutes after `npm run deploy`. An event is [eligible for analytics](https://shopify.dev/docs/apps/build/app-events/analytics#how-analytics-eligibility-works) only if it matches an accepted declaration, and a reused idempotency key is dropped. Events sent too early can't be resent under the same keys. The **Channel metrics** panel reaching its dataset is the signal that the declaration landed.
 
 ## Access to request
 
-Neither gates whether the app runs. Both gate what the panels show, and both take time.
+Neither gates whether the app runs. Both gate what the panels show.
 
-| Access | What stays empty without it | How to get it |
-|--------|-----------------------------|---------------|
-| [Level 2 protected customer data](https://shopify.dev/docs/apps/launch/protected-customer-data) | Every panel that reads sales. `shopifyqlQuery` returns no data. | Request it for this app in the [Partner Dashboard](https://partners.shopify.com/current/apps) after `config:link` creates it. |
-| [App Events in Analytics](https://shopify.dev/docs/apps/build/app-events/analytics) | **Campaign events**, **Channel metrics**, **Send performance**, and **Deliverability**. | [Request early access](https://forms.gle/2yLka2Ww3J3cNiGY8). |
+| Access | What stays empty without it |
+|--------|-----------------------------|
+| [Level 2 protected customer data](https://shopify.dev/docs/apps/launch/protected-customer-data) | Every panel that reads sales. `shopifyqlQuery` returns no data. |
+| [App Events in Analytics](https://shopify.dev/docs/apps/build/app-events/analytics) | **Campaign events**, **Channel metrics**, **Send performance**, and **Deliverability**. |
+
+### Level 2 protected customer data
+
+This app needs Level 2 because the audience roster reads `Customer.displayName`, a protected name field. On a development store it's self-serve, with no review to wait on:
+
+1. [Select a distribution method](https://shopify.dev/docs/apps/launch/distribution/select-distribution-method) for the app. You can't request customer data access without one, and a freshly linked app doesn't have one. Pick **Custom distribution**. It needs no approval, it covers your own development store, and its only limitation is the Billing API, which this app doesn't use. You can't change the choice afterward.
+2. In the [Partner Dashboard](https://partners.shopify.com/current/apps), open the app that `config:link` created.
+3. Click **API access requests**, find **Protected customer data access**, and click **Request access**.
+4. Select **Protected customer data**, give your reasons for using it, and click **Save**.
+5. Select the **Name** field, give your reasons for using it, and click **Save**.
+
+You have access after step 5. An app installed only on a development store doesn't get submitted for review.
+
+### App Events in Analytics
+
+An early-access program. [Request access with this form](https://forms.gle/2yLka2Ww3J3cNiGY8) and wait for a reply. There's no self-serve path.
 
 You also need API version `2026-10` or later. Annotations and targets don't exist before it.
 
@@ -98,7 +116,7 @@ The [tutorial](https://shopify.dev/docs/apps/build/analytics/build-a-campaign-da
 
 | What you see | What it means |
 |--------------|---------------|
-| Every sales panel is empty, and the server log reads `Access denied for shopifyqlQuery field` | Level 2 access hasn't been approved for this app yet. |
+| Every sales panel is empty, and the server log reports an access error on `shopifyqlQuery` | Either the `scopes` line didn't survive `config:link`, or Level 2 access hasn't landed for this app. Reading live analytics needs both `read_reports` and Level 2. |
 | Every sales panel reads `$0` | The store has no orders in the campaign's window. |
 | `This store can't query App Events yet` | Either `npm run deploy` hasn't propagated, or the organization doesn't have App Events access. |
 | `Column Not Found` on an `app_events` query | The declaration hasn't reached the store. Don't send events until it clears. |
