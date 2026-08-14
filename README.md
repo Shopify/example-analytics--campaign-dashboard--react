@@ -114,7 +114,7 @@ A development store with no orders reports `$0` everywhere. That's the app worki
 
 ## What it does
 
-A launched campaign opens on what it promised, states what that added up to, then shows the evidence in the order a campaign produces it. Targets, sales against the period before, the send funnel per channel, revenue grouped by the dimensions this app creates, and a closing summary written back to the store's timeline.
+A launched campaign opens on what it promised, states what that added up to, then shows the evidence in the order a campaign produces it. The panels run from its targets, to sales against the period before, to the send funnel per channel, to revenue grouped by the dimensions this app creates, and end on a closing summary written back to the store's timeline.
 
 Each panel carries chips beside its title naming what produced the number, whether that's ShopifyQL, App Events, metafields, annotations, or web components.
 
