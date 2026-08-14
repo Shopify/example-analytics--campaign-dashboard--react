@@ -198,7 +198,7 @@ export async function loader({request, params}) {
     eventTotal: EVENT_TOTAL,
     // The sales dataset has no currency column. Read it off the shop field.
     currencyCode: salesBody.data?.shop?.currencyCode ?? 'USD',
-    // TIMESERIES buckets by the store's timezone. The browser's would misdate a marker.
+    // TIMESERIES buckets by the store's timezone. The browser's would misdate an annotation.
     timeZone: salesBody.data?.shop?.ianaTimezone ?? 'Etc/UTC',
     queryWindow,
     dimensions,
@@ -324,8 +324,8 @@ async function resolveLaunchMark(admin, campaign) {
 // [END campaign-dashboard.bundle-mark]
 
 // [START campaign-dashboard.clear-marks]
-// Exactly this campaign's markers. The window is shared: a campaign running over the
-// same days has its own marks in this list, and they aren't this one's to delete.
+// Exactly this campaign's annotations. The window is shared. A campaign running over
+// the same days has its own marks in this list, and they aren't this one's to delete.
 // Reading the store first also skips an ID already gone from the timeline, rather than
 // reporting the delete that can't find it as a failure.
 async function clearOwnMarks(admin, campaign, appId) {
@@ -489,7 +489,7 @@ async function stampOrders(admin, campaign) {
 }
 // [END campaign-dashboard.stamp-orders]
 
-// Editable until launch: the target filters on these IDs, the marker uses the titles.
+// Editable until launch: the target filters on these IDs, the annotation uses the titles.
 const setProducts = (admin, campaign, products) =>
   updateCampaign(admin, campaign.id, {products});
 
@@ -548,7 +548,7 @@ async function markMilestone(admin, target, markedAt, money) {
 // [END campaign-dashboard.milestone]
 
 // [START campaign-dashboard.record-mark]
-// Keyed on the record, which is what lets a marker be rewritten and a cancel find it.
+// Keyed on the record, which is what lets an annotation be rewritten and a cancel find it.
 // Milestones and incidents repeat. Their keys carry what makes them distinct.
 const recordMark = (admin, campaign, key, id) =>
   id ? rememberMarkers(admin, campaign.id, {[key]: id}) : null;
@@ -679,7 +679,7 @@ export async function action({request, params}) {
     }
 
     // Checked against the condition that creates each target. Catching it downstream
-    // means every marker is already up.
+    // means every annotation is already up.
     const unset = [];
     if (!isPositiveAmount(campaign.revenueTarget)) unset.push('store-wide revenue');
     if (promotedFilter(campaign) && !isPositiveAmount(campaign.productTarget)) {
@@ -1463,7 +1463,7 @@ export default function CampaignDashboard() {
   // [END campaign-dashboard.sequence-charts]
 
   // [START campaign-dashboard.insight-chart]
-  // Two markers in one week land on the same point. Merge rather than overlap.
+  // Two annotations in one week land on the same point. Merge rather than overlap.
   const insightWeekly = insight
     ? [
         {
@@ -2770,7 +2770,7 @@ export default function CampaignDashboard() {
       )}
 
       {/* [START campaign-dashboard.close-render] */}
-      {/* Closing rewrites the campaign's own marker rather than adding a second. The
+      {/* Closing rewrites the campaign's own annotation rather than adding a second. The
           writes that end a campaign sit after the evidence they act on. */}
       <s-section heading="Campaign lifecycle">
         <s-stack direction="block" gap="base">

@@ -8,7 +8,7 @@ Companion code for [Build a campaign performance dashboard](https://shopify.dev/
 
 ## Setup
 
-You'll need Node 20.19+ or 22.12+, a [Shopify Partner account](https://www.shopify.com/partners), a development store, and [Shopify CLI](https://shopify.dev/docs/api/shopify-cli).
+You'll need Node 20.19+ or 22.12+, [app development permissions](https://shopify.dev/docs/apps/build/dev-dashboard/user-permissions), a [dev store](https://shopify.dev/docs/apps/build/dev-dashboard/development-stores), and the latest [Shopify CLI](https://shopify.dev/docs/api/shopify-cli).
 
 1. Install Shopify CLI:
 
@@ -37,26 +37,22 @@ You'll need Node 20.19+ or 22.12+, a [Shopify Partner account](https://www.shopi
    scopes = "read_reports,write_reports,read_analytics_annotations,write_analytics_annotations,write_products,write_customers,write_orders"
    ```
 
-5. Request [Level 2 protected customer data](#level-2-protected-customer-data) and [App Events in Analytics](#app-events-in-analytics) for the app you just created. Every sales panel stays empty until the first one lands.
-
-6. Create the local database, then deploy the app and its event declarations:
+5. Create the local database, then deploy the app and its event declarations:
 
    ```shell
    npm run setup
    npm run deploy
    ```
 
-7. Start the app, press `p` to open the preview URL, then click **Install app**. The prompt lists the scopes from step 4, and the app opens on the campaign list:
+6. Start the app, press `p` to open the preview URL, then click **Install app**. The prompt lists the scopes from step 4:
 
    ```shell
    npm run dev
    ```
 
-Wait a few minutes after `npm run deploy` before sending any events. An event is [eligible for analytics](https://shopify.dev/docs/apps/build/app-events/analytics#how-analytics-eligibility-works) only if it matches an accepted declaration, and a reused idempotency key is dropped with its payload. Events sent too early can't be resent under the same keys. The **Channel metrics** panel reaching its dataset is the signal that the declaration landed.
+The app opens on a campaign list holding two seeded campaigns. Every panel reads `$0` or has no rows until you request the two kinds of access below and the store has orders to report. The event declaration from `npm run deploy` also takes a few minutes to propagate before any App Events query returns rows.
 
 ## Access to request
-
-Neither request gates whether the app runs. Both gate what the panels show.
 
 | Access | What stays empty without it |
 |--------|-----------------------------|
@@ -65,19 +61,19 @@ Neither request gates whether the app runs. Both gate what the panels show.
 
 ### Level 2 protected customer data
 
-This app needs Level 2 because the audience roster reads `Customer.displayName`, a protected name field. On a development store it's self-serve, with no review to wait on:
+This app needs Level 2 because the audience roster reads `Customer.displayName`, a protected name field. On a dev store it's self-serve, with no review to wait on:
 
 1. Open the app that `config:link` created in the [Dev Dashboard](https://dev.shopify.com/dashboard). Shopify CLI creates its app records there.
-2. [Select a distribution method](https://shopify.dev/docs/apps/launch/distribution/select-distribution-method) and pick **Custom distribution**. You can't request customer data access without one, and you can't change the choice afterward. Custom distribution needs no approval and covers your own development store.
+2. [Select a distribution method](https://shopify.dev/docs/apps/launch/distribution/select-distribution-method) and pick **Custom distribution**. You can't request customer data access without one, and you can't change the choice afterward. Custom distribution needs no approval and covers your dev store.
 3. [Request access to protected customer data](https://shopify.dev/docs/apps/launch/protected-customer-data#request-access-to-protected-customer-data) and select the **Name** field, the only protected field this app reads.
 
-Access lands when the request is saved. An app installed only on a development store isn't submitted for review.
+Saving the request grants the access.
 
 ### App Events in Analytics
 
 An early-access program. [Request access with this form](https://forms.gle/2yLka2Ww3J3cNiGY8) and wait for a reply. There's no self-serve path.
 
-You also need API version `2026-10` or later. Annotations and targets don't exist before it.
+`shopify.app.toml` pins `api_version = "2026-10"`, the first version with annotations and targets. Don't lower it.
 
 ## Credentials
 
@@ -92,29 +88,29 @@ The first load seeds two campaigns, both planned, dated relative to your install
 | Campaign | Window | What it shows |
 |----------|--------|---------------|
 | `Summer launch` | Opened 20 days ago, a week left | Nine sends finished a week ago, leaving room for the sales they moved. |
-| `Back to school` | Starts in two weeks | Nothing to report. Every panel is the setup it still needs. |
+| `Back to school` | Starts in two weeks | Nothing to report. Every panel shows the setup it still needs. |
 
-1. On the campaign list, under **Dimensions this app owns**, click **Create it as a dimension** on each of the three rows. This is a one-time step, and reports that group on a dimension have nothing to draw until it's queryable.
+1. On the campaign list, under **Dimensions this app owns**, click **Create it as a dimension** on each of the three rows. Do this once. A report that groups on a dimension returns no rows until the dimension is queryable.
 2. Open `Summer launch`. Under **Campaign setup**, click **Select products** and choose up to five, then choose a **Customer segment**.
-3. Click **Launch the campaign**. Markers and targets appear on the next render.
-4. Click **Send the campaign's events**. The button names the event count. The replay takes a minute or two to post, and the funnel panels fill a few minutes later.
-5. Click **Open this report in the store's analytics dashboard** to confirm the markers landed outside the app.
+3. Click **Launch the campaign**. Annotations and targets appear on the next render.
+4. Click **Send the campaign's events**. The button names the event count. Posting them takes a minute or two, and the funnel panels have numbers a few minutes after that.
+5. Click **Open this report in the store's analytics dashboard** to confirm the annotations landed outside the app.
 
-Then run the remaining writes and watch each one reach those same charts. **Close the campaign with its result** rewrites the marker with what the campaign earned and stamps each order with the send it followed. **Cancel the campaign** takes the markers and targets back off the store. **Plan the campaign again** returns it to planned so you can launch it a second time.
+Three more controls write to those same charts. **Close the campaign with its result** rewrites the annotation with what the campaign earned and stamps each order with the send it followed. **Cancel the campaign** takes the annotations and targets back off the store. **Plan the campaign again** returns it to planned for a second launch.
 
 Campaign records live in an app-data metafield on the store's app installation, not in the local database. Re-cloning doesn't reset them. The seed only runs against an empty metafield, and a fresh app installation gives you one.
 
 ## Get numbers on the charts
 
-A development store with no orders reports `$0` everywhere. That's the app working, not a broken install.
+A dev store with no orders reports `$0`. The seed creates campaigns, not the sales those campaigns are supposed to have moved.
 
 - Place test orders inside `Summer launch`'s window. Its nine sends land between 20 and 7 days before you install.
 - Cluster the orders in the days right after a send rather than spreading them evenly, and put the largest cluster in the last few days. Orders placed only in the opening week make every follow-up read as having moved nothing.
-- Create `AVERY10`, `AVERYSUMMER`, and `JUNO15` under **Discounts**, then place storefront orders that use them. **Creator revenue** groups sales by `discount_code`, which counts a code only when a buyer enters it at checkout. A discount added to an order in the admin carries no code at all. The panel stays hidden until one code lands.
+- Create `AVERY10`, `AVERYSUMMER`, and `JUNO15` under **Discounts**, then place storefront orders that use them. **Creator revenue** groups sales by `discount_code`, which counts a code only when a buyer enters it at checkout. A discount added to an order in the admin carries no code. The panel stays hidden until one order carries one.
 
 ## What it does
 
-A launched campaign opens on what it promised, states what that added up to, then shows the evidence in the order a campaign produces it. The panels run from its targets, to sales against the period before, to the send funnel per channel, to revenue grouped by the dimensions this app creates, and end on a closing summary written back to the store's timeline.
+A launched campaign opens on what it promised, then states what that added up to. The panels below it follow the order in which a campaign produces its evidence. Targets come first, then sales against the period before, the send funnel per channel, revenue grouped by the dimensions this app creates, and a closing summary written back to the store's timeline.
 
 Each panel carries chips beside its title naming what produced the number, whether that's ShopifyQL, App Events, metafields, annotations, or web components.
 
@@ -128,7 +124,7 @@ The [tutorial](https://shopify.dev/docs/apps/build/analytics/build-a-campaign-da
 | Every sales panel reads `$0` | The store has no orders in the campaign's window. |
 | `This store can't query App Events yet` | Either `npm run deploy` hasn't propagated, or the organization doesn't have App Events access. |
 | `Column Not Found` on an `app_events` query | The declaration hasn't reached the store. Don't send events until it clears. |
-| **Creator revenue** doesn't appear at all | No sale carries one of the three codes. A discount added to an order in the admin doesn't count, because analytics reads the code off the discount itself and a manual discount has none. |
+| **Creator revenue** doesn't appear | No sale carries one of the three codes. A discount added to an order in the admin doesn't count, because analytics reads the code off the discount itself and a manual discount has none. |
 | **Promoted product sales** or a segment panel is empty | The dimension isn't queryable yet. Create it from **Dimensions this app owns**. |
 | A campaign shows a status you didn't set | Records live on the store, not in the clone. |
 | An event replay posts but nothing changes | A reused idempotency key is dropped with its payload. Bump the `RUN` constant in `app/app-events.server.js`. No query filters on `RUN`. A replay adds to the events already recorded under that `campaign_id`. Create a new campaign for a clean set of numbers. |

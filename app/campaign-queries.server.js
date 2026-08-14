@@ -21,7 +21,7 @@ export const SHOP_QUERY = `
 export const STATE_NAMESPACE = 'campaign_dashboard';
 export const STATE_KEY = 'campaigns';
 
-// Returns the app's own ID, which tells this app's markers from another app's.
+// Returns the app's own ID, which tells this app's annotations from another app's.
 export const STATE_QUERY = `
   query CampaignState {
     currentAppInstallation {
@@ -223,7 +223,7 @@ export function progressValue(result) {
   return Number(Object.values(row)[0] ?? 0);
 }
 
-// Re-measuring one target before writing a permanent marker for it.
+// Re-measuring one target before writing a permanent annotation for it.
 export const measureQuery = (generated) => `
   query MeasureTarget {
     shopifyqlQuery(query: ${JSON.stringify(generated)}) {
@@ -270,7 +270,7 @@ export const BUNDLE_QUERY = `
 // [END campaign-dashboard.bundle-query]
 
 // [START campaign-dashboard.annotation-update]
-// Only the fields you pass change. A marker can be rewritten with what happened.
+// Only the fields you pass change. An annotation can be rewritten with what happened.
 export const ANNOTATION_UPDATE = `
   mutation CloseCampaignAnnotation($id: ID!, $input: AnalyticsAnnotationUpdateInput!) {
     analyticsAnnotationUpdate(id: $id, input: $input) {

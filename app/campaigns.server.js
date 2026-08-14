@@ -121,7 +121,7 @@ export async function updateCampaign(admin, campaignId, change) {
   return {campaign: findCampaign(updated, campaignId), userErrors};
 }
 
-// Annotation IDs per mark, to find and rewrite a marker after the campaign runs.
+// Annotation IDs per mark, to find and rewrite an annotation after the campaign runs.
 export async function rememberMarkers(admin, campaignId, markers) {
   const {campaigns} = await readCampaigns(admin);
   const campaign = findCampaign(campaigns, campaignId);
