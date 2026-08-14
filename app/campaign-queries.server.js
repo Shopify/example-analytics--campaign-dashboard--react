@@ -426,12 +426,12 @@ export const bounceQuery = (campaign) => `
 // [END campaign-dashboard.bounce-query]
 
 // [START campaign-dashboard.insight-query]
-// OVERALL picks the top five once rather than every week. ONLY drops the `Other` row.
-// TOP 5 takes its ranking from ORDER BY. Ordering by week ranks the products by title.
+// TOP 5 ranks products by gross_sales, the metric the query aggregates. ONLY drops the
+// `Other` row that would otherwise total every product outside the top five.
 export const insightQuery = (campaign) => `
   query CampaignInsight {
     shopifyqlQuery(
-      query: "FROM sales SHOW gross_sales TIMESERIES week GROUP BY ONLY TOP 5 product_title OVERALL ${insightWindow(campaign)} ORDER BY gross_sales DESC"
+      query: "FROM sales SHOW gross_sales TIMESERIES week GROUP BY ONLY TOP 5 product_title ${insightWindow(campaign)} ORDER BY gross_sales DESC"
     ) {
       tableData {
         rows

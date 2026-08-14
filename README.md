@@ -40,7 +40,7 @@ npm run dev
 
 Press `p`. The app opens on the campaign list.
 
-Don't send events for a few minutes after `npm run deploy`. An event arriving before its declaration is live is marked ineligible for analytics on arrival, that verdict is never revisited, and the events can't be resent under the same keys. The **Channel metrics** panel reaching its dataset is the signal that the declaration landed.
+Don't send events for a few minutes after `npm run deploy`. An event is [eligible for analytics](https://shopify.dev/docs/apps/build/app-events/analytics#how-analytics-eligibility-works) only if it matches an accepted declaration, and a reused idempotency key is dropped. Events sent too early can't be resent under the same keys. The **Channel metrics** panel reaching its dataset is the signal that the declaration landed.
 
 ## Access to request
 
@@ -105,7 +105,7 @@ The [tutorial](https://shopify.dev/docs/apps/build/analytics/build-a-campaign-da
 | **Creator revenue** reads `$0` with orders on the chart | The three discount codes don't exist, or no order redeemed one. |
 | **Promoted product sales** or a segment panel is empty | The dimension isn't queryable yet. Create it from **Dimensions this app owns**. |
 | A campaign shows a status you didn't set | Records live on the store, not in the clone. |
-| An event replay posts but nothing changes | A reused idempotency key is dropped with its payload. Bump the `RUN` constant in `app/app-events.server.js`. |
+| An event replay posts but nothing changes | A reused idempotency key is dropped with its payload. Bump the `RUN` constant in `app/app-events.server.js`. No query filters on `RUN`. A replay adds to the events already recorded under that `campaign_id`. Create a new campaign for a clean set of numbers. |
 
 ## How it's built
 

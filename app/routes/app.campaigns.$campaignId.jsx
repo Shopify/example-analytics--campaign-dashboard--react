@@ -2547,26 +2547,8 @@ export default function CampaignDashboard() {
                         : integer(touch.reached)}
                     </s-table-cell>
                     <s-table-cell>
-                      <s-stack gap="small-500">
-                        <s-text>
-                          {integer(touch.engaged)} {touch.action} ·{' '}
-                          {Math.round(touch.rate)}%
-                        </s-text>
-                        <s-box
-                          background="base"
-                          borderRadius="large"
-                          blockSize="8px"
-                          overflow="hidden"
-                          accessibilityVisibility="hidden"
-                        >
-                          <s-box
-                            background="strong"
-                            borderRadius="large"
-                            blockSize="8px"
-                            inlineSize={`${Math.min(100, Math.round(touch.rate))}%`}
-                          />
-                        </s-box>
-                      </s-stack>
+                      {integer(touch.engaged)} {touch.action} ·{' '}
+                      {Math.round(touch.rate)}%
                     </s-table-cell>
                   </s-table-row>
                 ))}

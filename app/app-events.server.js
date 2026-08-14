@@ -52,7 +52,7 @@ export const SEQUENCE = [
   {day: 1, channel: 'sms', template: 4102, name: 'Early access', audience: 21, engaged: 0.34, lost: 0},
   {day: 3, channel: 'email', template: 4103, name: 'Non-openers', audience: 33, engaged: 0.24, clicked: 0.22, lost: 3},
   {day: 5, channel: 'push', template: 4104, name: 'App exclusive', audience: 26, engaged: 0.38},
-  {day: 7, channel: 'email', template: 4105, name: 'Restock', audience: 51, engaged: 0.31, clicked: 0.3, lost: 2},
+  {day: 7, channel: 'email', template: 4105, name: 'Bestsellers', audience: 51, engaged: 0.31, clicked: 0.3, lost: 2},
   {day: 8, channel: 'sms', template: 4106, name: 'BOGO offer', audience: 20, engaged: 0.41, lost: 1},
   {day: 11, channel: 'push', template: 4107, name: 'Influencer drop', audience: 25, engaged: 0.45},
   {day: 12, channel: 'email', template: 4108, name: 'Last chance', audience: 49, engaged: 0.36, clicked: 0.25, lost: 2},
