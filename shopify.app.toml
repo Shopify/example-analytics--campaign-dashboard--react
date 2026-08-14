@@ -28,6 +28,7 @@ api_version = "2026-10"
   topics = ["app/uninstalled"]
   uri = "/webhooks/app/uninstalled"
 
+  # [START campaign-dashboard.compliance-webhooks]
   # Required of every app that holds customer data. Launching a campaign saves a
   # customer ID and display name per tier member onto the record. These three go in
   # `compliance_topics` rather than `topics`, which rejects them at release.
@@ -42,3 +43,4 @@ api_version = "2026-10"
   [[webhooks.subscriptions]]
   compliance_topics = ["shop/redact"]
   uri = "/webhooks/shop/redact"
+  # [END campaign-dashboard.compliance-webhooks]

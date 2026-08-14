@@ -158,12 +158,12 @@ export function campaignMarks(campaign) {
     },
   ];
 
-  // Each dated to the day that channel's send actually goes out, from `SEQUENCE`. A
-  // mark on a day nothing happened attributes orders to a send that hadn't gone yet.
+  // Both the day and the name come from `SEQUENCE`, which is what the events report.
+  // A mark named for a send that never went out reads as that send on the chart.
   const sends = {
-    email: {offset: 0, title: 'Launch email', did: 'Went to'},
-    push: {offset: 5, title: 'Push follow-up', did: 'Chased the email for'},
-    sms: {offset: 13, title: 'Last-chance SMS', did: 'Closed the campaign for'},
+    email: {offset: 0, title: 'Announcement', did: 'Opened the campaign for'},
+    push: {offset: 5, title: 'App exclusive', did: 'Went to the app for'},
+    sms: {offset: 13, title: 'Final hours', did: 'Closed the campaign for'},
   };
   for (const channel of channels) {
     const send = sends[channel] ?? {offset: 0, title: channelLabel(channel), did: 'Went to'};

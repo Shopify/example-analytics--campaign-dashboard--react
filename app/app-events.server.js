@@ -56,7 +56,7 @@ export const SEQUENCE = [
   {day: 8, channel: 'sms', template: 4106, name: 'BOGO offer', audience: 20, engaged: 0.41, lost: 1},
   {day: 11, channel: 'push', template: 4107, name: 'Influencer drop', audience: 25, engaged: 0.45},
   {day: 12, channel: 'email', template: 4108, name: 'Last chance', audience: 49, engaged: 0.36, clicked: 0.25, lost: 2},
-  {day: 13, channel: 'sms', template: 4109, name: 'Final hours', audience: 19, engaged: 0.29, lost: 2},
+  {day: 13, channel: 'sms', template: 4109, name: 'Final hours', audience: 19, engaged: 0.37, lost: 2},
 ];
 
 // What each channel can report. Push has two stages where email has six, because the

@@ -1807,6 +1807,23 @@ export default function CampaignDashboard() {
   const planned = campaign.status === 'planned';
   const running = campaign.status === 'running';
 
+  // Drawn beside the store's totals on a launched campaign, and on its own before one.
+  const statusLine = (
+    <s-stack direction="inline" gap="base" alignItems="center">
+      <s-badge
+        tone={running ? 'success' : campaign.status === 'closed' ? 'info' : undefined}
+      >
+        {campaign.status}
+      </s-badge>
+      <s-text color="subdued">
+        {shortDate(campaign.startDate)} to {shortDate(campaign.endDate)}
+      </s-text>
+      <s-text color="subdued">
+        {campaign.channels.map((key) => CHANNELS[key].label).join(', ')}
+      </s-text>
+    </s-stack>
+  );
+
   // A percentage says nothing about whether the rest can be earned. This divides the
   // same two numbers by the days on either side of today.
   const dayGap = (from, to) =>
@@ -1859,46 +1876,19 @@ export default function CampaignDashboard() {
       )}
 
       {/* [START campaign-dashboard.status-render] */}
-      {/* Which writes are offered follows the campaign's state. */}
-      <s-section>
-        <s-stack direction="block" gap="base">
-        <s-stack direction="inline" gap="base" alignItems="center">
-          <s-badge
-            tone={running ? 'success' : campaign.status === 'closed' ? 'info' : undefined}
-          >
-            {campaign.status}
-          </s-badge>
-          <s-text color="subdued">
-            {shortDate(campaign.startDate)} to {shortDate(campaign.endDate)}
-          </s-text>
-          <s-text color="subdued">
-            {campaign.channels.map((key) => CHANNELS[key].label).join(', ')}
-          </s-text>
-        </s-stack>
-
-        <s-stack direction="inline" gap="base">
-          {planned && (
-            <s-button variant="primary" loading={busy} onClick={() => submit('launch')}>
-              Launch the campaign
-            </s-button>
-          )}
-          {running && (
-            <s-button loading={busy} onClick={() => submit('close')}>
-              Close the campaign with its result
-            </s-button>
-          )}
-          {campaign.status === 'canceled' ? (
-            <s-button variant="primary" loading={busy} onClick={() => submit('replan')}>
-              Plan the campaign again
-            </s-button>
-          ) : (
-            <s-button tone="critical" loading={busy} onClick={() => submit('cancel')}>
-              Cancel the campaign
-            </s-button>
-          )}
-        </s-stack>
-        </s-stack>
-      </s-section>
+      {/* Before a launch there are no totals to sit beside, and one action to offer. */}
+      {planned && (
+        <s-section>
+          <s-stack direction="block" gap="base">
+            {statusLine}
+            <s-stack direction="inline">
+              <s-button variant="primary" loading={busy} onClick={() => submit('launch')}>
+                Launch the campaign
+              </s-button>
+            </s-stack>
+          </s-stack>
+        </s-section>
+      )}
       {/* [END campaign-dashboard.status-render] */}
 
       {planned && (
@@ -2130,6 +2120,7 @@ export default function CampaignDashboard() {
                 'The query behind every card, down to the VISUALIZE clause that draws it.',
             }}
           />
+          <div style={{marginTop: '12px', marginBottom: '20px'}}>{statusLine}</div>
           {cardReady ? (
             <s-metrics-bar accessibilityLabel="Store totals over the selected range">
               <s-metrics-bar-date-picker
@@ -2163,20 +2154,20 @@ export default function CampaignDashboard() {
             }}
           />
           {/* The percentage is Shopify's, from COMPARE TO previous_period. */}
-          <s-stack direction="block" gap="small-300">
-            <s-text color="subdued">Total sales</s-text>
-            <s-heading>{currency(totalSales)}</s-heading>
-            {percentChange !== null && (
-              <s-stack direction="inline">
+          <div style={{marginTop: '12px', marginBottom: '32px'}}>
+            <s-stack direction="inline" gap="base" alignItems="center">
+              <s-text color="subdued">Total sales:</s-text>
+              <s-heading>{currency(totalSales)}</s-heading>
+              {percentChange !== null && (
                 <s-badge
                   tone={percentChange >= 0 ? 'success' : 'critical'}
                   icon={percentChange >= 0 ? 'arrow-up' : 'arrow-down'}
                 >
                   {percent(percentChange)}
                 </s-badge>
-              </s-stack>
-            )}
-          </s-stack>
+              )}
+            </s-stack>
+          </div>
 
           {/* [START campaign-dashboard.chart-render] */}
           {/* Each group gets an axis. `series` is the data, `data` the groups. */}
@@ -2206,31 +2197,28 @@ export default function CampaignDashboard() {
           )}
           {/* [END campaign-dashboard.chart-render] */}
 
-          <s-stack direction="inline" gap="base">
-            {legend.map((entry) => (
-              <s-stack key={entry.label} direction="inline" gap="small-500" alignItems="center">
-                <div
-                  style={{
-                    width: '12px',
-                    height: '12px',
-                    borderRadius: '2px',
-                    backgroundColor: entry.color,
-                  }}
-                />
-                <s-text color="subdued">
-                  {entry.label} ({entry.count})
-                </s-text>
-              </s-stack>
-            ))}
-          </s-stack>
-
-          {/* [START campaign-dashboard.rewrite-render] */}
-          {/* Replacing what the app already wrote, or the chart accumulates every version
-              of the story. */}
           <s-stack direction="block" gap="base">
-            <s-link href={exploreHref} target="_blank">
-              Open this report in the store&rsquo;s analytics dashboard
-            </s-link>
+            <s-stack direction="inline" gap="base">
+              {legend.map((entry) => (
+                <s-stack key={entry.label} direction="inline" gap="small-500" alignItems="center">
+                  <div
+                    style={{
+                      width: '12px',
+                      height: '12px',
+                      borderRadius: '2px',
+                      backgroundColor: entry.color,
+                    }}
+                  />
+                  <s-text color="subdued">
+                    {entry.label} ({entry.count})
+                  </s-text>
+                </s-stack>
+              ))}
+            </s-stack>
+
+            {/* [START campaign-dashboard.rewrite-render] */}
+            {/* Replacing what the app already wrote, or the chart accumulates every version
+                of the story. */}
             {!planned && (
               <Fragment>
                 {markNote && <s-text color="subdued">{markNote}</s-text>}
@@ -2242,8 +2230,12 @@ export default function CampaignDashboard() {
                 </s-stack>
               </Fragment>
             )}
+
+            <s-link href={exploreHref} target="_blank">
+              Open this report in the store&rsquo;s analytics dashboard
+            </s-link>
+            {/* [END campaign-dashboard.rewrite-render] */}
           </s-stack>
-          {/* [END campaign-dashboard.rewrite-render] */}
         </s-section>
 
 
@@ -2328,7 +2320,9 @@ export default function CampaignDashboard() {
 
         {/* [START campaign-dashboard.send-events-render] */}
         {/* The only panel that writes to App Events. Ingestion isn't immediate. */}
-        {(funnel.tableData.rows ?? []).length === 0 && (
+        {/* Gated on the count, not on the row count. A campaign with no events still
+            answers with one row of zeros. */}
+        {sent === 0 && (
           <s-section>
             <PanelHeader
               title="Campaign events"
@@ -2783,10 +2777,15 @@ export default function CampaignDashboard() {
         )}
         {/* [END campaign-dashboard.code-render] */}
 
-        {/* [START campaign-dashboard.close-render] */}
-        {/* Closing rewrites the campaign's own marker rather than adding a second. */}
-        {openCampaign && (
-          <s-section heading="Closing this campaign">
+        </Fragment>
+      )}
+
+      {/* [START campaign-dashboard.close-render] */}
+      {/* Closing rewrites the campaign's own marker rather than adding a second. The
+          writes that end a campaign sit after the evidence they act on. */}
+      <s-section heading="Campaign lifecycle">
+        <s-stack direction="block" gap="base">
+          {openCampaign && (
             <s-paragraph>
               <s-text>{openCampaign.title}</s-text> sits on the store's charts as
               a span with no end. Closing it ends the span on{' '}
@@ -2795,16 +2794,26 @@ export default function CampaignDashboard() {
               customer before it. Until then, Order attribution has nothing to
               group.
             </s-paragraph>
+          )}
+          <s-stack direction="inline" gap="base">
             {running && (
               <s-button variant="primary" loading={busy} onClick={() => submit('close')}>
                 Close the campaign with its result
               </s-button>
             )}
-          </s-section>
-        )}
-        {/* [END campaign-dashboard.close-render] */}
-        </Fragment>
-      )}
+            {campaign.status === 'canceled' ? (
+              <s-button variant="primary" loading={busy} onClick={() => submit('replan')}>
+                Plan the campaign again
+              </s-button>
+            ) : (
+              <s-button tone="critical" loading={busy} onClick={() => submit('cancel')}>
+                Cancel the campaign
+              </s-button>
+            )}
+          </s-stack>
+        </s-stack>
+      </s-section>
+      {/* [END campaign-dashboard.close-render] */}
     </s-page>
   );
 }
