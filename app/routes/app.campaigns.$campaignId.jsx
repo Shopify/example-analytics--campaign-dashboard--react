@@ -1661,9 +1661,9 @@ export default function CampaignDashboard() {
     advice.push({
       icon: 'alert-triangle',
       tone: 'caution',
-      text: `${widest.label}'s ${widest.name} send reached ${Math.round(
+      text: `${widest.label}'s ${widest.name} send engaged ${Math.round(
         widest.rate,
-      )}% engagement against ${Math.round(widest.bestRate)}% on ${
+      )}% of who it reached, against ${Math.round(widest.bestRate)}% on ${
         widest.bestName
       }.`,
     });
@@ -2501,17 +2501,6 @@ export default function CampaignDashboard() {
                   ))}
                 </s-grid>
               </s-query-container>
-            )}
-
-            {weakest.length > 0 && (
-              <s-paragraph>
-                {weakest
-                  .map(
-                    (entry) =>
-                      `${entry.label}'s ${entry.name} send reached ${Math.round(entry.rate)}% against ${Math.round(entry.bestRate)}% on ${entry.bestName}.`,
-                  )
-                  .join(' ')}
-              </s-paragraph>
             )}
 
             <s-table>
