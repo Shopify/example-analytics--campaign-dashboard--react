@@ -2,9 +2,6 @@
 import {tierLabel} from './audiences';
 import {CHANNELS} from './channels';
 
-export const BOUNCE_ALERT_RATE = 0.02;
-export const UNSUB_ALERT_RATE = 0.01;
-
 // Annotation text is merchant-facing. It takes the registry's label, not the key.
 const channelLabel = (channel) => CHANNELS[channel]?.label ?? channel;
 
@@ -70,14 +67,12 @@ export function recentWindow(campaign) {
   return `SINCE ${since} UNTIL ${until}`;
 }
 
-// A bare ShopifyQL identifier can't hold the double hyphen in `app--`. Quote it.
-export const appNamespace = (appId) =>
-  appId ? `app--${String(appId).split('/').at(-1)}` : null;
+// The namespace the app's three dimensions live under. A readable namespace reads
+// back as a readable column, where `$app` resolves to `app--<app_id>`.
+export const DIMENSION_NAMESPACE = 'campaign_dashboard';
 
-export const metafieldDimension = (owner, appId, key) => {
-  const namespace = appNamespace(appId);
-  return namespace ? `${owner}.metafields."${namespace}".${key}` : null;
-};
+export const metafieldDimension = (owner, key) =>
+  `${owner}.metafields."${DIMENSION_NAMESPACE}".${key}`;
 
 // Keeps a derived date inside the campaign's window. UTC arithmetic, because a local
 // midnight date reports as the previous day east of UTC.

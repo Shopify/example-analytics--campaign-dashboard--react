@@ -168,6 +168,7 @@ function expand(touch) {
     if (!step || count < 1) return [];
     return {
       handle: step.handle,
+      channel: touch.channel,
       code: `d${touch.day}${step.code}`,
       count,
       day: touch.day,
@@ -184,11 +185,22 @@ function expand(touch) {
 
 const STAGES = SEQUENCE.flatMap(expand);
 
+// Event data can't be deleted. Sending a channel the campaign didn't select would leave
+// permanent numbers on a funnel the app never renders.
+const selected = (channels) =>
+  STAGES.filter((stage) => (channels ?? []).includes(stage.channel));
+
 // One request per event. Counted here rather than written into the copy that offers the
 // replay, where a change to `SEQUENCE` leaves the number behind.
-export const EVENT_TOTAL = STAGES.reduce((total, stage) => total + stage.count, 0);
+export const eventTotal = (channels) =>
+  selected(channels).reduce((total, stage) => total + stage.count, 0);
 
-// A used idempotency key is dropped, payload and all. Bump this after changing one.
+// Sends, not events. One send fans out into as many events as its channel reports.
+export const sendCount = (channels) =>
+  SEQUENCE.filter((touch) => (channels ?? []).includes(touch.channel)).length;
+
+// A key seen in the last 24 hours returns its first response, payload and all. Bump
+// this to reseed inside that window.
 const RUN = 'r3';
 
 // Timestamps read back in the shop's timezone, where midnight UTC can be the day
@@ -239,6 +251,7 @@ export async function sendCampaignFunnel({
   campaignId,
   startDate,
   timeZone,
+  channels,
 }) {
   const token = await getAppEventsToken();
   const start = shopMorning(startDate, timeZone);
@@ -246,7 +259,7 @@ export async function sendCampaignFunnel({
   const failures = [];
 
   // One request per event. A real send would be a queue, not a loop in a handler.
-  for (const stage of STAGES) {
+  for (const stage of selected(channels)) {
     const results = await Promise.all(
       Array.from({length: stage.count}, (_unused, index) =>
         sendEvent({token, shopId, stage, campaignId, start, index}),

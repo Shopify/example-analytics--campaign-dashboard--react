@@ -1,6 +1,6 @@
 import {SEQUENCE} from './app-events.server';
 import {CHANNELS} from './channels';
-import {BOUNCE_ALERT_RATE, clamp} from './campaigns';
+import {clamp} from './campaigns';
 
 // A daily timeseries has one row per day. A campaign total is the sum of a column.
 export const sumColumn = (table, metric) =>
@@ -87,7 +87,7 @@ export function outcomeText({campaign, revenue, target, sequence, money}) {
 export function detectIncident(campaign, funnel, bounces) {
   const sent = sumColumn(funnel, 'emails_sent');
   const bounced = sumColumn(funnel, 'emails_bounced');
-  if (sent === 0 || bounced / sent < BOUNCE_ALERT_RATE) return null;
+  if (sent === 0 || bounced === 0) return null;
 
   const rate = (bounced / sent) * 100;
   const reasons = (bounces.tableData?.rows ?? [])
@@ -102,11 +102,11 @@ export function detectIncident(campaign, funnel, bounces) {
 
   return {
     rate,
-    title: clamp(`Deliverability drop on the ${campaign.title} email`, 75),
+    title: clamp(`Email bounces on the ${campaign.title} send`, 75),
     description: clamp(
-      `${bounced} of ${sent} emails bounced at ${rate.toFixed(1)}%${
-        reasons ? `: ${reasons}` : ''
-      }.`,
+      `${bounced} of ${sent} emails bounced at ${rate.toFixed(1)}%.${
+        reasons ? ` Recorded as ${reasons}.` : ''
+      }`,
       150,
     ),
   };

@@ -90,3 +90,15 @@ export function exploreQuery({window, types, metric = 'total_sales'}) {
   ].join('\n');
 }
 // [END campaign-dashboard.explore-link]
+
+// [START campaign-dashboard.analytics-link]
+// The store's own explorer, with the query already in it.
+export function analyticsReportHref({window, annotations}) {
+  return exploreLink(
+    exploreQuery({
+      window,
+      types: annotations.map((annotation) => annotation.type),
+    }),
+  );
+}
+// [END campaign-dashboard.analytics-link]

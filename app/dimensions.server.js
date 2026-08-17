@@ -1,4 +1,4 @@
-import {appNamespace, metafieldDimension} from './campaigns';
+import {DIMENSION_NAMESPACE, metafieldDimension} from './campaigns';
 import {
   DEFINITION_CREATE,
   DEFINITION_QUERY,
@@ -43,10 +43,10 @@ const DIMENSIONS = {
   },
 };
 
-export async function readDimensions(admin, appId) {
+export async function readDimensions(admin) {
   const body = await (
     await admin.graphql(DEFINITION_QUERY, {
-      variables: {namespace: appNamespace(appId)},
+      variables: {namespace: DIMENSION_NAMESPACE},
     })
   ).json();
 
@@ -64,7 +64,7 @@ export async function readDimensions(admin, appId) {
       defined: Boolean(node),
       eligible: Boolean(capability?.eligible),
       enabled: Boolean(capability?.enabled),
-      dimension: metafieldDimension(which, appId, spec.key),
+      dimension: metafieldDimension(which, spec.key),
       href: id && `shopify://admin/settings/custom_data/${owner}/metafields/${id}`,
     };
   };
@@ -86,7 +86,7 @@ export async function enableDimension(admin, definition) {
           definition: {
             name: definition.name,
             description: definition.description,
-            namespace: '$app',
+            namespace: DIMENSION_NAMESPACE,
             key: definition.key,
             type: 'single_line_text_field',
             ownerType,
@@ -103,7 +103,7 @@ export async function enableDimension(admin, definition) {
     await admin.graphql(DEFINITION_UPDATE, {
       variables: {
         definition: {
-          namespace: '$app',
+          namespace: DIMENSION_NAMESPACE,
           key: definition.key,
           ownerType,
           capabilities: {analyticsQueryable: {enabled: true}},

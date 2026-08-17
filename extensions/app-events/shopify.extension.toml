@@ -1,6 +1,7 @@
 # [START campaign-dashboard.app-events-toml]
 [[extensions]]
 type = "analytics_app_events"
+name = "App Events"
 handle = "app-events"
 
 namespace = "campaign-dashboard"

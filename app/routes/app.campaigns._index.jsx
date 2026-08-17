@@ -22,10 +22,10 @@ import {CHANNELS, CHANNEL_KEYS} from '../channels';
 // the store adds a campaign.
 export const loader = async ({request}) => {
   const {admin} = await authenticate.admin(request);
-  const {campaigns, appId, appName, userErrors} = await ensureCampaign(admin);
+  const {campaigns, appName, userErrors} = await ensureCampaign(admin);
 
   const [dimensions, targetsBody, sends] = await Promise.all([
-    readDimensions(admin, appId),
+    readDimensions(admin),
     admin.graphql(ALL_TARGETS_QUERY).then((response) => response.json()),
     runOptional(admin, sliceQuery()),
   ]);
@@ -76,9 +76,8 @@ export const action = async ({request}) => {
 
   // Setup for every campaign, sharing this route's action with the create form.
   if (String(form.get('intent')) === 'enable-dimension') {
-    const {appId} = await ensureCampaign(admin);
     const which = String(form.get('which'));
-    const definition = (await readDimensions(admin, appId))[which];
+    const definition = (await readDimensions(admin))[which];
     if (!definition) return {problems: [`No dimension named ${which}.`]};
     const errors = await enableDimension(admin, definition);
     return errors.length
@@ -187,7 +186,10 @@ function sendsFor(campaign, rows, appName) {
   const emails = Number(row['emails_sent'] ?? 0);
   const opens = Number(row['emails_opened'] ?? 0);
   return {
-    sent: emails + Number(row['sms_messages_sent'] ?? 0),
+    sent:
+      emails +
+      Number(row['sms_messages_sent'] ?? 0) +
+      Number(row['push_notifications_sent'] ?? 0),
     openRate: emails > 0 ? Math.round((opens / emails) * 100) : null,
   };
 }
@@ -201,6 +203,7 @@ function messageMix(campaigns, rows, appName) {
   return [
     {name: 'Email', column: 'emails_sent'},
     {name: 'SMS', column: 'sms_messages_sent'},
+    {name: 'Push', column: 'push_notifications_sent'},
   ].map(({name, column}) => ({
     name,
     data: sending.map((campaign) => ({

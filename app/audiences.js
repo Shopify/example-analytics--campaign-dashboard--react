@@ -25,7 +25,7 @@ export const AUDIENCE_TIERS = [
   },
 ];
 
-export const TIER_METAFIELD = {namespace: '$app', key: 'tier'};
+export const TIER_METAFIELD = {key: 'tier'};
 
 export const tierLabel = (value) =>
   AUDIENCE_TIERS.find((tier) => tier.value === value)?.label ?? value;

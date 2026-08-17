@@ -1,7 +1,6 @@
 // Every GraphQL document this app sends. Campaign-dependent queries are builders.
 import {campaignWindow, recentWindow} from './campaigns';
 import {FUNNEL_METRICS, SEQUENCE_METRICS} from './channels';
-import {insightWindow} from './insight';
 
 // [START campaign-dashboard.shop-query]
 // The store's timezone decides which day a dated write lands on.
@@ -371,7 +370,7 @@ export const appEventsQuery = (campaign) => `
 export const sliceQuery = () => `
   query CampaignComparison {
     shopifyqlQuery(
-      query: "FROM app_events SHOW emails_sent, emails_opened, sms_messages_sent GROUP BY campaign_id, app_name SINCE -29d UNTIL today ORDER BY emails_sent DESC"
+      query: "FROM app_events SHOW emails_sent, emails_opened, sms_messages_sent, push_notifications_sent GROUP BY campaign_id, app_name SINCE -29d UNTIL today ORDER BY emails_sent DESC"
     ) {
       tableData {
         columns {
@@ -425,22 +424,6 @@ export const bounceQuery = (campaign) => `
 `;
 // [END campaign-dashboard.bounce-query]
 
-// [START campaign-dashboard.insight-query]
-// TOP 5 ranks products by gross_sales, the metric the query aggregates. ONLY drops the
-// `Other` row that would otherwise total every product outside the top five.
-export const insightQuery = (campaign) => `
-  query CampaignInsight {
-    shopifyqlQuery(
-      query: "FROM sales SHOW gross_sales TIMESERIES week GROUP BY ONLY TOP 5 product_title ${insightWindow(campaign)} ORDER BY gross_sales DESC"
-    ) {
-      tableData {
-        rows
-      }
-      parseErrors
-    }
-  }
-`;
-// [END campaign-dashboard.insight-query]
 
 // [START campaign-dashboard.metafield-capability]
 // Eligibility depends on owner type and field type. Read it before offering the control.

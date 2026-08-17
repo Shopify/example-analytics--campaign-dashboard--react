@@ -4,7 +4,12 @@ An embedded Shopify app that reports whether a marketing campaign worked, then w
 
 It reports its own funnel with [App Events](https://shopify.dev/docs/apps/build/app-events/analytics), queries that funnel and the store's sales with [ShopifyQL](https://shopify.dev/docs/api/shopifyql), and records the outcome as annotations and targets on the store's analytics timeline.
 
-Companion code for [Build a campaign performance dashboard](https://shopify.dev/docs/apps/build/analytics/build-a-campaign-dashboard).
+This repository is the finished app, and two tutorials build it. [Build a campaign performance dashboard](https://shopify.dev/docs/apps/build/analytics/build-a-campaign-dashboard) covers the whole app in one pass. The four-part series covers one capability per part, for adding a single capability to an app you already have.
+
+1. [Store a campaign and report its sales](https://shopify.dev/docs/apps/build/analytics/campaign-dashboard-sales) stores a campaign and reports its sales with ShopifyQL.
+2. [Set campaign targets and annotate the timeline](https://shopify.dev/docs/apps/build/analytics/campaign-dashboard-targets-and-annotations) adds revenue targets and annotations on the store's own charts.
+3. [Report a campaign funnel with App Events](https://shopify.dev/docs/apps/build/analytics/campaign-dashboard-app-events) adds the email, SMS, and push funnel.
+4. [Group campaign sales by your app's metafields](https://shopify.dev/docs/apps/build/analytics/campaign-dashboard-dimensions) turns app-owned metafields into ShopifyQL dimensions and closes the campaign.
 
 ## Setup
 
@@ -131,14 +136,14 @@ The [tutorial](https://shopify.dev/docs/apps/build/analytics/build-a-campaign-da
 
 ## How it's built
 
-The [Shopify React Router app template](https://github.com/Shopify/shopify-app-template-react-router) in JavaScript, with two routes added:
+The [Shopify React Router app template](https://github.com/Shopify/shopify-app-template-react-router), converted to JavaScript, with two routes added:
 
 | Path | File |
 |------|------|
 | `/app/campaigns` | `app/routes/app.campaigns._index.jsx` |
 | `/app/campaigns/:id` | `app/routes/app.campaigns.$campaignId.jsx` |
 
-GraphQL documents are in `app/campaign-queries.server.js`, campaign records in `app/campaigns.server.js`, and the App Events client and send plan in `app/app-events.server.js`. Event declarations are in `extensions/app-events/shopify.extension.toml`, not in `shopify.app.toml`.
+GraphQL documents are in `app/campaign-queries.server.js`, campaign records in `app/campaigns.server.js`, and the App Events client and send plan in `app/app-events.server.js`. Each group of panels is its own module under `app/panels/`. Event declarations are in `extensions/app-events/shopify.extension.toml`, not in `shopify.app.toml`.
 
 A campaign is a record in one app-data metafield rather than a row in a table. A real app would use its own storage. `CAMPAIGN_FIELDS` documents the shape field by field.
 
@@ -146,7 +151,7 @@ For a smaller starting point covering the ShopifyQL half on its own, see [Build 
 
 ## Contributions
 
-This repository is a documentation sample. It doesn't accept issues or contributions. To report a problem with the tutorial, use the feedback control on the [tutorial page](https://shopify.dev/docs/apps/build/analytics/build-a-campaign-dashboard).
+This repository is a documentation sample. It doesn't accept issues or contributions. To report a problem with the tutorial, use the feedback control on any [tutorial page](https://shopify.dev/docs/apps/build/analytics/build-a-campaign-dashboard).
 
 ## License
 
