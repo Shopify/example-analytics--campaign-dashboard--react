@@ -4,9 +4,8 @@ import {tierLabel} from '../audiences';
 import {PanelHeader} from './shared';
 
 // [START campaign-dashboard.target-bar]
-// A share reads as a length before it reads as two amounts. App Home has no progress
-// bar. This is two boxes instead: a track, and a fill sized to the percentage. Box
-// backgrounds are `subdued`, `base`, or `strong`, which leaves tone to the badge.
+// App Home has no progress bar component. The outer box is the track, and the inner
+// one's `inlineSize` is the percentage.
 function TargetCard({scope, percent, actual, by, expected, format, queryError, children}) {
   const met = percent !== null && percent >= 100;
   return (
@@ -18,7 +17,7 @@ function TargetCard({scope, percent, actual, by, expected, format, queryError, c
           of {format(expected)} by {by}
         </s-text>
 
-        {/* Hidden from assistive tech. The badge below states the same percentage. */}
+        {/* The badge below states the same percentage. */}
         <s-box
           background="base"
           borderRadius="large"
@@ -82,7 +81,7 @@ export function splitTargets(targets) {
 // [END campaign-dashboard.target-split]
 
 // [START campaign-dashboard.target-render]
-// The store-wide target first, then the slices of it.
+// Every target gets the same card, the store-wide one first.
 export function TargetsPanel({
   targets,
   storeTarget,
@@ -114,7 +113,7 @@ export function TargetsPanel({
         Shopify measures each target against the store's own sales.
       </s-paragraph>
 
-      {/* Drawn the same way as the whole, to be compared by looking. */}
+      {/* Two columns. The store-wide card and the filtered ones read side by side. */}
       <s-grid gridTemplateColumns="repeat(2, 1fr)" gap="base">
         {storeTarget && (
           <TargetCard

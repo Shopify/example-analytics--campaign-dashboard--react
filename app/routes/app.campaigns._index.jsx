@@ -9,6 +9,7 @@ import {
   ALL_TARGETS_QUERY,
   progressQuery,
   progressValue,
+  runIfSupported,
   runOptional,
   sliceQuery,
 } from '../campaign-queries.server';
@@ -26,12 +27,12 @@ export const loader = async ({request}) => {
 
   const [dimensions, targetsBody, sends] = await Promise.all([
     readDimensions(admin),
-    admin.graphql(ALL_TARGETS_QUERY).then((response) => response.json()),
+    runIfSupported(admin, ALL_TARGETS_QUERY),
     runOptional(admin, sliceQuery()),
   ]);
 
-  // Which campaign owns which target, from the IDs launching recorded. Start dates
-  // don't decide it: two campaigns can open on the same day.
+  // Which campaign owns which target, from the IDs launching recorded. Start dates can't
+  // decide it, because two campaigns can open on the same day.
   const owner = new Map();
   for (const campaign of campaigns) {
     for (const id of Object.values(campaign.targets ?? {})) {
@@ -39,7 +40,7 @@ export const loader = async ({request}) => {
     }
   }
 
-  // A target with no generated query can't be measured. Dropped, not counted as zero.
+  // A target with no generated query can't be measured. Dropped from the list.
   const nodes = targetsBody.data?.analyticsTargets?.nodes ?? [];
   const measurable = nodes.filter(
     (target) => target.shopifyqlQuery && owner.has(target.id),
@@ -48,7 +49,7 @@ export const loader = async ({request}) => {
     ? ((await (await admin.graphql(progressQuery(measurable))).json()).data ?? {})
     : {};
 
-  // Alias back by position, indexed off `measurable` rather than a filtered copy.
+  // Alias back by position, indexed off `measurable`.
   const targets = measurable.map((target, index) => ({
     campaignId: owner.get(target.id),
     expected: Number(target.expectedValue),
@@ -91,7 +92,7 @@ export const action = async ({request}) => {
     endDate: String(form.get('endDate') || ''),
     // A choice list with `multiple` submits one value for each selection.
     channels: form.getAll('channels').map(String),
-    // JSON, because a form can't carry an array of objects.
+    // JSON, because a form can't submit an array of objects.
     products: JSON.parse(String(form.get('products') || '[]')),
     audience: String(form.get('audience') || 'everyone'),
     // Sanitized on the way in. A code that can't be queried shouldn't reach the record.
@@ -118,8 +119,8 @@ export const action = async ({request}) => {
   if (!AUDIENCE_TIERS.some((tier) => tier.value === fields.audience)) {
     problems.push('Pick a customer segment from the list.');
   }
-  // Expected values have to be above zero, and the mutation rejects rather than clamps.
-  // Check each amount the launch will turn into a target.
+  // Expected values have to be above zero, and the mutation rejects a zero outright.
+  // Check each amount the launch turns into a target.
   if (!isPositiveAmount(fields.revenueTarget)) {
     problems.push('The store-wide revenue target has to be more than zero.');
   }
@@ -170,7 +171,7 @@ function targetProgress(campaign, targets) {
 // unique across apps.
 function ownRow(campaign, rows, appName) {
   // Events outlive the record that emitted them, and a reused ID inherits the sends of
-  // whatever held it before. The status, not the dates, says whether this one sent.
+  // whatever held it before. The status says whether this one sent.
   if (campaign.status === 'planned') return null;
 
   return rows.find(
@@ -197,7 +198,7 @@ function sendsFor(campaign, rows, appName) {
 // A stacked bar takes one entry per series. The rows get pivoted, and channels stack.
 // Sent against opened wouldn't, because opens are a subset of the sends.
 function messageMix(campaigns, rows, appName) {
-  // Campaigns with sends to report, rather than an empty bar for the rest.
+  // Only campaigns with sends to report.
   const sending = campaigns.filter((campaign) => ownRow(campaign, rows, appName));
 
   return [
@@ -285,10 +286,10 @@ export default function CampaignsIndex() {
       multiple: 5,
     });
 
-    // Canceling returns undefined, not an empty array. Don't clear the selection.
+    // Canceling returns undefined. Don't clear the selection.
     if (!selection) return;
 
-    // Both: a target filters on the GID, the annotations are written from the title.
+    // Both are kept. A target filters on the GID and the annotations use the title.
     setProducts(
       selection.map((product) => ({id: product.id, title: product.title})),
     );
@@ -634,7 +635,7 @@ export default function CampaignsIndex() {
               onChange={(event) => setChannels([...event.currentTarget.values])}
             >
               {CHANNEL_KEYS.map((key) => (
-                // `selected` is read-only on a choice. `defaultSelected` sets it.
+                // Uncontrolled. `defaultSelected` seeds it and `onChange` tracks it.
                 <s-choice
                   key={key}
                   value={key}

@@ -1,9 +1,8 @@
 import {authenticate} from '../shopify.server';
 import {forgetCustomer} from '../campaigns.server';
 
-// Launching a campaign saves the tier roster onto the record: a customer ID and a
-// display name per member. Redaction has to reach that too. `authenticate.webhook`
-// answers an invalid HMAC with a 401 before any of this runs.
+// Launching a campaign saves a customer ID and display name per tier member onto the
+// record. Redaction has to reach that too.
 export const action = async ({request}) => {
   const {admin, shop, topic, payload} = await authenticate.webhook(request);
 
@@ -16,9 +15,8 @@ export const action = async ({request}) => {
   if (!id) return new Response();
 
   const errors = await forgetCustomer(admin, `gid://shopify/Customer/${id}`);
-  // A 200 confirms receipt, which is what's required of every compliance webhook.
-  // The 30 days to finish are the app's own. A real app queues this retry rather
-  // than waiting for a redelivery that isn't coming.
+  // A 200 confirms receipt, which is all a compliance webhook owes. The 30 days to
+  // finish are the app's own, and a real app would queue this retry.
   if (errors.length) {
     console.error(errors.map((error) => error.message).join('. '));
   }

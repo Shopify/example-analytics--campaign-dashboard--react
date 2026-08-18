@@ -6,9 +6,8 @@ import {tierLabel} from '../audiences';
 import {PanelHeader} from './shared';
 
 // [START campaign-dashboard.promoted-split]
-// What the campaign promoted against what the store sold anyway, day by day, read
-// back through the store's analytics. Unstamped products come back under an empty
-// value, which is the rest of the store.
+// What the campaign promoted against what the store sold anyway, day by day. Unstamped
+// products come back under an empty value, which is the rest of the store.
 export function promotedSeries({promoted, campaign, totalSales, cell, rate, shortDate}) {
   const promotedByDay = new Map();
   const otherByDay = new Map();
@@ -67,9 +66,8 @@ export function tierShape({tierSales, totalSales, cell, rate}) {
 // [END campaign-dashboard.tier-shape]
 
 // [START campaign-dashboard.touch-shape]
-// One row per send. The column carries every campaign that has closed, so the rows are
-// narrowed to this campaign's own sends. Orders the app couldn't attribute come back
-// under an empty value.
+// One row per send, narrowed to this campaign. The column holds every closed
+// campaign. Unattributed orders come back under an empty value.
 export function touchShape({touchSales, campaign, cell}) {
   const titles = touchMarks(campaign).map((mark) => mark.title);
   return (touchSales.tableData.rows ?? [])
@@ -234,7 +232,7 @@ export function OrderAttribution({touchRows, dimensions, currency}) {
         }}
       />
       <s-paragraph>
-        Each order carries the last campaign touch before it, written to{' '}
+        Each order stores the last campaign touch before it, written to{' '}
         <s-text type="strong">{dimensions.order.dimension}</s-text> when the campaign
         closed. The store groups its own sales by that column.
       </s-paragraph>

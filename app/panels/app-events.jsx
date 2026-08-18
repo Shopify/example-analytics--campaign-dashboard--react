@@ -7,7 +7,7 @@ import {withinWindow} from '../campaigns';
 import {PanelHeader} from './shared';
 
 // [START campaign-dashboard.funnel-totals]
-// One row per day. A campaign total is a column summed rather than a value read.
+// One row per day. A campaign total is a column summed across them.
 export function funnelTotals(funnel, cell) {
   const total = (metric) =>
     (funnel.tableData.rows ?? []).reduce(
@@ -36,9 +36,8 @@ export function funnelTotals(funnel, cell) {
 export function reachRowsFor(campaign, total) {
   const channelTotal = (key, slot) => total(CHANNELS[key].metrics[slot]);
 
-  // What the campaign cost the list, per channel. Read off the rows rather than through
-  // a metric card, which resolves columns against a catalog of published metrics that
-  // App Events columns aren't in.
+  // What the campaign cost the list, per channel. Read off the rows. A metric card
+  // resolves its columns against a catalog that has no App Events columns.
   return campaign.channels
     .map((key) => {
       const metrics = CHANNELS[key].metrics;
@@ -47,7 +46,7 @@ export function reachRowsFor(campaign, total) {
         label: CHANNELS[key].label,
         sent: channelTotal(key, 'sent'),
         reached: channelTotal(key, 'reached'),
-        // A channel with no such metric reports nothing rather than zero.
+        // A channel with no such metric reports null.
         bounced: metrics.bounced ? channelTotal(key, 'bounced') : null,
         unsubscribed: metrics.lost ? channelTotal(key, 'lost') : null,
       };
@@ -71,8 +70,8 @@ export function channelFunnels(campaign, total) {
 // [END campaign-dashboard.channel-funnels]
 
 // [START campaign-dashboard.sends-by-day]
-// An app_events metric put on the sales axis. Keyed off the sales rows, not the
-// event rows, so a day this app sent nothing still plots as a zero.
+// An app_events metric on the sales axis. Keyed off the sales rows, which plots a day
+// this app sent nothing as a zero.
 export function sendSeries({funnel, rows, cell, shortDate}) {
   const sendsByDay = new Map(
     (funnel.tableData.rows ?? []).map((row) => [cell(row, 'day'), row]),
@@ -92,9 +91,8 @@ export function sendSeries({funnel, rows, cell, shortDate}) {
 // [END campaign-dashboard.sends-by-day]
 
 // [START campaign-dashboard.sequence-charts]
-// One chart per channel, keyed on the day each send went out. Nine sends on one
-// chart reads a channel change as a rate change, because an open rate and a click
-// rate don't measure the same act.
+// One chart per channel, keyed on the day each send went out. On one chart, an open
+// rate beside a click rate reads a channel change as a rate change.
 export function sequenceInsights({
   sequence,
   campaign,
@@ -152,9 +150,8 @@ export function sequenceInsights({
 // [END campaign-dashboard.sequence-charts]
 
 // [START campaign-dashboard.send-events-render]
-// The only panel that writes to App Events. Ingestion isn't immediate.
-// Gated on the count, not on the row count. A campaign with no events still
-// answers with one row of zeros.
+// The only panel that writes to App Events. Ingestion isn't immediate, and the panel
+// gates on the send count, because a campaign with no events answers with a zero row.
 export function SendEventsPanel({
   sent,
   funnel,
@@ -283,9 +280,8 @@ export function SendPerformance({sequence, sequenceCharts, isClient, integer}) {
                       data={[
                         {
                           shape: 'Bar',
-                          // No `name`. A named group draws a rotated axis title the
-                          // legend already carries, and three narrow charts have no
-                          // room for one.
+                          // No `name`. A named group adds a rotated axis title the
+                          // legend already states.
                           yAxisOptions: {integersOnly: true},
                           series: chart.reached,
                         },

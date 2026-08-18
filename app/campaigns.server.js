@@ -66,10 +66,10 @@ export async function readCampaigns(admin) {
 
   return {
     // An empty list from a failed read is indistinguishable from a store with no
-    // campaigns. Every write below refuses rather than guess which one it got.
+    // campaigns. Every write below refuses on a failed read.
     failed: transportErrors(body),
     appId: installation?.app?.id ?? null,
-    // The value `app_name` carries in App Events, which every app writes to.
+    // The value `app_name` holds in App Events, which every app writes to.
     appName: installation?.app?.title ?? null,
     installationId: installation?.id ?? null,
     campaigns: state.campaigns ?? [],

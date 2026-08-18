@@ -1,5 +1,5 @@
 // [START campaign-dashboard.app-events-token]
-// App Events needs a client-credentials token, not the store's Admin API session.
+// App Events authenticates with a client-credentials token the app requests itself.
 let cached = {token: null, expiresAt: 0};
 
 async function getAppEventsToken() {
@@ -30,7 +30,7 @@ async function getAppEventsToken() {
 // Both are dimensions. `flow_id` gathers the sends, `template_id` separates them.
 const FLOW_ID = 5501;
 
-// Attributes every marketing touch carries. Each is a dimension, none is personal data.
+// Attributes on every marketing touch. Each is a dimension, none is personal data.
 function marketing(channel, template, extra = {}) {
   return {
     channel,
@@ -44,9 +44,8 @@ function marketing(channel, template, extra = {}) {
 // [END campaign-dashboard.app-events-shared]
 
 // [START campaign-dashboard.app-events-funnel]
-// Nine sends over two weeks. `template_id` carries the position in the sequence.
-// Engagement dips on undifferentiated repeats and recovers when the offer changes, which
-// is what gives the annotations something to explain.
+// Nine sends over two weeks. `template_id` holds the position in the sequence.
+// Engagement dips on repeats and recovers when the offer changes.
 export const SEQUENCE = [
   {day: 0, channel: 'email', template: 4101, name: 'Announcement', audience: 52, engaged: 0.42, clicked: 0.28, lost: 1},
   {day: 1, channel: 'sms', template: 4102, name: 'Early access', audience: 21, engaged: 0.34, lost: 0},
@@ -190,12 +189,11 @@ const STAGES = SEQUENCE.flatMap(expand);
 const selected = (channels) =>
   STAGES.filter((stage) => (channels ?? []).includes(stage.channel));
 
-// One request per event. Counted here rather than written into the copy that offers the
-// replay, where a change to `SEQUENCE` leaves the number behind.
+// One request per event. Derived from `SEQUENCE`, which keeps the replay copy current.
 export const eventTotal = (channels) =>
   selected(channels).reduce((total, stage) => total + stage.count, 0);
 
-// Sends, not events. One send fans out into as many events as its channel reports.
+// Counts sends. One send fans out into as many events as its channel reports.
 export const sendCount = (channels) =>
   SEQUENCE.filter((touch) => (channels ?? []).includes(touch.channel)).length;
 
@@ -241,7 +239,7 @@ async function sendEvent({token, shopId, stage, campaignId, start, index}) {
     }),
   });
 
-  // 202 means received, not that the event reached analytics or passed validation.
+  // 202 means received. Validation and analytics ingestion happen after.
   if (response.status === 202) return {ok: true};
   return {ok: false, status: response.status, body: await response.text()};
 }
@@ -258,7 +256,7 @@ export async function sendCampaignFunnel({
   const accepted = {};
   const failures = [];
 
-  // One request per event. A real send would be a queue, not a loop in a handler.
+  // One request per event. A real send would work off a queue.
   for (const stage of selected(channels)) {
     const results = await Promise.all(
       Array.from({length: stage.count}, (_unused, index) =>

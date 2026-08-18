@@ -61,7 +61,7 @@ export const FUNNEL_METRICS = CHANNEL_KEYS.flatMap((key) => [
   CHANNELS[key].metrics.lost,
 ]).filter((metric, index, all) => metric && all.indexOf(metric) === index);
 
-// The four metrics that score a send, rather than every stage.
+// The four metrics that score a send.
 const SCORED = ['sent', 'reached', 'engaged', 'lost'];
 
 export const SEQUENCE_METRICS = CHANNEL_KEYS.flatMap((key) =>

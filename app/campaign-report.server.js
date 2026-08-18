@@ -35,7 +35,7 @@ export function readSequence(table) {
       reached,
       engaged,
       lost: metrics.lost ? Number(row[metrics.lost] ?? 0) : 0,
-      // Scored against what was reached, not sent. Bounces don't count against it.
+      // Scored against what each send reached, which keeps bounces out of it.
       rate: reached > 0 ? (engaged / reached) * 100 : 0,
       action: CHANNELS[touch.channel].action,
     };
@@ -83,7 +83,7 @@ export function outcomeText({campaign, revenue, target, sequence, money}) {
 // [END campaign-dashboard.outcome-text]
 
 // [START campaign-dashboard.detect-incident]
-// Names the kind of bounce, not only that one happened.
+// Names the kind of bounce it found.
 export function detectIncident(campaign, funnel, bounces) {
   const sent = sumColumn(funnel, 'emails_sent');
   const bounced = sumColumn(funnel, 'emails_bounced');

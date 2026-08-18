@@ -2,16 +2,15 @@
 import {tierLabel} from './audiences';
 import {CHANNELS} from './channels';
 
-// Annotation text is merchant-facing. It takes the registry's label, not the key.
+// Annotation text is merchant-facing. It takes the registry's label.
 const channelLabel = (channel) => CHANNELS[channel]?.label ?? channel;
 
 // [START campaign-dashboard.promoted-products]
 // The picker hands back GIDs. ShopifyQL wants the numeric part.
 export const productId = (gid) => String(gid).split('/').at(-1);
 
-// IN takes bare numbers. Quoting them fails at query time, not at create time. The IDs
-// are interpolated into a ShopifyQL filter rather than bound to it, which is why only
-// digits get through.
+// The ID is interpolated into the filter string. Only digits get through, and a quoted
+// number passes target create then fails when Shopify measures it.
 export function promotedFilter(campaign) {
   const ids = (campaign.products ?? [])
     .map((product) => productId(product.id))
@@ -29,8 +28,8 @@ export const promotedNames = (campaign) =>
 export const isPositiveAmount = (value) =>
   Number.isFinite(Number(value)) && Number(value) > 0;
 
-// `Intl` throws on a malformed tag rather than falling back to a default. The locale
-// arrives on a query parameter that nothing validates on the way in.
+// `Intl` throws on a malformed tag, and the locale arrives on a query parameter that
+// nothing validates.
 export function safeLocale(value) {
   if (!value) return 'en';
   try {
@@ -131,7 +130,7 @@ export function campaignMarks(campaign) {
           {
             key: 'creator',
             type: 'influencer_collaboration',
-            // `title` carries the campaign for the store's own chart, where other
+            // `title` names the campaign for the store's own chart, where other
             // campaigns' marks sit beside it. `label` is the in-app short form.
             label: 'Influencer drop',
             title: `Influencer drop for ${campaign.title}`,
@@ -189,7 +188,7 @@ export const clamp = (value, max) =>
 // sale isn't a touch.
 const TOUCH_KEYS = ['email', 'push', 'creator', 'promo', 'sms'];
 
-// The touches the creators drove. Matched by title: that's what the order carries.
+// The touches the creators drove. Matched by title, which is what the order stores.
 const CREATOR_KEYS = ['creator'];
 
 export const creatorTouches = (campaign) =>

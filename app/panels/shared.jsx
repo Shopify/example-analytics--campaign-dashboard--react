@@ -10,10 +10,9 @@ export const CAPABILITIES = {
   components: {icon: 'code', label: 'Web components'},
 };
 
-// Chips rather than badges, because what a panel is built on doesn't change. Each chip
-// names what its capability does in this panel, on hover and on focus. `s-chip` takes no
-// `interestFor`, which leaves the clickable variant as the trigger a tooltip can attach
-// to. `s-section`'s `heading` takes no elements. Each panel renders its own header.
+// Each chip names what one capability does in this panel. `s-chip` takes no
+// `interestFor`, which leaves the clickable variant as the tooltip's trigger.
+// `s-section`'s `heading` takes no elements, which is why each panel renders its own.
 export function PanelHeader({title, uses}) {
   const slug = title.replaceAll(/[^a-z0-9]+/gi, '-').toLowerCase();
   return (

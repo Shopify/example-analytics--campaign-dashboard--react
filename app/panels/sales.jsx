@@ -24,8 +24,8 @@ export function useIsClient() {
 // [END campaign-dashboard.client-only]
 
 // [START campaign-dashboard.metric-card-ready]
-// A metric card needs `window.shopify.shopifyQL`, installed after load. Wait for the
-// API rather than for the script tag.
+// A metric card needs `window.shopify.shopifyQL`, installed after load. Wait on the
+// API itself.
 export function useMetricCardsReady() {
   const [cardReady, setCardReady] = useState(false);
   useEffect(() => {
@@ -112,15 +112,13 @@ export function annotationOverlay({
   const annotationDays = [...byDay.entries()].sort(([a], [b]) => a.localeCompare(b));
 
   // Keyed on the formatted day, because Polaris Viz matches the axis label it drew and
-  // holds one annotation per key. A count costs one row where nine titles cost nine.
-  // Drop the trailing clause. The full title stays on the tooltip, and a pill only has
-  // room for the mark's name.
+  // holds one annotation per key. The pill fits the mark's name and the tooltip the title.
   const chartLabel = (title) => clamp(title.replace(/ (?:for|on) .+$/, ''), 24);
   const chartAnnotations = annotationDays.map(([day, list]) => ({
     startKey: shortDate(day),
     label: list.length > 1 ? `${list.length} annotations` : chartLabel(list[0].title),
     content: {
-      // Portaled into a `foreignObject`. Plain HTML, not elements that upgrade.
+      // Portaled into a `foreignObject`. Plain HTML only.
       content: (
         <Fragment>
           {list.map((annotation) => (

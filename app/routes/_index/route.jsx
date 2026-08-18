@@ -16,8 +16,7 @@ export const loader = async ({request}) => {
     throw redirect(`/app?${url.searchParams.toString()}`);
   }
 
-  // `/auth/login` sends a rejected domain back here rather than rendering a page of its
-  // own.
+  // `/auth/login` sends a rejected domain back here.
   return {
     showForm: Boolean(login),
     error: SHOP_ERRORS[url.searchParams.get('shop_error')] ?? null,

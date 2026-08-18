@@ -56,7 +56,7 @@ export const METAFIELDS_SET = `
 // [END campaign-dashboard.metafield-state]
 
 // [START campaign-dashboard.query]
-// TIMESERIES buckets by the shop's timezone rather than UTC.
+// TIMESERIES buckets by the shop's timezone.
 export const salesQuery = (campaign) => `
   query CampaignSales {
     shop {
@@ -107,6 +107,18 @@ export async function runOptional(admin, query) {
   }
 }
 // [END campaign-dashboard.optional-query]
+
+// [START campaign-dashboard.supported-query]
+// Targets and annotations are newer than the sales query. On an older API version the
+// whole request fails, where an empty body leaves the other panels rendering.
+export async function runIfSupported(admin, query) {
+  try {
+    return await (await admin.graphql(query)).json();
+  } catch {
+    return {data: null};
+  }
+}
+// [END campaign-dashboard.supported-query]
 
 // [START campaign-dashboard.target]
 export const TARGET_CREATE = `
@@ -183,7 +195,8 @@ export const targetsQuery = (campaign) => `
 // [END campaign-dashboard.target-read]
 
 // [START campaign-dashboard.all-targets-read]
-// Every campaign's targets in one request. Not app-scoped — match on `startDate`.
+// Every campaign's targets in one request, matched on `startDate`. Targets aren't
+// app-scoped.
 export const ALL_TARGETS_QUERY = `
   query StoreTargets {
     analyticsTargets(first: 50) {
@@ -306,7 +319,7 @@ export const ANNOTATION_DELETE = `
 // [END campaign-dashboard.annotation-delete]
 
 // [START campaign-dashboard.annotation-read]
-// Hangs off Shop, sorted by ID unless told otherwise. Filtered by window, not by app.
+// Hangs off Shop, sorted by ID unless told otherwise, and filtered by window.
 export const annotationsQuery = (campaign) => `
   query CampaignAnnotations {
     currentAppInstallation {
@@ -366,7 +379,7 @@ export const appEventsQuery = (campaign) => `
 
 // [START campaign-dashboard.slice-queries]
 // Attribute dimensions reach back 30 days, and SINCE -30d UNTIL today spans 31.
-// Grouped by `app_name` too: campaign IDs aren't unique across apps.
+// Grouped by `app_name` too, because campaign IDs aren't unique across apps.
 export const sliceQuery = () => `
   query CampaignComparison {
     shopifyqlQuery(
@@ -576,7 +589,7 @@ export const tierRankQuery = ({size, skip = 0}) => `
   }
 `;
 
-// A series rather than a total, to chart against the store-wide line.
+// Returns a series, to chart against the store-wide line.
 export const tierSalesQuery = (campaign, dimension, tier) => `
   query CampaignAudienceSales {
     shopifyqlQuery(

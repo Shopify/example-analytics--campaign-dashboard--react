@@ -7,7 +7,7 @@ import {
 
 // [START campaign-dashboard.metafield-dimension-read]
 // The three definitions the app owns. `eligible` is whether the types can support a
-// dimension, `enabled` is whether it's been asked for.
+// dimension, `enabled` is whether this app turned it on.
 const DIMENSIONS = {
   product: {
     owner: 'products',

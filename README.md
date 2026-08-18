@@ -111,13 +111,13 @@ A dev store with no orders reports `$0`. The seed creates campaigns, not the sal
 
 - Place test orders inside `Summer launch`'s window. Its nine sends land between 20 and 7 days before you install.
 - Cluster the orders in the days right after a send rather than spreading them evenly, and put the largest cluster in the last few days. Orders placed only in the opening week make every follow-up read as having moved nothing.
-- Create `AVERY10`, `AVERYSUMMER`, and `JUNO15` under **Discounts**, then place storefront orders that use them. **Creator revenue** groups sales by `discount_code`, which counts a code only when a buyer enters it at checkout. A discount added to an order in the admin carries no code. The panel stays hidden until one order carries one.
+- Create `AVERY10`, `AVERYSUMMER`, and `JUNO15` under **Discounts**, then place storefront orders that use them. **Creator revenue** groups sales by `discount_code`, which counts a code only when a buyer enters it at checkout. A discount added to an order in the admin has no code. The panel stays hidden until one order has one.
 
 ## What it does
 
 A launched campaign opens on what it promised, then states what that added up to. The panels below it follow the order in which a campaign produces its evidence. Targets come first, then sales against the period before, the send funnel per channel, revenue grouped by the dimensions this app creates, and a closing summary written back to the store's timeline.
 
-Each panel carries chips beside its title naming what produced the number, whether that's ShopifyQL, App Events, metafields, annotations, or web components.
+Each panel shows chips beside its title naming what produced the number, whether that's ShopifyQL, App Events, metafields, annotations, or web components.
 
 The [tutorial](https://shopify.dev/docs/apps/build/analytics/build-a-campaign-dashboard) walks through every panel and the queries behind it.
 
@@ -129,7 +129,7 @@ The [tutorial](https://shopify.dev/docs/apps/build/analytics/build-a-campaign-da
 | Every sales panel reads `$0` | The store has no orders in the campaign's window. |
 | `This store can't query App Events yet` | Either `npm run deploy` hasn't propagated, or the organization doesn't have App Events access. |
 | `Column Not Found` on an `app_events` query | The declaration hasn't reached the store. Don't send events until it clears. |
-| **Creator revenue** doesn't appear | No sale carries one of the three codes. A discount added to an order in the admin doesn't count, because analytics reads the code off the discount itself and a manual discount has none. |
+| **Creator revenue** doesn't appear | No sale has one of the three codes. A discount added to an order in the admin doesn't count, because analytics reads the code off the discount itself and a manual discount has none. |
 | **Promoted product sales** or a segment panel is empty | The dimension isn't queryable yet. Create it from **Dimensions this app owns**. |
 | A campaign shows a status you didn't set | Records live on the store, not in the clone. |
 | An event replay posts but nothing changes | A reused idempotency key is dropped with its payload. Bump the `RUN` constant in `app/app-events.server.js`. No query filters on `RUN`. A replay adds to the events already recorded under that `campaign_id`. Create a new campaign for a clean set of numbers. |

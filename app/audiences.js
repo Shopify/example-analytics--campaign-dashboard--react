@@ -12,7 +12,7 @@ export const AUDIENCE_TIERS = [
   {
     value: 'regulars',
     label: 'Regulars',
-    // Below the VIPs, not alongside. `skip` becomes the ranking query's OFFSET.
+    // The 25 below the VIPs. `skip` becomes the ranking query's OFFSET.
     description: 'The next 25 customers by spend, below the VIPs.',
     size: 25,
     skip: 10,

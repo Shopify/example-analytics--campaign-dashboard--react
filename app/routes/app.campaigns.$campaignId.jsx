@@ -31,6 +31,7 @@ import {
   measureQuery,
   progressValue,
   promotedByQuery,
+  runIfSupported,
   runOptional,
   salesQuery,
   sequenceQuery,
@@ -105,8 +106,8 @@ import {readDimensions} from '../dimensions.server';
 
 export async function loader({request, params}) {
   // [START campaign-dashboard.campaign-load]
-  // Redirect rather than throw. A thrown response renders above this route's layout
-  // and takes the app's navigation with it. The search params carry App Bridge's.
+  // Redirect on a miss. A thrown response renders above this route's layout
+  // and takes the app's navigation with it. The search params hold App Bridge's.
   const {admin} = await authenticate.admin(request);
   const {appId, campaigns} = await readCampaigns(admin);
   const campaign = findCampaign(campaigns, params.campaignId);
@@ -136,10 +137,8 @@ export async function loader({request, params}) {
     codeSales,
   ] = await Promise.all([
     admin.graphql(salesQuery(campaign)).then((response) => response.json()),
-    admin.graphql(targetsQuery(campaign)).then((response) => response.json()),
-    admin
-      .graphql(annotationsQuery(campaign))
-      .then((response) => response.json()),
+    runIfSupported(admin, targetsQuery(campaign)),
+    runIfSupported(admin, annotationsQuery(campaign)),
     runOptional(admin, appEventsQuery(campaign)),
     runOptional(admin, sequenceQuery(campaign)),
     runOptional(admin, bounceQuery(campaign)),
@@ -206,7 +205,7 @@ export async function loader({request, params}) {
 
 
 // [START campaign-dashboard.lifecycle]
-// One action for every write: read the record, do what the intent names, write it back.
+// One action for every write. Read the record, do what the intent names, write it back.
 export async function action({request, params}) {
   const {admin} = await authenticate.admin(request);
   const form = await request.formData();
@@ -227,9 +226,8 @@ export async function action({request, params}) {
   const shopId = shopBody.data?.shop?.id ?? null;
   const timeZone = shopBody.data?.shop?.ianaTimezone ?? 'Etc/UTC';
 
-  // Annotation text is written here, and the sales dataset has no currency column. Read
-  // it off the shop rather than the form: the value lands in permanent annotation text,
-  // and an unknown code throws instead of formatting.
+  // Annotation text is written here, and the sales dataset has no currency column. Take
+  // the currency off the shop, because an unknown code throws where it should format.
   const money = (value) =>
     new Intl.NumberFormat('en', {
       style: 'currency',
@@ -237,7 +235,7 @@ export async function action({request, params}) {
       maximumFractionDigits: 0,
     }).format(value);
 
-  // Timestamped in the shop's own day, not the browser's.
+  // Timestamped in the shop's own day.
   const markedAt = (date) =>
     new Date(shopMorning(date, timeZone)).toISOString();
 
@@ -359,7 +357,7 @@ export async function action({request, params}) {
       return {problems: userErrors.map((error) => error.message)};
     }
 
-    // A rejected target or stamp is a warning beside a launch, not a failed launch.
+    // A rejected target or stamp is a warning beside a launch that went through.
     const problems = [...rejected, ...unstamped, ...untiered].map(
       (error) => error.message,
     );
@@ -367,8 +365,8 @@ export async function action({request, params}) {
   }
 
   // [START campaign-dashboard.rewrite-marks]
-  // Replace what's on the store: read this app's own annotations, delete them, and
-  // put the current marks up in their place.
+  // Replace what's on the store. Read this app's own annotations, delete them, and put
+  // the current marks up in their place.
   if (intent === 'rewrite-marks') {
     const {markers, problems} = await writeMarks(
       admin,
@@ -497,10 +495,8 @@ export async function action({request, params}) {
   }
 
   if (intent === 'cancel') {
-    // Exactly the IDs on the record. `analyticsTargetsDelete` will delete any target
-    // on the shop, including the user's own. Each ID drops off the record as its delete
-    // comes back clean, which leaves a retry facing only what's still up: deleting an ID
-    // twice fails on the annotation that's already gone.
+    // Only the IDs on the record. `analyticsTargetsDelete` deletes any target on the
+    // shop, including the user's own. Each ID drops off the record as its delete lands.
     const undone = [];
     const markers = {};
     for (const [key, id] of Object.entries(campaign.markers ?? {})) {
@@ -756,7 +752,7 @@ export default function CampaignDashboard() {
   const partial = Boolean(fetcher.data?.ok);
   const busy = fetcher.state !== 'idle';
   const today = dayOf(Date.now());
-  // Closing early ends it today, not on the planned date. The action clamps the same.
+  // Closing early ends it today. The action clamps the same.
   const closesOn = today < campaign.endDate ? today : campaign.endDate;
 
   const submit = (intent, fields = {}) =>
@@ -785,7 +781,7 @@ export default function CampaignDashboard() {
   const planned = campaign.status === 'planned';
   const running = campaign.status === 'running';
 
-  // Drawn beside the store's totals on a launched campaign, and on its own before one.
+  // Beside the store's totals on a launched campaign, alone before one.
   const statusLine = (
     <s-stack direction="inline" gap="base" alignItems="center">
       <s-badge

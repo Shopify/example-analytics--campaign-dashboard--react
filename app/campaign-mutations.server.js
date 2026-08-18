@@ -35,8 +35,8 @@ import {AUDIENCE_TIERS, TIER_METAFIELD, isTargetedTier, tierLabel} from './audie
 const NO_TARGET = {id: null, userErrors: []};
 
 // [START campaign-dashboard.store-target]
-// No filter: the whole store over the campaign's window. Metric, dates, and filters
-// identify a target, which makes creating this twice a user error.
+// Unfiltered, which measures the whole store over the campaign's window. Metric, dates,
+// and filters identify a target. Creating this twice is a user error.
 async function createTarget(admin, input) {
   const body = await (
     await admin.graphql(TARGET_CREATE, {variables: {input}})
@@ -59,7 +59,7 @@ export const createStoreTarget = (admin, campaign) =>
 // [END campaign-dashboard.store-target]
 
 // [START campaign-dashboard.product-target]
-// A filter is ShopifyQL, not a label. This one asks what the campaign advertised.
+// The filter is a ShopifyQL predicate. This one selects what the campaign advertised.
 export async function createProductTarget(admin, campaign) {
   const filters = promotedFilter(campaign);
   if (!filters) return NO_TARGET;
@@ -94,7 +94,7 @@ export async function createAudienceTarget(admin, campaign, definition) {
 // [END campaign-dashboard.audience-target]
 
 // [START campaign-dashboard.raise-target]
-// Round the next target up from what the campaign earned, not to the cent.
+// Round the next target up from what the campaign earned, to a whole increment.
 export async function raiseTarget(admin, target) {
   const actual = Number(target.actual ?? 0);
   const step = Math.max(1000, 10 ** (Math.floor(Math.log10(actual)) - 1));
@@ -113,7 +113,7 @@ export async function raiseTarget(admin, target) {
 // [END campaign-dashboard.raise-target]
 
 // The start-date query returns the user's own targets alongside this app's. A form can
-// name any ID it returned, so match the recorded ones before writing.
+// name any ID it returned. Match against the recorded ones before writing.
 export function recordedTarget(campaign, body, id) {
   const recorded = new Set(Object.values(campaign.targets ?? {}));
   return (body.data?.analyticsTargets?.nodes ?? []).find(
@@ -145,10 +145,8 @@ async function resolveLaunchMark(admin, campaign) {
 // [END campaign-dashboard.bundle-mark]
 
 // [START campaign-dashboard.clear-marks]
-// Exactly this campaign's annotations. The window is shared. A campaign running over
-// the same days has its own marks in this list, and they aren't this one's to delete.
-// Reading the store first also skips an ID already gone from the timeline, rather than
-// reporting the delete that can't find it as a failure.
+// Only this campaign's annotations. Another campaign over the same days has its own
+// marks in this list. Reading the store first also skips IDs already gone.
 async function clearOwnMarks(admin, campaign, appId) {
   const recorded = new Set(Object.values(campaign.markers ?? {}));
   const body = await (await admin.graphql(annotationsQuery(campaign))).json();
@@ -240,7 +238,7 @@ export async function stampProducts(admin, campaign) {
 
 // [START campaign-dashboard.stamp-tier]
 // The tier written onto the customers themselves. The roster is saved on the record
-// too, because the metafield says the tier, not which campaign set it.
+// too, because the metafield holds only the tier's name.
 export async function stampTier(admin, campaign) {
   const tier = AUDIENCE_TIERS.find((entry) => entry.value === campaign.audience);
   if (!tier?.size) return {members: [], userErrors: []};
@@ -310,7 +308,8 @@ export async function stampOrders(admin, campaign) {
 }
 // [END campaign-dashboard.stamp-orders]
 
-// Editable until launch: the target filters on these IDs, the annotation uses the titles.
+// Editable until launch. The target filters on these IDs and the annotation uses the
+// titles.
 export const setProducts = (admin, campaign, products) =>
   updateCampaign(admin, campaign.id, {products});
 
@@ -339,7 +338,7 @@ export async function closeCampaign(admin, campaign, text, endedAt) {
 // [END campaign-dashboard.close-with-outcome]
 
 // [START campaign-dashboard.milestone]
-// A moment, not a span, which leaves `endedAt` off. Re-measured on the server.
+// A milestone is one moment, which leaves `endedAt` off. Re-measured on the server.
 export async function markMilestone(admin, target, markedAt, money) {
   const body = await (
     await admin.graphql(measureQuery(target.shopifyqlQuery))
@@ -370,7 +369,7 @@ export async function markMilestone(admin, target, markedAt, money) {
 
 // [START campaign-dashboard.record-mark]
 // Keyed on the record, which is what lets an annotation be rewritten and a cancel find it.
-// Milestones and incidents repeat. Their keys carry what makes them distinct.
+// Milestones and incidents repeat. Their keys hold what makes them distinct.
 export const recordMark = (admin, campaign, key, id) =>
   id ? rememberMarkers(admin, campaign.id, {[key]: id}) : null;
 // [END campaign-dashboard.record-mark]

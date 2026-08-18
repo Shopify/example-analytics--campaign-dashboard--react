@@ -14,7 +14,7 @@ export const CATEGORIES = {
   other: 'custom_events',
 };
 
-// Built from the types the app resolved, not the ones it planned.
+// Built from the types the app resolved at read time.
 export function annotateClause(types) {
   return [
     ...new Set(

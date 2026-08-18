@@ -1,10 +1,8 @@
 import {progressQuery, progressValue} from './campaign-queries.server';
 
 // [START campaign-dashboard.measure-targets]
-// Alias each target's generated query into one document and read the results back
-// by position. A null `shopifyqlQuery` is a condition of the request. Skip those.
-// The store returns every target on the campaign's start date. A second campaign
-// starting that day has its own there. The recorded IDs say which are this one's.
+// One document, one alias per target, results read back by position. Skip a null
+// `shopifyqlQuery`. The recorded IDs say which of the day's targets are this one's.
 export async function measureTargets(admin, campaign, targetsBody) {
   const recorded = new Set(Object.values(campaign.targets ?? {}));
   const targetNodes = (targetsBody.data?.analyticsTargets?.nodes ?? []).filter(
