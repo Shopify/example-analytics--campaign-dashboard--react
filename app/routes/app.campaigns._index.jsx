@@ -91,6 +91,7 @@ export const action = async ({request}) => {
       : {ok: true};
   }
 
+  const products = parseProducts(form.get('products'));
   const fields = {
     title: String(form.get('title') || '').trim(),
     startDate: String(form.get('startDate') || ''),
@@ -98,7 +99,7 @@ export const action = async ({request}) => {
     // A choice list with `multiple` submits one value for each selection.
     channels: form.getAll('channels').map(String),
     // JSON, because a form can't submit an array of objects.
-    products: parseProducts(form.get('products')),
+    products: products ?? [],
     audience: String(form.get('audience') || 'everyone'),
     // Sanitized on the way in. A code that can't be queried shouldn't reach the record.
     creatorCodes: parseCreatorCodes(form.get('creatorCodes')),
@@ -118,6 +119,9 @@ export const action = async ({request}) => {
     problems.push('Pick at least one channel to send on.');
   } else if (fields.channels.some((key) => !CHANNEL_KEYS.includes(key))) {
     problems.push('Pick channels from the list this app can send on.');
+  }
+  if (products === null) {
+    problems.push('Could not read the product selection.');
   }
   // The tier becomes a ShopifyQL comparison and a target filter, both built as strings.
   // Only a value this app defines can reach them.

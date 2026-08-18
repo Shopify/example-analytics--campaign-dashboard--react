@@ -249,8 +249,6 @@ export async function action({request, params}) {
     day: '2-digit',
   }).format(new Date());
 
-  const dimensions = await readDimensions(admin);
-
   // Both edits move what a launched target filters on. Gate on the record's status,
   // which is what the panel reads to decide whether to offer the control.
   if (intent === 'set-products' || intent === 'set-audience') {
@@ -260,11 +258,11 @@ export async function action({request, params}) {
   }
 
   if (intent === 'set-products') {
-    const {userErrors} = await setProducts(
-      admin,
-      campaign,
-      parseProducts(form.get('products')),
-    );
+    const products = parseProducts(form.get('products'));
+    if (products === null) {
+      return {problems: ['Could not read the product selection.']};
+    }
+    const {userErrors} = await setProducts(admin, campaign, products);
     if (userErrors.length) {
       return {problems: userErrors.map((error) => error.message)};
     }
@@ -314,6 +312,9 @@ export async function action({request, params}) {
     return {ok: true, sentEvents: sent};
   }
   // [END campaign-dashboard.send-events-action]
+
+  // Read by the launch and close branches below.
+  const dimensions = await readDimensions(admin);
 
   if (intent === 'launch') {
     // Gate on the record's status. A target the user set on the same date isn't
@@ -413,6 +414,11 @@ export async function action({request, params}) {
   // [END campaign-dashboard.rewrite-marks]
 
   if (intent === 'raise-target') {
+    // Targets exist from launch to close. Raising one after the outcome measured it
+    // would leave the recorded result and the target disagreeing.
+    if (campaign.status !== 'running') {
+      return {problems: ['Only a running campaign can raise a target.']};
+    }
     const targetsBody = await (
       await admin.graphql(targetsQuery(campaign))
     ).json();
@@ -433,6 +439,10 @@ export async function action({request, params}) {
   }
 
   if (intent === 'milestone') {
+    // A milestone marks a day the campaign was live.
+    if (campaign.status !== 'running') {
+      return {problems: ['Only a running campaign can mark a milestone.']};
+    }
     const day = String(form.get('day'));
     const targetsBody = await (
       await admin.graphql(targetsQuery(campaign))
@@ -454,6 +464,10 @@ export async function action({request, params}) {
   }
 
   if (intent === 'flag-incident') {
+    // An incident marks a day the campaign was live.
+    if (campaign.status !== 'running') {
+      return {problems: ['Only a running campaign can flag an incident.']};
+    }
     const day = String(form.get('day'));
     const result = await flagIncident(admin, campaign, markedAt(day));
     if (result.userErrors?.length) {
@@ -469,6 +483,12 @@ export async function action({request, params}) {
   }
 
   if (intent === 'close') {
+    // A closed campaign's outcome annotation is its permanent record, and measuring
+    // again would rewrite it. The status write lands last, which leaves a failed
+    // attempt retryable.
+    if (campaign.status !== 'running') {
+      return {problems: ['Only a running campaign can be closed.']};
+    }
     // A campaign can close before its window runs out. Everything below reads the
     // window that actually ran.
     const closedOn =
@@ -527,6 +547,11 @@ export async function action({request, params}) {
   }
 
   if (intent === 'cancel') {
+    // Canceling deletes the targets and the annotations. A closed campaign keeps its
+    // outcome on the store's charts.
+    if (campaign.status !== 'planned' && campaign.status !== 'running') {
+      return {problems: ['Only a planned or running campaign can be canceled.']};
+    }
     // Only the IDs on the record. `analyticsTargetsDelete` deletes any target on the
     // shop, including the user's own. Each ID drops off the record as its delete lands.
     const undone = [];
@@ -582,6 +607,11 @@ export async function action({request, params}) {
   }
 
   if (intent === 'replan') {
+    // Launching records new target IDs over the old ones. Replanning a live campaign
+    // would leave its targets on the store with nothing pointing at them.
+    if (campaign.status !== 'canceled') {
+      return {problems: ['Only a canceled campaign can be planned again.']};
+    }
     // Canceling already deleted the annotations and the targets. A canceled campaign is
     // a record with nothing on the store, which is what a planned one is.
     const {userErrors} = await updateCampaign(admin, campaign.id, {status: 'planned'});
@@ -1038,7 +1068,7 @@ export default function CampaignDashboard() {
 
 
         <SendEventsPanel
-          running={campaign.status === 'running'}
+          running={running}
           sent={sent}
           funnel={funnel}
           sendCount={sendCount}

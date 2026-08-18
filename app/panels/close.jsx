@@ -28,11 +28,12 @@ export function CampaignLifecycle({
               Close the campaign with its result
             </s-button>
           )}
-          {campaign.status === 'canceled' ? (
+          {campaign.status === 'canceled' && (
             <s-button variant="primary" loading={busy} onClick={() => submit('replan')}>
               Plan the campaign again
             </s-button>
-          ) : (
+          )}
+          {(campaign.status === 'planned' || running) && (
             <s-button tone="critical" loading={busy} onClick={() => submit('cancel')}>
               Cancel the campaign
             </s-button>

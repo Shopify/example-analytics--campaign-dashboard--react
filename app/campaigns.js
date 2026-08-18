@@ -28,16 +28,17 @@ export const promotedNames = (campaign) =>
 export const isPositiveAmount = (value) =>
   Number.isFinite(Number(value)) && Number(value) > 0;
 
-// The picker's selection arrives as a JSON string on the form. Malformed input throws
-// where it should be an empty selection, and the title lands in annotation text.
+// The picker's selection arrives as a JSON string on the form. A payload the server
+// can't read returns null, an empty array is a cleared selection, and the title lands
+// in annotation text.
 export function parseProducts(input) {
   let parsed;
   try {
     parsed = JSON.parse(String(input ?? '[]'));
   } catch {
-    return [];
+    return null;
   }
-  if (!Array.isArray(parsed)) return [];
+  if (!Array.isArray(parsed)) return null;
   return parsed
     .filter((product) => product && typeof product === 'object')
     .map((product) => ({
