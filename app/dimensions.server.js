@@ -27,7 +27,7 @@ const DIMENSIONS = {
     key: 'tier',
     name: 'Campaign tier',
     description: 'The audience tier this customer was last targeted in.',
-    adminAccess: 'MERCHANT_READ_WRITE',
+    adminAccess: 'MERCHANT_READ',
     report: 'What the audience bought',
     anchor: 'audience-sales',
   },

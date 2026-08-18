@@ -217,22 +217,25 @@ export async function writeMarks(admin, campaign, appId, markedAt) {
 // Stamp each promoted product with the campaign that pushed it. It reads back as
 // `products.metafields."campaign_dashboard".promoted_by`.
 export async function stampProducts(admin, campaign) {
-  if (campaign.products.length === 0) return [];
+  const metafields = campaign.products.map((product) => ({
+    ownerId: product.id,
+    namespace: DIMENSION_NAMESPACE,
+    key: 'promoted_by',
+    type: 'single_line_text_field',
+    value: campaign.title,
+  }));
 
-  const body = await (
-    await admin.graphql(METAFIELDS_SET, {
-      variables: {
-        metafields: campaign.products.map((product) => ({
-          ownerId: product.id,
-          namespace: DIMENSION_NAMESPACE,
-          key: 'promoted_by',
-          type: 'single_line_text_field',
-          value: campaign.title,
-        })),
-      },
-    })
-  ).json();
-  return body.data?.metafieldsSet?.userErrors ?? [];
+  // `metafieldsSet` takes 25 at a time, and a campaign can promote more.
+  const userErrors = [];
+  for (let start = 0; start < metafields.length; start += 25) {
+    const batch = await (
+      await admin.graphql(METAFIELDS_SET, {
+        variables: {metafields: metafields.slice(start, start + 25)},
+      })
+    ).json();
+    userErrors.push(...(batch.data?.metafieldsSet?.userErrors ?? []));
+  }
+  return userErrors;
 }
 // [END campaign-dashboard.product-metafield]
 
