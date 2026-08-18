@@ -1,5 +1,5 @@
 import {Fragment} from 'react';
-import {ComboChart, FunnelChartNext, PolarisVizProvider} from '@shopify/polaris-viz';
+import {ComboChart, PolarisVizProvider} from '@shopify/polaris-viz';
 
 import {CHANNEL_KEYS, CHANNELS} from '../channels';
 import {withinWindow} from '../campaigns';
@@ -210,7 +210,9 @@ export function SendEventsPanel({
 // [END campaign-dashboard.send-events-render]
 
 // [START campaign-dashboard.funnel-render]
-// One funnel per channel. One chart would compare a send to a delivery.
+// Stages in the order the channel reports them. App Events counts accumulate per
+// campaign, and a stage can read higher than the one above it. Sorting by count would
+// bury that.
 export function ChannelMetrics({funnels, integer}) {
   if (funnels.length === 0) return null;
 
@@ -224,30 +226,28 @@ export function ChannelMetrics({funnels, integer}) {
           shopifyql: "Buckets those events by day across the campaign's own window.",
         }}
       />
-      <s-query-container>
-        <s-grid gridTemplateColumns="repeat(auto-fit, minmax(240px, 1fr))" gap="base">
-          {funnels.map((entry) => (
-            <s-grid-item key={entry.key}>
-              <s-heading>{entry.label}</s-heading>
-              <div style={{height: '220px'}}>
-                <PolarisVizProvider>
-                  <FunnelChartNext
-                    data={[
-                      {
-                        name: entry.label,
-                        data: entry.stages.map(([key, value]) => ({key, value})),
-                      },
-                    ]}
-                    labelFormatter={integer}
-                    percentageFormatter={(value) => `${Math.round(value)}%`}
-                    theme="Light"
-                  />
-                </PolarisVizProvider>
-              </div>
-            </s-grid-item>
-          ))}
-        </s-grid>
-      </s-query-container>
+      <s-table>
+        <s-table-header-row>
+          <s-table-header listSlot="primary">Channel</s-table-header>
+          <s-table-header listSlot="secondary">Stage</s-table-header>
+          <s-table-header listSlot="labeled">Events</s-table-header>
+          <s-table-header listSlot="labeled">Of sent</s-table-header>
+        </s-table-header-row>
+        <s-table-body>
+          {funnels.flatMap((entry) =>
+            entry.stages.map(([label, value]) => (
+              <s-table-row key={`${entry.key}-${label}`}>
+                <s-table-cell>{entry.label}</s-table-cell>
+                <s-table-cell>{label}</s-table-cell>
+                <s-table-cell>{integer(value)}</s-table-cell>
+                <s-table-cell>
+                  {Math.round((value / entry.stages[0][1]) * 100)}%
+                </s-table-cell>
+              </s-table-row>
+            )),
+          )}
+        </s-table-body>
+      </s-table>
     </s-section>
   );
 }
