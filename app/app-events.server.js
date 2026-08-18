@@ -1,3 +1,5 @@
+import {shopMorning} from './campaigns';
+
 // [START campaign-dashboard.app-events-token]
 // App Events authenticates with a client-credentials token the app requests itself.
 let cached = {token: null, expiresAt: 0};
@@ -203,15 +205,6 @@ const RUN = 'r3';
 
 // Timestamps read back in the shop's timezone, where midnight UTC can be the day
 // before. Resolve a calendar date to 9am there instead.
-export function shopMorning(date, timeZone) {
-  const guess = new Date(`${date}T09:00:00Z`);
-  if (!timeZone) return guess.getTime();
-  const shift =
-    new Date(guess.toLocaleString('en-US', {timeZone: 'UTC'})).getTime() -
-    new Date(guess.toLocaleString('en-US', {timeZone})).getTime();
-  return guess.getTime() + shift;
-}
-
 // A minute between recipients. The largest send finishes inside the hour it started.
 function stageTimestamp(start, day, hour, index) {
   const offset = day * 86400000 + hour * 3600000 + index * 60000;

@@ -49,6 +49,17 @@ export function campaignWindow(campaign) {
   return `SINCE ${campaign.startDate} UNTIL ${until}`;
 }
 
+// Timestamps read back in the shop's timezone, where midnight UTC can be the day
+// before. Resolve a calendar date to 9am there.
+export function shopMorning(date, timeZone) {
+  const guess = new Date(`${date}T09:00:00Z`);
+  if (!timeZone) return guess.getTime();
+  const shift =
+    new Date(guess.toLocaleString('en-US', {timeZone: 'UTC'})).getTime() -
+    new Date(guess.toLocaleString('en-US', {timeZone})).getTime();
+  return guess.getTime() + shift;
+}
+
 // `app_events` holds 30 days, and a window reaching further back fails outright.
 // Clamp to relative tokens, which ShopifyQL resolves in the store's own timezone.
 const RECENT_DAYS = 29;

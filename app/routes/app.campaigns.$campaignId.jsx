@@ -7,7 +7,6 @@ import {
   eventTotal,
   sendCampaignFunnel,
   sendCount,
-  shopMorning,
 } from '../app-events.server';
 import {
   findCampaign,
@@ -47,6 +46,7 @@ import {
   promotedFilter,
   promotedNames,
   safeLocale,
+  shopMorning,
 } from '../campaigns';
 import {CHANNELS} from '../channels';
 import {
