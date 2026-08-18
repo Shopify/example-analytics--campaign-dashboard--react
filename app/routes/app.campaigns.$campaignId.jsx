@@ -276,6 +276,11 @@ export async function action({request, params}) {
   // [START campaign-dashboard.send-events-action]
   // One request per event. A real app queues these as its sends happen.
   if (intent === 'send-events') {
+    // App Events can't be deleted after Shopify accepts them. A campaign the user
+    // canceled reports nothing.
+    if (campaign.status === 'canceled') {
+      return {problems: ['This campaign was canceled.']};
+    }
     if (!shopId) return {problems: ['Could not read the store ID.']};
     const {accepted, failures} = await sendCampaignFunnel({
       shopId,
@@ -368,6 +373,11 @@ export async function action({request, params}) {
   // Replace what's on the store. Read this app's own annotations, delete them, and put
   // the current marks up in their place.
   if (intent === 'rewrite-marks') {
+    // Closing moved the span's `endedAt` off null and put the outcome in the title.
+    // Rewriting reopens that span. Offered while the campaign runs.
+    if (campaign.status !== 'running') {
+      return {problems: ['Only a running campaign can be rewritten.']};
+    }
     const {markers, problems} = await writeMarks(
       admin,
       campaign,
@@ -487,10 +497,13 @@ export async function action({request, params}) {
       return {problems: unattributed.map((error) => error.message)};
     }
 
-    await updateCampaign(admin, campaign.id, {
+    const {userErrors} = await updateCampaign(admin, campaign.id, {
       status: 'closed',
       endDate: closedOn,
     });
+    if (userErrors.length) {
+      return {problems: userErrors.map((error) => error.message)};
+    }
     return {ok: true, funnelRows: funnel.tableData.rows.length};
   }
 
@@ -780,6 +793,8 @@ export default function CampaignDashboard() {
 
   const planned = campaign.status === 'planned';
   const running = campaign.status === 'running';
+  // Canceling deleted the annotations and the targets these panels report on.
+  const canceled = campaign.status === 'canceled';
 
   // Beside the store's totals on a launched campaign, alone before one.
   const statusLine = (
@@ -956,7 +971,7 @@ export default function CampaignDashboard() {
 
       {/* A campaign that hasn't launched has nothing attributed to it. Reporting the
           store's sales for those dates would read as the campaign's own result. */}
-      {!planned && (
+      {!planned && !canceled && (
         <Fragment>
         <TargetsPanel
           targets={targets}
@@ -993,7 +1008,7 @@ export default function CampaignDashboard() {
           legend={legend}
           marks={marks}
           ours={ours}
-          planned={planned}
+          running={running}
           markNote={markNote}
           exploreHref={exploreHref}
           busy={busy}

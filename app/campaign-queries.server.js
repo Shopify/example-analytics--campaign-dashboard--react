@@ -176,7 +176,7 @@ export const TARGETS_DELETE = `
 // Shopify generates each target's `shopifyqlQuery` from its metric, dates, and filters.
 export const targetsQuery = (campaign) => `
   query CampaignTargets {
-    analyticsTargets(first: 10, query: "start_date:${campaign.startDate}") {
+    analyticsTargets(first: 250, query: "start_date:${campaign.startDate}") {
       nodes {
         id
         name

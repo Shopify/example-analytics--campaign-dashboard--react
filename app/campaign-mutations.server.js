@@ -147,8 +147,12 @@ async function resolveLaunchMark(admin, campaign) {
 // [START campaign-dashboard.clear-marks]
 // Only this campaign's annotations. Another campaign over the same days has its own
 // marks in this list. Reading the store first also skips IDs already gone.
-async function clearOwnMarks(admin, campaign, appId) {
-  const recorded = new Set(Object.values(campaign.markers ?? {}));
+async function clearOwnMarks(admin, campaign, appId, keys) {
+  const recorded = new Set(
+    Object.entries(campaign.markers ?? {})
+      .filter(([key]) => keys.has(key))
+      .map(([, id]) => id),
+  );
   const body = await (await admin.graphql(annotationsQuery(campaign))).json();
   const failed = transportErrors(body);
   if (failed.length) return failed;
@@ -172,14 +176,20 @@ async function clearOwnMarks(admin, campaign, appId) {
 // Clear before writing, which makes launching and rewriting the same operation.
 // Each ID persists as it lands. A retry or a cancel can then finish a partial write.
 export async function writeMarks(admin, campaign, appId, markedAt) {
-  const stale = await clearOwnMarks(admin, campaign, appId);
+  // Milestones and incidents are recorded under their own keys and each marks a day
+  // that happened. A rewrite of the base marks keeps them.
+  const marks = campaignMarks(campaign);
+  const keys = new Set(marks.map((mark) => mark.key));
+  const stale = await clearOwnMarks(admin, campaign, appId, keys);
   if (stale.length) {
     return {markers: {}, problems: stale.map((error) => error.message)};
   }
 
   const launch = await resolveLaunchMark(admin, campaign);
-  const markers = {};
-  for (const mark of campaignMarks(campaign)) {
+  const markers = Object.fromEntries(
+    Object.entries(campaign.markers ?? {}).filter(([key]) => !keys.has(key)),
+  );
+  for (const mark of marks) {
     const isLaunch = mark.key === 'launch';
     const body = await (
       await admin.graphql(ANNOTATION_CREATE, {
@@ -336,7 +346,10 @@ export async function closeCampaign(admin, campaign, text, endedAt) {
       variables: {id, input: {endedAt, title: text.title, description: text.description}},
     })
   ).json();
-  return body.data?.analyticsAnnotationUpdate?.userErrors ?? [];
+  return [
+    ...transportErrors(body),
+    ...(body.data?.analyticsAnnotationUpdate?.userErrors ?? []),
+  ];
 }
 // [END campaign-dashboard.close-with-outcome]
 

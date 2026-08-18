@@ -199,7 +199,7 @@ export function SalesAndOrders({
   legend,
   marks,
   ours,
-  planned,
+  running,
   markNote,
   exploreHref,
   busy,
@@ -289,7 +289,7 @@ export function SalesAndOrders({
         {/* [START campaign-dashboard.rewrite-render] */}
         {/* Replacing what the app already wrote, or the chart accumulates every version
             of the story. */}
-        {!planned && (
+        {running && (
           <Fragment>
             {markNote && <s-text color="subdued">{markNote}</s-text>}
             <s-stack direction="inline">
