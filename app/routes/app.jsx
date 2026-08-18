@@ -21,9 +21,11 @@ export default function App() {
           and it isn't included. */}
       <script src="https://cdn.shopify.com/shopifycloud/analytics-ui.js" />
       {/* [END campaign-dashboard.analytics-script] */}
+      {/* [START campaign-dashboard.app-nav] */}
       <s-app-nav>
         <s-link href="/app/campaigns">Campaigns</s-link>
       </s-app-nav>
+      {/* [END campaign-dashboard.app-nav] */}
       <Outlet />
     </AppProvider>
   );
