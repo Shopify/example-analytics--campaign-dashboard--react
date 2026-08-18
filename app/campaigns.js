@@ -28,6 +28,27 @@ export const promotedNames = (campaign) =>
 export const isPositiveAmount = (value) =>
   Number.isFinite(Number(value)) && Number(value) > 0;
 
+// The picker's selection arrives as a JSON string on the form. Malformed input throws
+// where it should be an empty selection, and the title lands in annotation text.
+export function parseProducts(input) {
+  let parsed;
+  try {
+    parsed = JSON.parse(String(input ?? '[]'));
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(parsed)) return [];
+  return parsed
+    .filter((product) => product && typeof product === 'object')
+    .map((product) => ({
+      id: String(product.id ?? ''),
+      title: String(product.title ?? '').trim().slice(0, 255),
+    }))
+    .filter((product) => /^gid:\/\/shopify\/Product\/\d+$/.test(product.id))
+    // The picker allows five.
+    .slice(0, 5);
+}
+
 // `Intl` throws on a malformed tag, and the locale arrives on a query parameter that
 // nothing validates.
 export function safeLocale(value) {

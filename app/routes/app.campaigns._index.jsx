@@ -14,7 +14,12 @@ import {
   sliceQuery,
 } from '../campaign-queries.server';
 import {enableDimension, readDimensions} from '../dimensions.server';
-import {isPositiveAmount, parseCreatorCodes, safeLocale} from '../campaigns';
+import {
+  isPositiveAmount,
+  parseCreatorCodes,
+  parseProducts,
+  safeLocale,
+} from '../campaigns';
 import {AUDIENCE_TIERS, isTargetedTier, tierLabel} from '../audiences';
 import {CHANNELS, CHANNEL_KEYS} from '../channels';
 
@@ -93,7 +98,7 @@ export const action = async ({request}) => {
     // A choice list with `multiple` submits one value for each selection.
     channels: form.getAll('channels').map(String),
     // JSON, because a form can't submit an array of objects.
-    products: JSON.parse(String(form.get('products') || '[]')),
+    products: parseProducts(form.get('products')),
     audience: String(form.get('audience') || 'everyone'),
     // Sanitized on the way in. A code that can't be queried shouldn't reach the record.
     creatorCodes: parseCreatorCodes(form.get('creatorCodes')),

@@ -42,6 +42,7 @@ import {
   campaignWindow,
   codeFilter,
   isPositiveAmount,
+  parseProducts,
   productId,
   promotedFilter,
   promotedNames,
@@ -249,11 +250,19 @@ export async function action({request, params}) {
 
   const dimensions = await readDimensions(admin);
 
+  // Both edits move what a launched target filters on. Gate on the record's status,
+  // which is what the panel reads to decide whether to offer the control.
+  if (intent === 'set-products' || intent === 'set-audience') {
+    if (campaign.status !== 'planned') {
+      return {problems: ['Only a planned campaign can change this.']};
+    }
+  }
+
   if (intent === 'set-products') {
     const {userErrors} = await setProducts(
       admin,
       campaign,
-      JSON.parse(String(form.get('products') || '[]')),
+      parseProducts(form.get('products')),
     );
     if (userErrors.length) {
       return {problems: userErrors.map((error) => error.message)};
@@ -262,11 +271,13 @@ export async function action({request, params}) {
   }
 
   if (intent === 'set-audience') {
-    const {userErrors} = await setAudience(
-      admin,
-      campaign,
-      String(form.get('audience')),
-    );
+    const audience = String(form.get('audience'));
+    // The tier becomes a ShopifyQL comparison and a target filter, both built as
+    // strings. Only a value this app defines can reach them.
+    if (!AUDIENCE_TIERS.some((tier) => tier.value === audience)) {
+      return {problems: ['Pick a customer segment from the list.']};
+    }
+    const {userErrors} = await setAudience(admin, campaign, audience);
     if (userErrors.length) {
       return {problems: userErrors.map((error) => error.message)};
     }
@@ -276,10 +287,10 @@ export async function action({request, params}) {
   // [START campaign-dashboard.send-events-action]
   // One request per event. A real app queues these as its sends happen.
   if (intent === 'send-events') {
-    // App Events can't be deleted after Shopify accepts them. A campaign the user
-    // canceled reports nothing.
-    if (campaign.status === 'canceled') {
-      return {problems: ['This campaign was canceled.']};
+    // App Events can't be deleted after Shopify accepts them. Only a running campaign
+    // has sends to report, and a planned one would date them in the future.
+    if (campaign.status !== 'running') {
+      return {problems: ['Only a running campaign can send its events.']};
     }
     if (!shopId) return {problems: ['Could not read the store ID.']};
     const {accepted, failures} = await sendCampaignFunnel({
@@ -1019,6 +1030,7 @@ export default function CampaignDashboard() {
 
 
         <SendEventsPanel
+          running={campaign.status === 'running'}
           sent={sent}
           funnel={funnel}
           sendCount={sendCount}

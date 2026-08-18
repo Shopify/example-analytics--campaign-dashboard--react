@@ -2,13 +2,6 @@ import {SEQUENCE} from './app-events.server';
 import {CHANNELS} from './channels';
 import {clamp} from './campaigns';
 
-// A daily timeseries has one row per day. A campaign total is the sum of a column.
-export const sumColumn = (table, metric) =>
-  (table.tableData?.rows ?? []).reduce(
-    (total, row) => total + Number(row[metric] ?? 0),
-    0,
-  );
-
 // [START campaign-dashboard.sequence-read]
 // Join what the sequence sent to what the shop reported, one row per touch.
 export function readSequence(table) {
@@ -83,6 +76,13 @@ export function outcomeText({campaign, revenue, target, sequence, money}) {
 // [END campaign-dashboard.outcome-text]
 
 // [START campaign-dashboard.detect-incident]
+// A daily timeseries has one row per day. A campaign total is the sum of a column.
+export const sumColumn = (table, metric) =>
+  (table.tableData?.rows ?? []).reduce(
+    (total, row) => total + Number(row[metric] ?? 0),
+    0,
+  );
+
 // Names the kind of bounce it found.
 export function detectIncident(campaign, funnel, bounces) {
   const sent = sumColumn(funnel, 'emails_sent');

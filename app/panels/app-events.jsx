@@ -152,7 +152,9 @@ export function sequenceInsights({
 // [START campaign-dashboard.send-events-render]
 // The only panel that writes to App Events. Ingestion isn't immediate, and the panel
 // gates on the send count, because a campaign with no events answers with a zero row.
+// Accepted events can't be deleted, which is why a campaign has to be running first.
 export function SendEventsPanel({
+  running,
   sent,
   funnel,
   sendCount,
@@ -162,7 +164,7 @@ export function SendEventsPanel({
   busy,
   submit,
 }) {
-  if (sent !== 0) return null;
+  if (sent !== 0 || !running) return null;
 
   return (
     <s-section>
