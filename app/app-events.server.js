@@ -186,6 +186,15 @@ function expand(touch) {
 
 const STAGES = SEQUENCE.flatMap(expand);
 
+// Every timestamp is an offset from the campaign's start date. Shopify keeps every
+// event it accepts, and one dated ahead of today falls outside the funnel's window.
+const LAST_OFFSET = Math.max(
+  ...STAGES.map((stage) => stage.day * 86400000 + stage.hour * 3600000),
+);
+
+export const funnelWindowEnd = (startDate, timeZone) =>
+  shopMorning(startDate, timeZone) + LAST_OFFSET;
+
 // Event data can't be deleted. Sending a channel the campaign didn't select would leave
 // permanent numbers on a funnel the app never renders.
 const selected = (channels) =>

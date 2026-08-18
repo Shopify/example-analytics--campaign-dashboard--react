@@ -5,6 +5,7 @@ import '../chart-tooltip.css';
 import {authenticate} from '../shopify.server';
 import {
   eventTotal,
+  funnelWindowEnd,
   sendCampaignFunnel,
   sendCount,
 } from '../app-events.server';
@@ -291,6 +292,13 @@ export async function action({request, params}) {
     // has sends to report, and a planned one would date them in the future.
     if (campaign.status !== 'running') {
       return {problems: ['Only a running campaign can send its events.']};
+    }
+    // The replay dates its events across the two weeks after the start date. A campaign
+    // still mid-schedule would stamp the remainder ahead of today.
+    const lastSend = funnelWindowEnd(campaign.startDate, timeZone);
+    if (lastSend > Date.now()) {
+      const day = new Date(lastSend).toISOString().slice(0, 10);
+      return {problems: [`Wait until ${day}, when this campaign's last send lands.`]};
     }
     if (!shopId) return {problems: ['Could not read the store ID.']};
     const {accepted, failures} = await sendCampaignFunnel({
