@@ -53,8 +53,11 @@ export const CHANNELS = {
 };
 
 export const CHANNEL_KEYS = Object.keys(CHANNELS);
+// [END campaign-dashboard.channel-registry]
 
-// Not funnel stages, but read from the same rows. A column left out reads as zero.
+// [START campaign-dashboard.funnel-metrics]
+// Bounces and unsubscribes come off the same rows as the stages. A column left
+// out reads as zero.
 export const FUNNEL_METRICS = CHANNEL_KEYS.flatMap((key) => [
   ...CHANNELS[key].stages.map((stage) => stage.metric),
   CHANNELS[key].metrics.bounced,
@@ -67,4 +70,4 @@ const SCORED = ['sent', 'reached', 'engaged', 'lost'];
 export const SEQUENCE_METRICS = CHANNEL_KEYS.flatMap((key) =>
   SCORED.map((slot) => CHANNELS[key].metrics[slot]),
 ).filter((metric, index, all) => metric && all.indexOf(metric) === index);
-// [END campaign-dashboard.channel-registry]
+// [END campaign-dashboard.funnel-metrics]
