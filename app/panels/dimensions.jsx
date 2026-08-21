@@ -120,7 +120,7 @@ export function creatorShape({codeSales, campaign, touchRows, cell}) {
 // [END campaign-dashboard.code-shape]
 
 // [START campaign-dashboard.promoted-render]
-// The split the app's own dimension makes possible.
+// The split the app's dimension makes possible.
 export function PromotedProductSales({
   promotedByDay,
   promotedSplit,

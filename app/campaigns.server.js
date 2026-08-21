@@ -7,7 +7,7 @@ import {
 
 // [START campaign-dashboard.campaign-store]
 // Every query, target, and annotation on the dashboard derives from these fields.
-// Stored in one app-data metafield. A real app would use its own storage.
+// Stored in one app-data metafield. A real app would use a database.
 export const CAMPAIGN_FIELDS = {
   id: 'Integer the App Events attribute is typed as. Filters every event query.',
   title: 'What the user typed. Ends up in every annotation title.',
@@ -48,7 +48,7 @@ export const nextCampaignId = (campaigns) =>
 export const transportErrors = (body) =>
   (body.errors ?? []).map((error) => ({message: error.message}));
 
-// Returns the app's own ID alongside the records. The namespace is built from it.
+// Returns this app's ID alongside the records. The namespace is built from it.
 export async function readCampaigns(admin) {
   const body = await (await admin.graphql(STATE_QUERY)).json();
   const installation = body.data?.currentAppInstallation;
@@ -131,7 +131,7 @@ export async function rememberMarkers(admin, campaignId, markers) {
 }
 // [END campaign-dashboard.campaign-write]
 
-// The roster is the only customer data this app keeps of its own. The tier metafield
+// The roster is the only customer data this app stores. The tier metafield
 // goes with the customer. This is what's left.
 export async function forgetCustomer(admin, customerId) {
   const {installationId, campaigns, failed} = await readCampaigns(admin);
@@ -202,7 +202,7 @@ function seedRecords() {
 
 export async function ensureCampaign(admin) {
   const state = await readCampaigns(admin);
-  // Seeding on a failed read would overwrite the store's own campaigns.
+  // Seeding on a failed read would overwrite the campaigns already stored.
   if (state.failed.length) return {...state, userErrors: state.failed};
   if (state.campaigns.length > 0) return {...state, userErrors: []};
 

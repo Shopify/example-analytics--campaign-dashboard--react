@@ -5,7 +5,7 @@ export const AUDIENCE_TIERS = [
   {
     value: 'vip',
     label: 'VIP',
-    // Ranked from the sales dataset, because CustomerSortKeys has no spend key.
+    // Ranked from the sales schema, because CustomerSortKeys has no spend key.
     description: 'The 10 customers who spent the most in the last year.',
     size: 10,
   },

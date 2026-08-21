@@ -286,7 +286,7 @@ export default function CampaignsIndex() {
     campaigns.find((campaign) => campaign.status !== 'planned') ?? campaigns[0];
 
   // [START campaign-dashboard.product-picker]
-  // The store's own product search. The app never builds a product list of its own.
+  // The store's product search. The app never builds a product list.
   async function pickProducts() {
     const selection = await shopify.resourcePicker({
       type: 'product',
@@ -309,7 +309,7 @@ export default function CampaignsIndex() {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     form.set('products', JSON.stringify(products));
-    // The choice list submits under its own name. Clear it, or channels arrive twice.
+    // The choice list submits under its `name`. Clear it, or channels arrive twice.
     form.delete('channels');
     for (const channel of channels) form.append('channels', channel);
     fetcher.submit(form, {method: 'post'});

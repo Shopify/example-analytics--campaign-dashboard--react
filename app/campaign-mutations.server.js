@@ -112,7 +112,7 @@ export async function raiseTarget(admin, target) {
 }
 // [END campaign-dashboard.raise-target]
 
-// The start-date query returns the user's own targets alongside this app's. A form can
+// The start-date query returns the targets the user set alongside this app's. A form can
 // name any ID it returned. Match against the recorded ones before writing.
 export function recordedTarget(campaign, body, id) {
   const recorded = new Set(Object.values(campaign.targets ?? {}));
@@ -122,7 +122,7 @@ export function recordedTarget(campaign, body, id) {
 }
 
 // [START campaign-dashboard.bundle-mark]
-// A bundle needs `bundle_launch`. Only the store's own data knows which it is.
+// A bundle needs `bundle_launch`. Only the store's data knows which it is.
 const PLAIN_LAUNCH = {type: 'product_launch', note: ''};
 
 async function resolveLaunchMark(admin, campaign) {
@@ -145,8 +145,8 @@ async function resolveLaunchMark(admin, campaign) {
 // [END campaign-dashboard.bundle-mark]
 
 // [START campaign-dashboard.clear-marks]
-// Only this campaign's annotations. Another campaign over the same days has its own
-// marks in this list. Reading the store first also skips IDs already gone.
+// Only this campaign's annotations. Another campaign over the same days has
+// marks in this list too. Reading the store first also skips IDs already gone.
 async function clearOwnMarks(admin, campaign, appId, keys) {
   const recorded = new Set(
     Object.entries(campaign.markers ?? {})
@@ -176,7 +176,7 @@ async function clearOwnMarks(admin, campaign, appId, keys) {
 // Clear before writing, which makes launching and rewriting the same operation.
 // Each ID persists as it lands. A retry or a cancel can then finish a partial write.
 export async function writeMarks(admin, campaign, appId, markedAt) {
-  // Milestones and incidents are recorded under their own keys and each marks a day
+  // Milestones and incidents are recorded under separate keys and each marks a day
   // that happened. A rewrite of the base marks keeps them.
   const marks = campaignMarks(campaign);
   const keys = new Set(marks.map((mark) => mark.key));

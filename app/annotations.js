@@ -74,7 +74,7 @@ export function categoryLegend(annotations, appId) {
 // [END campaign-dashboard.category-colors]
 
 // [START campaign-dashboard.explore-link]
-// The report reads its window from the query's own SINCE and UNTIL.
+// The report reads its window from the query's SINCE and UNTIL.
 export function exploreLink(query) {
   return `shopify://admin/analytics/reports/explore?ql=${encodeURIComponent(query)}`;
 }
@@ -92,7 +92,7 @@ export function exploreQuery({window, types, metric = 'total_sales'}) {
 // [END campaign-dashboard.explore-link]
 
 // [START campaign-dashboard.analytics-link]
-// The store's own explorer, with the query already in it.
+// The store's explorer, with the query already in it.
 export function analyticsReportHref({window, annotations}) {
   return exploreLink(
     exploreQuery({

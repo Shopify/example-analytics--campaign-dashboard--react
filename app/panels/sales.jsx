@@ -46,7 +46,7 @@ export function useMetricCardsReady() {
 // [END campaign-dashboard.metric-card-ready]
 
 // [START campaign-dashboard.chart]
-// Money and a count can't share an axis. A ComboChart gives each its own.
+// Money and a count can't share an axis. A ComboChart gives each one an axis.
 export function salesChartSeries({rows, cell, shortDate}) {
   return {
     salesSeries: {

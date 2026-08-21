@@ -109,7 +109,7 @@ import {readDimensions} from '../dimensions.server';
 export async function loader({request, params}) {
   // [START campaign-dashboard.campaign-load]
   // Redirect on a miss. A thrown response renders above this route's layout
-  // and takes the app's navigation with it. The search params hold App Bridge's.
+  // and takes the app's navigation with it. The search params hold App Bridge's store and host.
   const {admin} = await authenticate.admin(request);
   const {appId, campaigns} = await readCampaigns(admin);
   const campaign = findCampaign(campaigns, params.campaignId);
@@ -186,7 +186,7 @@ export async function loader({request, params}) {
     appId,
     eventTotal: eventTotal(campaign.channels),
     sendCount: sendCount(campaign.channels),
-    // The sales dataset has no currency column. Read it off the shop field.
+    // The sales schema has no currency column. Read it off the shop field.
     currencyCode: salesBody.data?.shop?.currencyCode ?? 'USD',
     // TIMESERIES buckets by the store's timezone. The browser's would misdate an annotation.
     timeZone: salesBody.data?.shop?.ianaTimezone ?? 'Etc/UTC',
@@ -228,7 +228,7 @@ export async function action({request, params}) {
   const shopId = shopBody.data?.shop?.id ?? null;
   const timeZone = shopBody.data?.shop?.ianaTimezone ?? 'Etc/UTC';
 
-  // Annotation text is written here, and the sales dataset has no currency column. Take
+  // Annotation text is written here, and the sales schema has no currency column. Take
   // the currency off the shop, because an unknown code throws where it should format.
   const money = (value) =>
     new Intl.NumberFormat('en', {
@@ -237,7 +237,7 @@ export async function action({request, params}) {
       maximumFractionDigits: 0,
     }).format(value);
 
-  // Timestamped in the shop's own day.
+  // Timestamped in the shop's timezone.
   const markedAt = (date) =>
     new Date(shopMorning(date, timeZone)).toISOString();
 
@@ -390,7 +390,7 @@ export async function action({request, params}) {
   }
 
   // [START campaign-dashboard.rewrite-marks]
-  // Replace what's on the store. Read this app's own annotations, delete them, and put
+  // Replace what's on the store. Read the annotations this app wrote, delete them, and put
   // the current marks up in their place.
   if (intent === 'rewrite-marks') {
     // Closing moved the span's `endedAt` off null and put the outcome in the title.
@@ -439,7 +439,6 @@ export async function action({request, params}) {
   }
 
   if (intent === 'milestone') {
-    // A milestone marks a day the campaign was live.
     if (campaign.status !== 'running') {
       return {problems: ['Only a running campaign can mark a milestone.']};
     }
@@ -464,7 +463,6 @@ export async function action({request, params}) {
   }
 
   if (intent === 'flag-incident') {
-    // An incident marks a day the campaign was live.
     if (campaign.status !== 'running') {
       return {problems: ['Only a running campaign can flag an incident.']};
     }
@@ -547,13 +545,13 @@ export async function action({request, params}) {
   }
 
   if (intent === 'cancel') {
-    // Canceling deletes the targets and the annotations. A closed campaign keeps its
-    // outcome on the store's charts.
+    // A closed campaign keeps its outcome on the store's charts. A planned or running
+    // one is what a cancel can take down.
     if (campaign.status !== 'planned' && campaign.status !== 'running') {
       return {problems: ['Only a planned or running campaign can be canceled.']};
     }
     // Only the IDs on the record. `analyticsTargetsDelete` deletes any target on the
-    // shop, including the user's own. Each ID drops off the record as its delete lands.
+    // shop, including the ones the user set. Each ID drops off the record as its delete lands.
     const undone = [];
     const markers = {};
     for (const [key, id] of Object.entries(campaign.markers ?? {})) {
@@ -612,8 +610,8 @@ export async function action({request, params}) {
     if (campaign.status !== 'canceled') {
       return {problems: ['Only a canceled campaign can be planned again.']};
     }
-    // Canceling already deleted the annotations and the targets. A canceled campaign is
-    // a record with nothing on the store, which is what a planned one is.
+    // A canceled campaign is a record with nothing on the store, which is what a planned
+    // one is.
     const {userErrors} = await updateCampaign(admin, campaign.id, {status: 'planned'});
     if (userErrors.length) {
       return {problems: userErrors.map((error) => error.message)};
@@ -695,12 +693,12 @@ export default function CampaignDashboard() {
   } = data;
 
   // [START campaign-dashboard.read]
-  // Generated column names are the contract. One helper to break in one place.
+  // Generated column names are the contract. Every read goes through one helper.
   const cell = (row, name) => row[name];
   // [END campaign-dashboard.read]
 
   // [START campaign-dashboard.format]
-  // Money comes back as a string, to keep precision. Format at the edge.
+  // Money comes back as a string, to keep precision. Format it here.
   const currency = (value) =>
     new Intl.NumberFormat(locale, {
       style: 'currency',
@@ -842,7 +840,7 @@ export default function CampaignDashboard() {
 
   const planned = campaign.status === 'planned';
   const running = campaign.status === 'running';
-  // Canceling deleted the annotations and the targets these panels report on.
+  // These panels report on annotations and targets a cancel already deleted.
   const canceled = campaign.status === 'canceled';
 
   // Beside the store's totals on a launched campaign, alone before one.

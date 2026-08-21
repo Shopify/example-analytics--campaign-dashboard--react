@@ -16,7 +16,7 @@ export const action = async ({request}) => {
 
   const errors = await forgetCustomer(admin, `gid://shopify/Customer/${id}`);
   // A 200 confirms receipt, which is all a compliance webhook owes. The 30 days to
-  // finish are the app's own, and a real app would queue this retry.
+  // finish belong to the app, and a real app would queue this retry.
   if (errors.length) {
     console.error(errors.map((error) => error.message).join('. '));
   }

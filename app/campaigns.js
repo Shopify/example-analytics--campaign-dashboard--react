@@ -83,7 +83,7 @@ export function shopMorning(date, timeZone) {
 }
 
 // `app_events` holds 30 days, and a window reaching further back fails outright.
-// Clamp to relative tokens, which ShopifyQL resolves in the store's own timezone.
+// Clamp to relative tokens, which ShopifyQL resolves in the store's timezone.
 const RECENT_DAYS = 29;
 
 export function recentWindow(campaign) {
@@ -115,7 +115,7 @@ export function withinWindow(campaign, offsetDays) {
   return day > campaign.endDate ? campaign.endDate : day;
 }
 
-// Names beat a count, until the list outgrows the annotation it sits in.
+// List the names while they fit the annotation's cap, then fall back to a count.
 const nameList = (names) =>
   names.length > 3
     ? `${names.length} creators`
@@ -143,7 +143,7 @@ export function campaignMarks(campaign) {
     },
     {
       key: 'launch',
-      // A guess. `resolveLaunchMark` upgrades it to `bundle_launch` for bundles.
+      // Defaults to a plain product. `resolveLaunchMark` upgrades it for a bundle.
       type: 'product_launch',
       title: `${campaign.title} collection on sale`,
       description: 'The collection went on sale.',
@@ -163,7 +163,7 @@ export function campaignMarks(campaign) {
           {
             key: 'creator',
             type: 'influencer_collaboration',
-            // `title` names the campaign for the store's own chart, where other
+            // `title` names the campaign for the store's chart, where other
             // campaigns' marks sit beside it. `label` is the in-app short form.
             label: 'Influencer drop',
             title: `Influencer drop for ${campaign.title}`,

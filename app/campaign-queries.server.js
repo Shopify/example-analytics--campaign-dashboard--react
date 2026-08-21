@@ -20,7 +20,7 @@ export const SHOP_QUERY = `
 export const STATE_NAMESPACE = 'campaign_dashboard';
 export const STATE_KEY = 'campaigns';
 
-// Returns the app's own ID, which tells this app's annotations from another app's.
+// Returns this app's ID, which separates its annotations from another app's.
 export const STATE_QUERY = `
   query CampaignState {
     currentAppInstallation {
@@ -82,14 +82,14 @@ export const salesQuery = (campaign) => `
 // [END campaign-dashboard.query]
 
 // [START campaign-dashboard.optional-query]
-// A factory. Two skipped panels then don't share one rows array.
+// Built per panel, which keeps two skipped panels from sharing a rows array.
 export const emptyTable = () => ({
   tableData: {columns: [], rows: []},
   parseErrors: [],
   unavailable: null,
 });
 
-// An unreachable dataset fails the whole request. A parse error nulls tableData.
+// An unreachable schema fails the whole request. A parse error nulls tableData.
 export async function runOptional(admin, query) {
   try {
     const body = await (await admin.graphql(query)).json();
@@ -398,7 +398,7 @@ export const sliceQuery = () => `
 // [END campaign-dashboard.slice-queries]
 
 // [START campaign-dashboard.sequence-query]
-// All three channels' metrics share one SHOW. Each row fills only its own columns.
+// All three channels' metrics share one SHOW. Each row fills only its channel's columns.
 export const sequenceQuery = (campaign) => `
   query CampaignSequence {
     shopifyqlQuery(
@@ -645,7 +645,7 @@ export const touchSalesQuery = (campaign, dimension) => `
 // [END campaign-dashboard.order-touch-queries]
 
 // [START campaign-dashboard.creator-code-queries]
-// `discount_code` is built in. Rolling codes up to one creator is the app's own job.
+// `discount_code` is built in. Rolling codes up to one creator is the app's job.
 export const codeSalesQuery = (campaign, filter) => `
   query CampaignCodeSales {
     shopifyqlQuery(
