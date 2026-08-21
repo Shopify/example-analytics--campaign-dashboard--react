@@ -332,7 +332,7 @@ export default function CampaignsIndex() {
       )}
 
       {/* [START campaign-dashboard.overview-card-render] */}
-      {/* Each card runs its own ShopifyQL from the browser. */}
+      {/* Each card runs a ShopifyQL query from the browser. */}
       {since && (
         <s-section heading="The store while these campaigns run">
           {cardReady ? (
