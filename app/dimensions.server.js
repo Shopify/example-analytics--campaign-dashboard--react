@@ -4,6 +4,7 @@ import {
   DEFINITION_QUERY,
   DEFINITION_UPDATE,
 } from './campaign-queries.server';
+import {transportErrors} from './campaigns.server';
 
 // [START campaign-dashboard.metafield-dimension-read]
 // The three definitions the app owns. `eligible` is whether the types can support a
@@ -76,6 +77,8 @@ export async function readDimensions(admin) {
 // [START campaign-dashboard.enable-dimension]
 // Eligible isn't queryable. Until a definition becomes a dimension, naming it in a
 // query fails to parse. Address it by key and owner type, because neither takes an ID.
+// A rejected mutation answers with `errors` and a null `data`, and an unchecked call
+// leaves the button reporting success with the dimension still off.
 export async function enableDimension(admin, definition) {
   const {ownerType} = definition;
 
@@ -96,7 +99,10 @@ export async function enableDimension(admin, definition) {
         },
       })
     ).json();
-    return body.data?.metafieldDefinitionCreate?.userErrors ?? [];
+    return [
+      ...transportErrors(body),
+      ...(body.data?.metafieldDefinitionCreate?.userErrors ?? []),
+    ];
   }
 
   const body = await (
@@ -111,6 +117,9 @@ export async function enableDimension(admin, definition) {
       },
     })
   ).json();
-  return body.data?.metafieldDefinitionUpdate?.userErrors ?? [];
+  return [
+    ...transportErrors(body),
+    ...(body.data?.metafieldDefinitionUpdate?.userErrors ?? []),
+  ];
 }
 // [END campaign-dashboard.enable-dimension]
