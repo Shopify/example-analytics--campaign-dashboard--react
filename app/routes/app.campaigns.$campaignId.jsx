@@ -73,6 +73,7 @@ import {
   recordMark,
   recordedTarget,
   setAudience,
+  setTargetAmounts,
   setProducts,
   stampOrders,
   stampProducts,
@@ -277,6 +278,22 @@ export async function action({request, params}) {
       return {problems: ['Pick a customer segment from the list.']};
     }
     const {userErrors} = await setAudience(admin, campaign, audience);
+    if (userErrors.length) {
+      return {problems: userErrors.map((error) => error.message)};
+    }
+    return {ok: true};
+  }
+
+  if (intent === 'set-targets') {
+    const amounts = {};
+    for (const key of ['revenueTarget', 'productTarget', 'audienceTarget']) {
+      const value = String(form.get(key) ?? '').trim();
+      if (!/^\d+(\.\d{1,2})?$/.test(value)) {
+        return {problems: ['Enter every target amount as a number, such as 5000.']};
+      }
+      amounts[key] = value;
+    }
+    const {userErrors} = await setTargetAmounts(admin, campaign, amounts);
     if (userErrors.length) {
       return {problems: userErrors.map((error) => error.message)};
     }
@@ -824,6 +841,13 @@ export default function CampaignDashboard() {
       {method: 'post'},
     );
 
+  function saveTargets(event) {
+    event.preventDefault();
+    const values = new FormData(event.currentTarget);
+    values.set('intent', 'set-targets');
+    fetcher.submit(values, {method: 'post'});
+  }
+
   async function changeProducts() {
     const selection = await shopify.resourcePicker({
       type: 'product',
@@ -978,41 +1002,39 @@ export default function CampaignDashboard() {
             </s-stack>
           </s-section>
 
-          {/* The three amounts as typed, before any is a target. */}
-          <s-section heading="Targets">
-            <s-table>
-              <s-table-header-row>
-                <s-table-header listSlot="primary">Target</s-table-header>
-                <s-table-header listSlot="labeled">Measures</s-table-header>
-                <s-table-header listSlot="labeled">Amount</s-table-header>
-              </s-table-header-row>
-              <s-table-body>
-                <s-table-row>
-                  <s-table-cell>Store-wide</s-table-cell>
-                  <s-table-cell>Total sales</s-table-cell>
-                  <s-table-cell>{currency(campaign.revenueTarget)}</s-table-cell>
-                </s-table-row>
-                <s-table-row>
-                  <s-table-cell>Promoted products</s-table-cell>
-                  <s-table-cell>
-                    {promotedNames(campaign) || 'No products selected'}
-                  </s-table-cell>
-                  <s-table-cell>{currency(campaign.productTarget)}</s-table-cell>
-                </s-table-row>
+          {/* Each amount becomes a target at launch, and launch rejects a zero. */}
+          <form onSubmit={saveTargets}>
+            <s-section heading="Targets">
+              <s-stack direction="block" gap="base">
+                <s-money-field
+                  label="Store-wide revenue target"
+                  name="revenueTarget"
+                  value={campaign.revenueTarget}
+                  min={0}
+                  details="Measured on total sales."
+                />
+                <s-money-field
+                  label="Promoted product target"
+                  name="productTarget"
+                  value={campaign.productTarget}
+                  min={0}
+                  details={promotedNames(campaign) || 'No products selected'}
+                />
                 {isTargetedTier(campaign.audience) && (
-                  <s-table-row>
-                    <s-table-cell>Customer segment</s-table-cell>
-                    <s-table-cell>
-                      Sales to {tierLabel(campaign.audience).toLowerCase()}
-                    </s-table-cell>
-                    <s-table-cell>
-                      {currency(campaign.audienceTarget)}
-                    </s-table-cell>
-                  </s-table-row>
+                  <s-money-field
+                    label="Customer segment target"
+                    name="audienceTarget"
+                    value={campaign.audienceTarget}
+                    min={0}
+                    details={`Sales to ${tierLabel(campaign.audience).toLowerCase()}`}
+                  />
                 )}
-              </s-table-body>
-            </s-table>
-          </s-section>
+                <s-button variant="primary" type="submit" loading={busy}>
+                  Save targets
+                </s-button>
+              </s-stack>
+            </s-section>
+          </form>
         </Fragment>
       )}
 

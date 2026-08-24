@@ -243,7 +243,10 @@ export async function stampProducts(admin, campaign) {
         variables: {metafields: metafields.slice(start, start + 25)},
       })
     ).json();
-    userErrors.push(...(batch.data?.metafieldsSet?.userErrors ?? []));
+    userErrors.push(
+      ...transportErrors(batch),
+      ...(batch.data?.metafieldsSet?.userErrors ?? []),
+    );
   }
   return userErrors;
 }
@@ -257,6 +260,11 @@ export async function stampTier(admin, campaign) {
   if (!tier?.size) return {members: [], userErrors: []};
 
   const body = await (await admin.graphql(tierRankQuery(tier))).json();
+  // A failed rank read finds no customers. Returning no errors would read as a tier
+  // with nobody in it.
+  const unranked = transportErrors(body);
+  if (unranked.length) return {members: [], userErrors: unranked};
+
   // GROUP BY returns a numeric ID. Every mutation below wants a GID.
   const ids = (body.data?.shopifyqlQuery?.tableData?.rows ?? [])
     .map((row) => row.customer_id)
@@ -286,7 +294,11 @@ export async function stampTier(admin, campaign) {
       id: node.id,
       displayName: node.displayName,
     })),
-    userErrors: stamped.data?.metafieldsSet?.userErrors ?? [],
+    userErrors: [
+      ...transportErrors(stamped),
+      ...transportErrors(names),
+      ...(stamped.data?.metafieldsSet?.userErrors ?? []),
+    ],
   };
 }
 // [END campaign-dashboard.stamp-tier]
@@ -295,6 +307,9 @@ export async function stampTier(admin, campaign) {
 // Which send an order followed. Only the app knows what it sent.
 export async function stampOrders(admin, campaign) {
   const body = await (await admin.graphql(orderDaysQuery(campaign))).json();
+  const unread = transportErrors(body);
+  if (unread.length) return unread;
+
   const touches = touchMarks(campaign);
   const metafields = (body.data?.shopifyqlQuery?.tableData?.rows ?? [])
     .map((row) => ({id: row.order_id, touch: lastTouch(touches, row.day)}))
@@ -315,7 +330,10 @@ export async function stampOrders(admin, campaign) {
         variables: {metafields: metafields.slice(start, start + 25)},
       })
     ).json();
-    userErrors.push(...(batch.data?.metafieldsSet?.userErrors ?? []));
+    userErrors.push(
+      ...transportErrors(batch),
+      ...(batch.data?.metafieldsSet?.userErrors ?? []),
+    );
   }
   return userErrors;
 }
@@ -325,6 +343,11 @@ export async function stampOrders(admin, campaign) {
 // titles.
 export const setProducts = (admin, campaign, products) =>
   updateCampaign(admin, campaign.id, {products});
+
+// Launch is what turns an amount into a target, and it rejects a zero. Editable
+// until then, or adding products locks a campaign out of launching.
+export const setTargetAmounts = (admin, campaign, amounts) =>
+  updateCampaign(admin, campaign.id, amounts);
 
 // [START campaign-dashboard.audience-edit]
 // Moves both the tier on customers and a target's filter. Planned campaigns only.
