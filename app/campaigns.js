@@ -9,8 +9,8 @@ const channelLabel = (channel) => CHANNELS[channel]?.label ?? channel;
 // The picker hands back GIDs. ShopifyQL wants the numeric part.
 export const productId = (gid) => String(gid).split('/').at(-1);
 
-// The ID is interpolated into the filter string. Only digits get through, and a quoted
-// number passes target create then fails when Shopify measures it.
+// The filter string interpolates the ID. Only digits get through, and a quoted number
+// passes target create then fails when Shopify measures it.
 export function promotedFilter(campaign) {
   const ids = (campaign.products ?? [])
     .map((product) => productId(product.id))
@@ -122,7 +122,7 @@ const nameList = (names) =>
     : `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`;
 
 // [START campaign-dashboard.campaign]
-// The moments a campaign is made of, each with a type from a different category so
+// The moments that make up a campaign, each with a type from a different category so
 // ANNOTATE can filter them apart, and each dated to when the thing happened.
 export function campaignMarks(campaign) {
   const channels = campaign.channels ?? [];
@@ -151,7 +151,7 @@ export function campaignMarks(campaign) {
     },
     {
       key: 'vip',
-      // The closest documented type. The tier is named in the text.
+      // The closest documented type. The text names the tier.
       type: 'loyalty_program_offer',
       title: `Early access for ${tier}`,
       description: `${tier} shopped it first.`,

@@ -204,8 +204,8 @@ async function clearOwnMarks(admin, campaign, appId, keys) {
 // Clear before writing, which makes launching and rewriting the same operation.
 // Each ID persists as it lands. A retry or a cancel can then finish a partial write.
 export async function writeMarks(admin, campaign, appId, markedAt) {
-  // Milestones and incidents are recorded under separate keys and each marks a day
-  // that happened. A rewrite of the base marks keeps them.
+  // Separate keys hold milestones and incidents, and each marks a day that happened.
+  // A rewrite of the base marks keeps them.
   const marks = campaignMarks(campaign);
   const keys = new Set(marks.map((mark) => mark.key));
   const stale = await clearOwnMarks(admin, campaign, appId, keys);
@@ -281,8 +281,8 @@ export async function stampProducts(admin, campaign) {
 // [END campaign-dashboard.product-metafield]
 
 // [START campaign-dashboard.stamp-tier]
-// The tier written onto the customers themselves. The roster is saved on the record
-// too, because the metafield holds only the tier's name.
+// The tier written onto the customers themselves. The record keeps the roster too,
+// because the metafield holds only the tier's name.
 export async function stampTier(admin, campaign) {
   const tier = AUDIENCE_TIERS.find((entry) => entry.value === campaign.audience);
   if (!tier?.size) return {members: [], userErrors: []};

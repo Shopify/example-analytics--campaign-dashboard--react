@@ -2,8 +2,8 @@ import {readdirSync, readFileSync, statSync} from 'node:fs';
 import {join} from 'node:path';
 
 // Each start/end pair below names an excerpt the tutorial pulls out of this repo. Moving
-// one half out of its pair breaks that excerpt on shopify.dev with nothing to catch it
-// there. This file is skipped, because the pattern it looks for would match its own.
+// one half out of its pair breaks that excerpt on shopify.dev, with nothing there to
+// catch it. Skip this file, because the pattern matches itself.
 const SKIP = new Set([
   'node_modules',
   '.git',

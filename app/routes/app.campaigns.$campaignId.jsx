@@ -230,8 +230,8 @@ export async function action({request, params}) {
   const shopId = shopBody.data?.shop?.id ?? null;
   const timeZone = shopBody.data?.shop?.ianaTimezone ?? 'Etc/UTC';
 
-  // Annotation text is written here, and the sales schema has no currency column. Take
-  // the currency off the shop, because an unknown code throws where it should format.
+  // This writes annotation text, and the sales schema has no currency column. Take the
+  // currency off the shop, because an unknown code throws where it should format.
   const money = (value) =>
     new Intl.NumberFormat('en', {
       style: 'currency',
@@ -519,7 +519,7 @@ export async function action({request, params}) {
       return {problems: ['Only a running campaign can be closed.']};
     }
     // A campaign can close before its window runs out. Everything below reads the
-    // window that actually ran.
+    // window that ran.
     const closedOn =
       shopToday < campaign.endDate ? shopToday : campaign.endDate;
     const closing = {...campaign, endDate: closedOn};

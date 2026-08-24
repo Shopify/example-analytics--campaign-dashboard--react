@@ -74,8 +74,8 @@ export async function readDimensions(admin) {
 // [END campaign-dashboard.metafield-dimension-read]
 
 // [START campaign-dashboard.enable-dimension]
-// Eligible isn't queryable. Until a definition is made a dimension, naming it in a
-// query fails to parse. Addressed by key and owner type, because neither takes an ID.
+// Eligible isn't queryable. Until a definition becomes a dimension, naming it in a
+// query fails to parse. Address it by key and owner type, because neither takes an ID.
 export async function enableDimension(admin, definition) {
   const {ownerType} = definition;
 

@@ -150,9 +150,9 @@ export function sequenceInsights({
 // [END campaign-dashboard.sequence-charts]
 
 // [START campaign-dashboard.send-events-render]
-// The only panel that writes to App Events. Ingestion isn't immediate, and the panel
-// gates on the send count, because a campaign with no events answers with a zero row.
-// Accepted events can't be deleted, which is why a campaign has to be running first.
+// The only panel that writes to App Events. Gates on the send count, because a
+// campaign with no events answers with a zero row. Ingestion lags. Accepted events
+// can't be deleted, which is why a campaign has to be running first.
 export function SendEventsPanel({
   running,
   sent,

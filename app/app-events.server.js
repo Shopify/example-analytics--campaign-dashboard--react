@@ -147,7 +147,7 @@ const CHANNELS = {
   },
 };
 
-// One touch becomes up to six stages. What the channel can't report is left out.
+// One touch becomes up to six stages. Leave out what the channel can't report.
 function expand(touch) {
   const channel = CHANNELS[touch.channel];
   const delivered = channel.delivery

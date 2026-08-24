@@ -101,7 +101,7 @@ export const action = async ({request}) => {
     // JSON, because a form can't submit an array of objects.
     products: products ?? [],
     audience: String(form.get('audience') || 'everyone'),
-    // Sanitized on the way in. A code that can't be queried shouldn't reach the record.
+    // Sanitize on the way in. A code that can't be queried shouldn't reach the record.
     creatorCodes: parseCreatorCodes(form.get('creatorCodes')),
     revenueTarget: String(form.get('revenueTarget') || '0'),
     productTarget: String(form.get('productTarget') || '0'),
@@ -204,7 +204,7 @@ function sendsFor(campaign, rows, appName) {
   };
 }
 
-// A stacked bar takes one entry per series. The rows get pivoted, and channels stack.
+// A stacked bar takes one entry per series. Pivot the rows, and channels stack.
 // Sent against opened wouldn't, because opens are a subset of the sends.
 function messageMix(campaigns, rows, appName) {
   // Only campaigns with sends to report.
@@ -307,7 +307,7 @@ export default function CampaignsIndex() {
     // Canceling returns undefined. Don't clear the selection.
     if (!selection) return;
 
-    // Both are kept. A target filters on the GID and the annotations use the title.
+    // Keep both. A target filters on the GID and the annotations use the title.
     setProducts(
       selection.map((product) => ({id: product.id, title: product.title})),
     );
@@ -476,7 +476,7 @@ export default function CampaignsIndex() {
       {/* [END campaign-dashboard.overview-chart-render] */}
 
       {/* [START campaign-dashboard.metafield-dimension-render] */}
-      {/* A metafield the app owns is a dimension only once it's been asked for. */}
+      {/* A metafield becomes a dimension only after the app asks for it. */}
       <s-section heading="Dimensions this app owns">
         <s-paragraph>
           One definition per dimension, not one per campaign. The campaign is

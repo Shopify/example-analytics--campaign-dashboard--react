@@ -48,7 +48,7 @@ export const nextCampaignId = (campaigns) =>
 export const transportErrors = (body) =>
   (body.errors ?? []).map((error) => ({message: error.message}));
 
-// Returns this app's ID alongside the records. The namespace is built from it.
+// Returns this app's ID alongside the records. The namespace derives from it.
 export async function readCampaigns(admin) {
   const body = await (await admin.graphql(STATE_QUERY)).json();
   const installation = body.data?.currentAppInstallation;
@@ -147,7 +147,7 @@ export async function forgetCustomer(admin, customerId) {
 }
 
 // [START campaign-dashboard.seed-campaign]
-// Both start planned. One is dated mid-flight, the other starts weeks out.
+// Both start planned. One starts mid-flight, the other weeks out.
 function seedRecords() {
   const day = (date) => date.toISOString().slice(0, 10);
   const shift = (days) => {
