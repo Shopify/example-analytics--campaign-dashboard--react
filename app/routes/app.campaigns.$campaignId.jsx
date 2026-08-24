@@ -287,12 +287,19 @@ export async function action({request, params}) {
 
   if (intent === 'set-targets') {
     const amounts = {};
+    // The form renders a field only for a target this campaign can launch, and a
+    // segment of everyone has no segment target. Validate what came in, and leave
+    // an absent amount at its saved value.
     for (const key of ['revenueTarget', 'productTarget', 'audienceTarget']) {
-      const value = String(form.get(key) ?? '').trim();
+      if (!form.has(key)) continue;
+      const value = String(form.get(key)).trim();
       if (!/^\d+(\.\d{1,2})?$/.test(value)) {
-        return {problems: ['Enter every target amount as a number, such as 5000.']};
+        return {problems: ['Enter each target amount as a number, such as 5000.']};
       }
       amounts[key] = value;
+    }
+    if (!Object.keys(amounts).length) {
+      return {problems: ['Enter a target amount.']};
     }
     const {userErrors} = await setTargetAmounts(admin, campaign, amounts);
     if (userErrors.length) {
