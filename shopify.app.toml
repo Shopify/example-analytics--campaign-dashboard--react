@@ -28,6 +28,11 @@ api_version = "2026-10"
   topics = ["app/uninstalled"]
   uri = "/webhooks/app/uninstalled"
 
+  # Handled by: /app/routes/webhooks.app.scopes_update.jsx
+  [[webhooks.subscriptions]]
+  topics = ["app/scopes_update"]
+  uri = "/webhooks/app/scopes_update"
+
   # [START campaign-dashboard.compliance-webhooks]
   # Required of every app that holds customer data. Launching a campaign saves a
   # customer ID and display name per tier member onto the record. These three go in
