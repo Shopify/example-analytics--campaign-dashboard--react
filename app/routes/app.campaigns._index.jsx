@@ -223,9 +223,18 @@ function messageMix(campaigns, rows, appName) {
   }));
 }
 
-// The store from the earliest campaign onwards, which is the period the list covers.
-function earliestStart(campaigns) {
-  return campaigns.map((campaign) => campaign.startDate).sort()[0] ?? null;
+// The store from the earliest campaign onwards, floored so an old campaign can't ask
+// for a daily series over years of history. ShopifyQL resolves the relative token in
+// the store's timezone.
+const OVERVIEW_DAYS = 90;
+
+function overviewSince(campaigns) {
+  const earliest = campaigns.map((campaign) => campaign.startDate).sort()[0];
+  if (!earliest) return null;
+  const floor = new Date(Date.now() - OVERVIEW_DAYS * 86400000)
+    .toISOString()
+    .slice(0, 10);
+  return earliest < floor ? `-${OVERVIEW_DAYS}d` : earliest;
 }
 // [END campaign-dashboard.overview-shape]
 
@@ -262,7 +271,7 @@ export default function CampaignsIndex() {
     return () => clearInterval(poll);
   }, []);
 
-  const since = earliestStart(campaigns);
+  const since = overviewSince(campaigns);
   const cardQuery = (metric) =>
     [
       'FROM sales',
@@ -336,7 +345,7 @@ export default function CampaignsIndex() {
       {since && (
         <s-section heading="The store while these campaigns run">
           {cardReady ? (
-            <s-metrics-bar accessibilityLabel="Store totals since the earliest campaign started">
+            <s-metrics-bar accessibilityLabel="Store totals over the period the campaign list covers">
               <s-shopifyql-metric-card
                 heading="Total sales"
                 query={cardQuery('total_sales')}

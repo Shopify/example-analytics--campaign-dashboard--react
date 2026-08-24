@@ -67,6 +67,7 @@ import {
   createAudienceTarget,
   createProductTarget,
   createStoreTarget,
+  endTargetsOn,
   flagIncident,
   markMilestone,
   raiseTarget,
@@ -466,16 +467,18 @@ export async function action({request, params}) {
     const target = recordedTarget(campaign, targetsBody, form.get('targetId'));
     if (!target) return {problems: ['That target no longer exists.']};
 
+    // One mark per target per day. A second write would leave the first annotation
+    // on the timeline with nothing pointing at it.
+    const key = `milestone:${productId(target.id)}:${day}`;
+    if (campaign.markers?.[key]) {
+      return {problems: ['That day is already marked for this target.']};
+    }
+
     const result = await markMilestone(admin, target, markedAt(day), money);
     if (result.userErrors?.length) {
       return {problems: result.userErrors.map((error) => error.message)};
     }
-    await recordMark(
-      admin,
-      campaign,
-      `milestone:${productId(target.id)}:${day}`,
-      result.analyticsAnnotation?.id,
-    );
+    await recordMark(admin, campaign, key, result.analyticsAnnotation?.id);
     return {ok: true};
   }
 
@@ -484,6 +487,10 @@ export async function action({request, params}) {
       return {problems: ['Only a running campaign can flag an incident.']};
     }
     const day = String(form.get('day'));
+    if (campaign.markers?.[`incident:${day}`]) {
+      return {problems: ['That day already has an incident flagged.']};
+    }
+
     const result = await flagIncident(admin, campaign, markedAt(day));
     if (result.userErrors?.length) {
       return {problems: result.userErrors.map((error) => error.message)};
@@ -509,6 +516,16 @@ export async function action({request, params}) {
     const closedOn =
       shopToday < campaign.endDate ? shopToday : campaign.endDate;
     const closing = {...campaign, endDate: closedOn};
+
+    // Shorten the targets first. A target left on its original end date keeps
+    // measuring days the campaign didn't run, and Shopify rebuilds the query it
+    // measures with from the dates.
+    if (closedOn < campaign.endDate) {
+      const stillOpen = await endTargetsOn(admin, campaign, closedOn);
+      if (stillOpen.length) {
+        return {problems: stillOpen.map((error) => error.message)};
+      }
+    }
 
     const [funnel, sequenceTable, targetsBody] = await Promise.all([
       runOptional(admin, appEventsQuery(closing)),

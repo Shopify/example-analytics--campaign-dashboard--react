@@ -112,6 +112,24 @@ export async function raiseTarget(admin, target) {
 }
 // [END campaign-dashboard.raise-target]
 
+// A campaign that closes early stops counting on the day it closed. Move the end date
+// on every target the campaign created, and Shopify rebuilds each measuring query.
+export async function endTargetsOn(admin, campaign, day) {
+  const problems = [];
+  for (const id of Object.values(campaign.targets ?? {})) {
+    const body = await (
+      await admin.graphql(TARGET_UPDATE, {
+        variables: {id, input: {endDate: day}},
+      })
+    ).json();
+    problems.push(
+      ...transportErrors(body),
+      ...(body.data?.analyticsTargetUpdate?.userErrors ?? []),
+    );
+  }
+  return problems;
+}
+
 // The start-date query returns the targets the user set alongside this app's. A form can
 // name any ID it returned. Match against the recorded ones before writing.
 export function recordedTarget(campaign, body, id) {
@@ -146,28 +164,38 @@ async function resolveLaunchMark(admin, campaign) {
 
 // [START campaign-dashboard.clear-marks]
 // Only this campaign's annotations. Another campaign over the same days has
-// marks in this list too. Reading the store first also skips IDs already gone.
+// marks in this list too. Page through the whole window. A recorded ID sitting past
+// the first page goes undeleted, and the rewrite doubles the mark on the timeline.
 async function clearOwnMarks(admin, campaign, appId, keys) {
   const recorded = new Set(
     Object.entries(campaign.markers ?? {})
       .filter(([key]) => keys.has(key))
       .map(([, id]) => id),
   );
-  const body = await (await admin.graphql(annotationsQuery(campaign))).json();
-  const failed = transportErrors(body);
-  if (failed.length) return failed;
-
-  const nodes = body.data?.shop?.analyticsAnnotations?.nodes ?? [];
   const problems = [];
+  let after = null;
 
-  for (const annotation of nodes) {
-    if (annotation.createdByApp?.id !== appId) continue;
-    if (!recorded.has(annotation.id)) continue;
-    const deleted = await (
-      await admin.graphql(ANNOTATION_DELETE, {variables: {id: annotation.id}})
+  do {
+    const body = await (
+      await admin.graphql(annotationsQuery(campaign, after))
     ).json();
-    problems.push(...(deleted.data?.analyticsAnnotationDelete?.userErrors ?? []));
-  }
+    const failed = transportErrors(body);
+    if (failed.length) return failed;
+
+    const page = body.data?.shop?.analyticsAnnotations;
+    for (const annotation of page?.nodes ?? []) {
+      if (annotation.createdByApp?.id !== appId) continue;
+      if (!recorded.has(annotation.id)) continue;
+      const deleted = await (
+        await admin.graphql(ANNOTATION_DELETE, {variables: {id: annotation.id}})
+      ).json();
+      problems.push(
+        ...(deleted.data?.analyticsAnnotationDelete?.userErrors ?? []),
+      );
+    }
+    after = page?.pageInfo?.hasNextPage ? page.pageInfo.endCursor : null;
+  } while (after);
+
   return problems;
 }
 // [END campaign-dashboard.clear-marks]

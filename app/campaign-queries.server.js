@@ -319,8 +319,9 @@ export const ANNOTATION_DELETE = `
 // [END campaign-dashboard.annotation-delete]
 
 // [START campaign-dashboard.annotation-read]
-// Hangs off Shop, sorted by ID unless told otherwise, and filtered by window.
-export const annotationsQuery = (campaign) => `
+// Hangs off Shop, sorted by ID unless told otherwise, and filtered by window. A
+// window holding more annotations than the page size continues from `endCursor`.
+export const annotationsQuery = (campaign, after = null) => `
   query CampaignAnnotations {
     currentAppInstallation {
       app {
@@ -330,6 +331,7 @@ export const annotationsQuery = (campaign) => `
     shop {
       analyticsAnnotations(
         first: 50
+        ${after ? `after: "${after}"` : ''}
         sortKey: STARTED_AT
         query: "started_at:>=${campaign.startDate} started_at:<=${campaign.endDate}"
       ) {
