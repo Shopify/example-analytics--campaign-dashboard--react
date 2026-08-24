@@ -561,7 +561,7 @@ const inGraphQLString = (dimension) => dimension.replaceAll('"', '\\"');
 export const promotedByQuery = (campaign, dimension) => `
   query CampaignPromotedSplit {
     shopifyqlQuery(
-      query: "FROM sales SHOW ${inGraphQLString(dimension)} AS promoted_by, total_sales TIMESERIES day GROUP BY promoted_by ${campaignWindow(campaign)} ORDER BY day ASC"
+      query: "FROM sales SHOW ${inGraphQLString(dimension)} AS promoted_by, total_sales GROUP BY promoted_by TIMESERIES day ${campaignWindow(campaign)} ORDER BY day ASC"
     ) {
       tableData {
         columns {
@@ -595,7 +595,7 @@ export const tierRankQuery = ({size, skip = 0}) => `
 export const tierSalesQuery = (campaign, dimension, tier) => `
   query CampaignAudienceSales {
     shopifyqlQuery(
-      query: "FROM sales SHOW total_sales, orders TIMESERIES day ${campaignWindow(campaign)} WHERE ${inGraphQLString(dimension)} = '${tier}' ORDER BY day ASC"
+      query: "FROM sales SHOW total_sales, orders WHERE ${inGraphQLString(dimension)} = '${tier}' TIMESERIES day ${campaignWindow(campaign)} ORDER BY day ASC"
     ) {
       tableData {
         columns {
@@ -651,7 +651,7 @@ export const touchSalesQuery = (campaign, dimension) => `
 export const codeSalesQuery = (campaign, filter) => `
   query CampaignCodeSales {
     shopifyqlQuery(
-      query: "FROM sales SHOW discount_code, total_sales, orders GROUP BY discount_code ${campaignWindow(campaign)} WHERE ${filter} ORDER BY total_sales DESC"
+      query: "FROM sales SHOW discount_code, total_sales, orders WHERE ${filter} GROUP BY discount_code ${campaignWindow(campaign)} ORDER BY total_sales DESC"
     ) {
       tableData {
         columns {
