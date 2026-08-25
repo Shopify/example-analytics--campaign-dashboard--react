@@ -155,20 +155,24 @@ export function SendEventsPanel({
 }) {
   if (sent !== 0 || !running) return null;
 
+  // An undeclared column fails on `parseErrors` while the request itself succeeds.
+  // Before the declaration propagates, that's the only signal App Events is unready.
+  const blocked =
+    funnel.unavailable ??
+    (funnel.parseErrors?.length ? funnel.parseErrors.join(' ') : null);
+
   return (
     <s-section>
       <PanelHeader
         title="Campaign events"
         uses={{
           appEvents:
-            'The events this app published as the campaign ran, queried like any dataset.',
+            'The events this app published as the campaign ran, queried like any schema.',
         }}
       />
-      {funnel.unavailable ? (
+      {blocked ? (
         <s-banner tone="info">
-          <s-paragraph>
-            This store can't query App Events yet: {funnel.unavailable}
-          </s-paragraph>
+          <s-paragraph>This store can't query App Events yet: {blocked}</s-paragraph>
         </s-banner>
       ) : (
         <Fragment>

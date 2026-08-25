@@ -186,6 +186,7 @@ async function clearOwnMarks(admin, campaign, appId, keys) {
         await admin.graphql(ANNOTATION_DELETE, {variables: {id: annotation.id}})
       ).json();
       problems.push(
+        ...transportErrors(deleted),
         ...(deleted.data?.analyticsAnnotationDelete?.userErrors ?? []),
       );
     }
