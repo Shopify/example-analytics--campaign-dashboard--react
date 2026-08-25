@@ -430,7 +430,11 @@ export async function markMilestone(admin, target, markedAt, money) {
     })
   ).json();
 
-  return created.data?.analyticsAnnotationCreate ?? {userErrors: []};
+  const result = created.data?.analyticsAnnotationCreate;
+  return {
+    ...result,
+    userErrors: [...transportErrors(created), ...(result?.userErrors ?? [])],
+  };
 }
 // [END campaign-dashboard.milestone]
 
@@ -467,6 +471,10 @@ export async function flagIncident(admin, campaign, markedAt) {
     })
   ).json();
 
-  return body.data?.analyticsAnnotationCreate ?? {userErrors: []};
+  const result = body.data?.analyticsAnnotationCreate;
+  return {
+    ...result,
+    userErrors: [...transportErrors(body), ...(result?.userErrors ?? [])],
+  };
 }
 // [END campaign-dashboard.flag-incident]

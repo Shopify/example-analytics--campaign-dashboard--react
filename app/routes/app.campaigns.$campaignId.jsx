@@ -379,20 +379,37 @@ export async function action({request, params}) {
     if (unmarked.length) return {problems: unmarked};
 
     // Targets aren't app-scoped. The saved IDs are the only way to cancel safely.
-    const [store, product, audience] = await Promise.all([
-      createStoreTarget(admin, campaign),
-      createProductTarget(admin, campaign),
-      createAudienceTarget(admin, campaign, dimensions.customer),
-    ]);
-    const targets = {};
+    // A launch that failed past this point left its IDs on the record. Reuse them,
+    // or the retry creates a second set the app can never reach.
+    const targets = {...(campaign.targets ?? {})};
     const rejected = [];
-    for (const [key, result] of [
-      ['store', store],
-      ['product', product],
-      ['audience', audience],
-    ]) {
-      if (result.id) targets[key] = result.id;
-      rejected.push(...result.userErrors);
+    if (!Object.keys(targets).length) {
+      const [store, product, audience] = await Promise.all([
+        createStoreTarget(admin, campaign),
+        createProductTarget(admin, campaign),
+        createAudienceTarget(admin, campaign, dimensions.customer),
+      ]);
+      for (const [key, result] of [
+        ['store', store],
+        ['product', product],
+        ['audience', audience],
+      ]) {
+        if (result.id) targets[key] = result.id;
+        rejected.push(...result.userErrors);
+      }
+
+      // Save the IDs before the stamps run, and delete what was created if that
+      // write fails. The record is the only place the app keeps a handle.
+      const created = Object.values(targets);
+      if (created.length) {
+        const {userErrors: unsaved} = await updateCampaign(admin, campaign.id, {
+          targets,
+        });
+        if (unsaved.length) {
+          await admin.graphql(TARGETS_DELETE, {variables: {ids: created}});
+          return {problems: unsaved.map((error) => error.message)};
+        }
+      }
     }
 
     const unstamped = await stampProducts(admin, campaign);
@@ -485,7 +502,17 @@ export async function action({request, params}) {
     if (result.userErrors?.length) {
       return {problems: result.userErrors.map((error) => error.message)};
     }
-    await recordMark(admin, campaign, key, result.analyticsAnnotation?.id);
+    // The saved ID is the handle a rewrite or a cancel needs. An unchecked write
+    // leaves the annotation on the timeline with nothing pointing at it.
+    const saved = await recordMark(
+      admin,
+      campaign,
+      key,
+      result.analyticsAnnotation?.id,
+    );
+    if (saved?.userErrors?.length) {
+      return {problems: saved.userErrors.map((error) => error.message)};
+    }
     return {ok: true};
   }
 
@@ -502,12 +529,15 @@ export async function action({request, params}) {
     if (result.userErrors?.length) {
       return {problems: result.userErrors.map((error) => error.message)};
     }
-    await recordMark(
+    const saved = await recordMark(
       admin,
       campaign,
       `incident:${day}`,
       result.analyticsAnnotation?.id,
     );
+    if (saved?.userErrors?.length) {
+      return {problems: saved.userErrors.map((error) => error.message)};
+    }
     return {ok: true};
   }
 
