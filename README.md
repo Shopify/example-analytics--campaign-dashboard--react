@@ -1,8 +1,8 @@
 # Campaign performance dashboard
 
-An embedded Shopify app that reports whether a marketing campaign worked, then writes the answer back onto the store's own analytics.
+An embedded Shopify app that reports whether a marketing campaign worked, then writes the answer back onto the store's analytics.
 
-It reports its own funnel with [App Events](https://shopify.dev/docs/apps/build/app-events/analytics), queries that funnel and the store's sales with [ShopifyQL](https://shopify.dev/docs/api/shopifyql), and records the outcome as annotations and targets on the store's analytics timeline.
+It reports its marketing funnel with [App Events](https://shopify.dev/docs/apps/build/app-events/analytics), queries that funnel and the store's sales with [ShopifyQL](https://shopify.dev/docs/api/shopifyql), and records the outcome as annotations and targets on the store's analytics timeline.
 
 This repository is the finished app. A three-part tutorial series builds it, one capability per part.
 
@@ -102,15 +102,15 @@ The first load seeds two campaigns, both planned, dated relative to your install
 
 Three more controls write to those same charts. **Close the campaign with its result** rewrites the annotation with what the campaign earned and stamps each order with the send it followed. **Cancel the campaign** takes the annotations and targets back off the store. **Plan the campaign again** returns it to planned for a second launch.
 
-Campaign records live in an app-data metafield on the store's app installation, not in the local database. Re-cloning doesn't reset them. The seed only runs against an empty metafield, and a fresh app installation gives you one.
+Campaign records live in an app-data metafield on the store's app installation. The local database holds sessions. Re-cloning doesn't reset them. The seed only runs against an empty metafield, and a fresh app installation gives you one.
 
 ## Get numbers on the charts
 
-A dev store with no orders reports `$0`. The seed creates campaigns, not the sales those campaigns are supposed to have moved.
+A dev store with no orders reports `$0`. The seed creates campaigns. The sales those campaigns are supposed to have moved come from orders you place.
 
 - Place test orders inside `Summer launch`'s window. Its nine sends land between 20 and 7 days before you install.
-- Cluster the orders in the days right after a send rather than spreading them evenly, and put the largest cluster in the last few days. Orders placed only in the opening week make every follow-up read as having moved nothing.
-- Create `AVERY10`, `AVERYSUMMER`, and `JUNO15` under **Discounts**, then place storefront orders that use them. **Creator revenue** groups sales by `discount_code`, which counts a code only when a buyer enters it at checkout. A discount added to an order in the admin has no code. The panel stays hidden until one order has one.
+- Cluster the orders in the days right after a send, with the largest cluster in the last few days. Orders placed only in the opening week make every follow-up read as having moved nothing.
+- Create `AVERY10`, `AVERYSUMMER`, and `JUNO15` under **Discounts**, then place storefront orders that use them. **Creator revenue** groups sales by `discount_code`. That column counts a code only when a buyer enters it at checkout. A discount added to an order in the admin has no code. The panel stays hidden until one order has one.
 
 ## What it does
 
@@ -130,7 +130,7 @@ The [tutorial series](https://shopify.dev/docs/apps/build/analytics) walks throu
 | `Column Not Found` on an `app_events` query | The declaration hasn't reached the store. Don't send events until it clears. |
 | **Creator revenue** doesn't appear | No sale has one of the three codes. A discount added to an order in the admin doesn't count, because analytics reads the code off the discount itself and a manual discount has none. |
 | **Promoted product sales** or a segment panel is empty | The dimension isn't queryable yet. Create it from **Dimensions this app owns**. |
-| A campaign shows a status you didn't set | Records live on the store, not in the clone. |
+| A campaign shows a status you didn't set | Records live on the store. The clone holds none of them. |
 | An event replay posts but nothing changes | A reused idempotency key is dropped with its payload. Bump the `RUN` constant in `app/app-events.server.js`. No query filters on `RUN`. A replay adds to the events already recorded under that `campaign_id`. Create a new campaign for a clean set of numbers. |
 
 ## How it's built
@@ -142,11 +142,11 @@ The [Shopify React Router app template](https://github.com/Shopify/shopify-app-t
 | `/app/campaigns` | `app/routes/app.campaigns._index.jsx` |
 | `/app/campaigns/:id` | `app/routes/app.campaigns.$campaignId.jsx` |
 
-GraphQL documents are in `app/campaign-queries.server.js`, campaign records in `app/campaigns.server.js`, and the App Events client and send plan in `app/app-events.server.js`. Each group of panels is its own module under `app/panels/`. Event declarations are in `extensions/app-events/shopify.extension.toml`, not in `shopify.app.toml`.
+GraphQL documents are in `app/campaign-queries.server.js`, campaign records in `app/campaigns.server.js`, and the App Events client and send plan in `app/app-events.server.js`. Each group of panels is a separate module under `app/panels/`. Event declarations are in `extensions/app-events/shopify.extension.toml`. `shopify.app.toml` holds none of them.
 
-A campaign is a record in one app-data metafield rather than a row in a table. A real app would use its own storage. `CAMPAIGN_FIELDS` documents the shape field by field.
+One app-data metafield holds every campaign record. A real app would use a database. `CAMPAIGN_FIELDS` documents the shape field by field.
 
-For a smaller starting point covering the ShopifyQL half on its own, see [Build a sales dashboard with the GraphQL Admin API](https://shopify.dev/docs/apps/build/shopifyql/graphql-admin-api/build-a-sales-dashboard) and [`example-shopifyql--sales-dashboard--react`](https://github.com/Shopify/example-shopifyql--sales-dashboard--react).
+For a smaller starting point covering only the ShopifyQL half, see [Build a sales dashboard with the GraphQL Admin API](https://shopify.dev/docs/apps/build/shopifyql/graphql-admin-api/build-a-sales-dashboard) and [`example-shopifyql--sales-dashboard--react`](https://github.com/Shopify/example-shopifyql--sales-dashboard--react).
 
 ## Contributions
 
