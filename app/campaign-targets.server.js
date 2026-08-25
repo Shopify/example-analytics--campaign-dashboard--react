@@ -1,8 +1,7 @@
 import {progressQuery, progressValue} from './campaign-queries.server';
 
 // [START campaign-dashboard.measure-targets]
-// One document, one alias per target, results read back by position. Skip a null
-// `shopifyqlQuery`. The recorded IDs say which of the day's targets are this one's.
+// Results read back by position, which is what `measurable.indexOf` recovers.
 export async function measureTargets(admin, campaign, targetsBody) {
   const recorded = new Set(Object.values(campaign.targets ?? {}));
   const targetNodes = (targetsBody.data?.analyticsTargets?.nodes ?? []).filter(

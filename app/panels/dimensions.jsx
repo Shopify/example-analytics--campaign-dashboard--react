@@ -6,8 +6,6 @@ import {tierLabel} from '../audiences';
 import {PanelHeader} from './shared';
 
 // [START campaign-dashboard.promoted-split]
-// What the campaign promoted against what the store sold anyway, day by day. Unstamped
-// products come back under an empty value, which is the rest of the store.
 export function promotedSeries({promoted, campaign, totalSales, cell, rate, shortDate}) {
   const promotedByDay = new Map();
   const otherByDay = new Map();
@@ -66,8 +64,7 @@ export function tierShape({tierSales, totalSales, cell, rate}) {
 // [END campaign-dashboard.tier-shape]
 
 // [START campaign-dashboard.touch-shape]
-// One row per send, narrowed to this campaign. The column holds every closed
-// campaign. Unattributed orders come back under an empty value.
+// The column holds every closed campaign. The filter narrows it to this one.
 export function touchShape({touchSales, campaign, cell}) {
   const titles = touchMarks(campaign).map((mark) => mark.title);
   return (touchSales.tableData.rows ?? [])
@@ -120,7 +117,6 @@ export function creatorShape({codeSales, campaign, touchRows, cell}) {
 // [END campaign-dashboard.code-shape]
 
 // [START campaign-dashboard.promoted-render]
-// The split the app's dimension makes possible.
 export function PromotedProductSales({
   promotedByDay,
   promotedSplit,
@@ -218,7 +214,6 @@ export function SegmentSales({
 // [END campaign-dashboard.tier-render]
 
 // [START campaign-dashboard.touch-render]
-// Per-order attribution splits revenue between the sends.
 export function OrderAttribution({touchRows, dimensions, currency}) {
   if (touchRows.length === 0) return null;
 

@@ -35,8 +35,7 @@ import {AUDIENCE_TIERS, TIER_METAFIELD, isTargetedTier, tierLabel} from './audie
 const NO_TARGET = {id: null, userErrors: []};
 
 // [START campaign-dashboard.store-target]
-// Unfiltered, which measures the whole store over the campaign's window. Metric, dates,
-// and filters identify a target. Creating this twice is a user error.
+// Metric, dates, and filters identify a target. Creating this twice is a user error.
 async function createTarget(admin, input) {
   const body = await (
     await admin.graphql(TARGET_CREATE, {variables: {input}})
@@ -59,7 +58,6 @@ export const createStoreTarget = (admin, campaign) =>
 // [END campaign-dashboard.store-target]
 
 // [START campaign-dashboard.product-target]
-// The filter is a ShopifyQL predicate. This one selects what the campaign advertised.
 export async function createProductTarget(admin, campaign) {
   const filters = promotedFilter(campaign);
   if (!filters) return NO_TARGET;
@@ -76,8 +74,7 @@ export async function createProductTarget(admin, campaign) {
 // [END campaign-dashboard.product-target]
 
 // [START campaign-dashboard.audience-target]
-// The same metric filtered on a dimension the app owns, with the reserved namespace
-// quoted in full. Skipped until the definition is queryable.
+// Skipped until the definition is queryable.
 export async function createAudienceTarget(admin, campaign, definition) {
   if (!isTargetedTier(campaign.audience)) return NO_TARGET;
   if (!definition.enabled) return NO_TARGET;
@@ -94,7 +91,6 @@ export async function createAudienceTarget(admin, campaign, definition) {
 // [END campaign-dashboard.audience-target]
 
 // [START campaign-dashboard.raise-target]
-// Round the next target up from what the campaign earned, to a whole increment.
 export async function raiseTarget(admin, target) {
   const actual = Number(target.actual ?? 0);
   const step = Math.max(1000, 10 ** (Math.floor(Math.log10(actual)) - 1));
@@ -140,7 +136,7 @@ export function recordedTarget(campaign, body, id) {
 }
 
 // [START campaign-dashboard.bundle-mark]
-// A bundle needs `bundle_launch`. Only the store's data knows which it is.
+// A bundle needs `bundle_launch`.
 const PLAIN_LAUNCH = {type: 'product_launch', note: ''};
 
 async function resolveLaunchMark(admin, campaign) {
@@ -252,8 +248,6 @@ export async function writeMarks(admin, campaign, appId, markedAt) {
 // [END campaign-dashboard.write-marks]
 
 // [START campaign-dashboard.product-metafield]
-// Stamp each promoted product with the campaign that pushed it. It reads back as
-// `products.metafields."campaign_dashboard".promoted_by`.
 export async function stampProducts(admin, campaign) {
   const metafields = campaign.products.map((product) => ({
     ownerId: product.id,
@@ -263,7 +257,6 @@ export async function stampProducts(admin, campaign) {
     value: campaign.title,
   }));
 
-  // `metafieldsSet` takes 25 at a time, and a campaign can promote more.
   const userErrors = [];
   for (let start = 0; start < metafields.length; start += 25) {
     const batch = await (
@@ -281,8 +274,6 @@ export async function stampProducts(admin, campaign) {
 // [END campaign-dashboard.product-metafield]
 
 // [START campaign-dashboard.stamp-tier]
-// The tier written onto the customers themselves. The record keeps the roster too,
-// because the metafield holds only the tier's name.
 export async function stampTier(admin, campaign) {
   const tier = AUDIENCE_TIERS.find((entry) => entry.value === campaign.audience);
   if (!tier?.size) return {members: [], userErrors: []};
@@ -332,7 +323,6 @@ export async function stampTier(admin, campaign) {
 // [END campaign-dashboard.stamp-tier]
 
 // [START campaign-dashboard.stamp-orders]
-// Which send an order followed. Only the app knows what it sent.
 export async function stampOrders(admin, campaign) {
   const body = await (await admin.graphql(orderDaysQuery(campaign))).json();
   const unread = transportErrors(body);
@@ -350,7 +340,6 @@ export async function stampOrders(admin, campaign) {
       value: order.touch,
     }));
 
-  // `metafieldsSet` takes 25 at a time, and an order count has no cap.
   const userErrors = [];
   for (let start = 0; start < metafields.length; start += 25) {
     const batch = await (
@@ -378,13 +367,11 @@ export const setTargetAmounts = (admin, campaign, amounts) =>
   updateCampaign(admin, campaign.id, amounts);
 
 // [START campaign-dashboard.audience-edit]
-// Moves both the tier on customers and a target's filter. Planned campaigns only.
 export const setAudience = (admin, campaign, audience) =>
   updateCampaign(admin, campaign.id, {audience});
 // [END campaign-dashboard.audience-edit]
 
 // [START campaign-dashboard.close-with-outcome]
-// Closing moves `endedAt` from null to the last day and puts the result in the title.
 export async function closeCampaign(admin, campaign, text, endedAt) {
   const id = campaign.markers?.campaign;
   // No span means nothing to close. Returning no errors would read as success.
@@ -405,7 +392,7 @@ export async function closeCampaign(admin, campaign, text, endedAt) {
 // [END campaign-dashboard.close-with-outcome]
 
 // [START campaign-dashboard.milestone]
-// A milestone is one moment, which leaves `endedAt` off. Re-measured on the server.
+// A milestone is one moment, which leaves `endedAt` off.
 export async function markMilestone(admin, target, markedAt, money) {
   const body = await (
     await admin.graphql(measureQuery(target.shopifyqlQuery))
@@ -439,14 +426,13 @@ export async function markMilestone(admin, target, markedAt, money) {
 // [END campaign-dashboard.milestone]
 
 // [START campaign-dashboard.record-mark]
-// Keyed on the record, which is what lets an annotation be rewritten and a cancel find it.
 // Milestones and incidents repeat. Their keys hold what makes them distinct.
 export const recordMark = (admin, campaign, key, id) =>
   id ? rememberMarkers(admin, campaign.id, {[key]: id}) : null;
 // [END campaign-dashboard.record-mark]
 
 // [START campaign-dashboard.flag-incident]
-// No bounce type in the vocabulary. Written as `other` with the reason in the text.
+// No bounce type in the vocabulary. The reason goes in the text.
 export async function flagIncident(admin, campaign, markedAt) {
   const [funnel, bounces] = await Promise.all([
     runOptional(admin, appEventsQuery(campaign)),

@@ -3,7 +3,6 @@ import {campaignWindow, recentWindow} from './campaigns';
 import {FUNNEL_METRICS, SEQUENCE_METRICS} from './channels';
 
 // [START campaign-dashboard.shop-query]
-// The store's timezone decides which day a dated write lands on.
 export const SHOP_QUERY = `
   query CampaignShop {
     shop {
@@ -173,7 +172,6 @@ export const TARGETS_DELETE = `
 // [END campaign-dashboard.target]
 
 // [START campaign-dashboard.target-read]
-// Shopify generates each target's `shopifyqlQuery` from its metric, dates, and filters.
 export const targetsQuery = (campaign) => `
   query CampaignTargets {
     analyticsTargets(first: 250, query: "start_date:${campaign.startDate}") {
@@ -195,8 +193,6 @@ export const targetsQuery = (campaign) => `
 // [END campaign-dashboard.target-read]
 
 // [START campaign-dashboard.all-targets-read]
-// Every campaign's targets in one request, matched on `startDate`. Targets aren't
-// app-scoped.
 export const ALL_TARGETS_QUERY = `
   query StoreTargets {
     analyticsTargets(first: 50) {
@@ -213,7 +209,6 @@ export const ALL_TARGETS_QUERY = `
 // [END campaign-dashboard.all-targets-read]
 
 // [START campaign-dashboard.target-progress]
-// Aliasing the plain `shopifyqlQuery` field measures every target in one request.
 export function progressQuery(targets) {
   const fields = targets
     .map(
@@ -282,7 +277,6 @@ export const BUNDLE_QUERY = `
 // [END campaign-dashboard.bundle-query]
 
 // [START campaign-dashboard.annotation-update]
-// Only the fields you pass change. An annotation can be rewritten with what happened.
 export const ANNOTATION_UPDATE = `
   mutation CloseCampaignAnnotation($id: ID!, $input: AnalyticsAnnotationUpdateInput!) {
     analyticsAnnotationUpdate(id: $id, input: $input) {
@@ -319,8 +313,7 @@ export const ANNOTATION_DELETE = `
 // [END campaign-dashboard.annotation-delete]
 
 // [START campaign-dashboard.annotation-read]
-// Hangs off Shop, sorted by ID unless told otherwise, and filtered by window. A
-// window holding more annotations than the page size continues from `endCursor`.
+// A window holding more annotations than the page size continues from `endCursor`.
 export const annotationsQuery = (campaign, after = null) => `
   query CampaignAnnotations {
     currentAppInstallation {
@@ -359,7 +352,6 @@ export const annotationsQuery = (campaign, after = null) => `
 // [END campaign-dashboard.annotation-read]
 
 // [START campaign-dashboard.app-events-query]
-// These columns exist only because the extension declares the matching standard events.
 export const appEventsQuery = (campaign) => `
   query CampaignFunnel {
     shopifyqlQuery(
@@ -380,8 +372,7 @@ export const appEventsQuery = (campaign) => `
 // [END campaign-dashboard.app-events-query]
 
 // [START campaign-dashboard.slice-queries]
-// Attribute dimensions reach back 30 days, and SINCE -30d UNTIL today spans 31.
-// Grouped by `app_name` too, because campaign IDs aren't unique across apps.
+// SINCE -30d UNTIL today spans 31 days, one past the limit.
 export const sliceQuery = () => `
   query CampaignComparison {
     shopifyqlQuery(
@@ -400,7 +391,6 @@ export const sliceQuery = () => `
 // [END campaign-dashboard.slice-queries]
 
 // [START campaign-dashboard.sequence-query]
-// All three channels' metrics share one SHOW. Each row fills only its channel's columns.
 export const sequenceQuery = (campaign) => `
   query CampaignSequence {
     shopifyqlQuery(
@@ -421,7 +411,6 @@ export const sequenceQuery = (campaign) => `
 // [END campaign-dashboard.sequence-query]
 
 // [START campaign-dashboard.bounce-query]
-// `recipient_status` separates a hard bounce, a dead address, from a temporary one.
 export const bounceQuery = (campaign) => `
   query CampaignBounces {
     shopifyqlQuery(
@@ -441,7 +430,6 @@ export const bounceQuery = (campaign) => `
 
 
 // [START campaign-dashboard.metafield-capability]
-// Eligibility depends on owner type and field type. Read it before offering the control.
 export const DEFINITION_QUERY = `
   query AppMetafieldDefinitions($namespace: String!) {
     products: metafieldDefinitions(
@@ -504,7 +492,6 @@ export const DEFINITION_QUERY = `
   }
 `;
 
-// TOML can't set `analyticsQueryable`, and a definition declared there is read-only here.
 export const DEFINITION_CREATE = `
   mutation CreateAnalyticsDimension($definition: MetafieldDefinitionInput!) {
     metafieldDefinitionCreate(definition: $definition) {
@@ -577,7 +564,6 @@ export const promotedByQuery = (campaign, dimension) => `
 `;
 
 // [START campaign-dashboard.tier-queries]
-// Ranked from sales because CustomerSortKeys has no spend key. OFFSET separates tiers.
 export const tierRankQuery = ({size, skip = 0}) => `
   query AudienceRanking {
     shopifyqlQuery(
@@ -591,7 +577,6 @@ export const tierRankQuery = ({size, skip = 0}) => `
   }
 `;
 
-// Returns a series, to chart against the store-wide line.
 export const tierSalesQuery = (campaign, dimension, tier) => `
   query CampaignAudienceSales {
     shopifyqlQuery(
@@ -612,7 +597,7 @@ export const tierSalesQuery = (campaign, dimension, tier) => `
 // [END campaign-dashboard.tier-queries]
 
 // [START campaign-dashboard.order-touch-queries]
-// One row per order with the day it landed on. `order_id` comes back numeric.
+// `order_id` comes back numeric.
 export const orderDaysQuery = (campaign) => `
   query CampaignOrders {
     shopifyqlQuery(
@@ -626,7 +611,6 @@ export const orderDaysQuery = (campaign) => `
   }
 `;
 
-// Grouping orders by the touch they followed splits revenue across a campaign's sends.
 export const touchSalesQuery = (campaign, dimension) => `
   query CampaignTouchSales {
     shopifyqlQuery(
@@ -668,7 +652,6 @@ export const codeSalesQuery = (campaign, filter) => `
 // [END campaign-dashboard.creator-code-queries]
 
 // [START campaign-dashboard.audience-roster]
-// Resolved when the audience changes. The record keeps the roster it stamped.
 export const CUSTOMER_NAMES = `
   query AudienceNames($ids: [ID!]!) {
     nodes(ids: $ids) {

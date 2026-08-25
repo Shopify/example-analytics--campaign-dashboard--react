@@ -14,7 +14,6 @@ export const CATEGORIES = {
   other: 'custom_events',
 };
 
-// Built from the types the app resolved at read time.
 export function annotateClause(types) {
   return [
     ...new Set(
@@ -74,7 +73,6 @@ export function categoryLegend(annotations, appId) {
 // [END campaign-dashboard.category-colors]
 
 // [START campaign-dashboard.explore-link]
-// The report reads its window from the query's SINCE and UNTIL.
 export function exploreLink(query) {
   return `shopify://admin/analytics/reports/explore?ql=${encodeURIComponent(query)}`;
 }
@@ -92,7 +90,6 @@ export function exploreQuery({window, types, metric = 'total_sales'}) {
 // [END campaign-dashboard.explore-link]
 
 // [START campaign-dashboard.analytics-link]
-// The store's explorer, with the query already in it.
 export function analyticsReportHref({window, annotations}) {
   return exploreLink(
     exploreQuery({

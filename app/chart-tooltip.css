@@ -1,15 +1,7 @@
-/*
- * Polaris Viz positions its tooltip in document coordinates and then portals it
- * to document.body so those coordinates resolve correctly. LineChart, BarChart,
- * StackedAreaChart, and DonutChart all pass usePortal: true. ComboChart doesn't,
- * so its tooltip renders inside the chart's own position: relative container and
- * lands at the chart's offset plus the page offset, which puts it outside the
- * card where it gets clipped.
- *
- * position: fixed resolves against the viewport instead of the chart, and the
- * negative margin converts the document coordinate back to a viewport one. When
- * the app doesn't scroll, --chart-scroll-y stays at zero and this is a no-op.
- */
+/* ComboChart is the one chart that doesn't portal its tooltip to document.body.
+   The tooltip lands at the chart's offset plus the page offset and gets clipped.
+   Fixed positioning resolves against the viewport, and the negative margin turns
+   the document coordinate back into a viewport one. */
 .chart-tooltip-fix [data-tooltip] {
   position: fixed;
   margin-top: calc(-1 * var(--chart-scroll-y, 0px));

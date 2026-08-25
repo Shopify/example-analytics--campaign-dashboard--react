@@ -6,7 +6,6 @@ embedded = true
 
 # [START campaign-dashboard.access-scopes]
 [access_scopes]
-# Granted at install. Adding one re-prompts every user the next time they open the app.
 scopes = "read_reports,write_reports,read_analytics_annotations,write_analytics_annotations,write_products,write_customers,write_orders"
 # [END campaign-dashboard.access-scopes]
 
@@ -16,9 +15,6 @@ scopes = "read_reports,write_reports,read_analytics_annotations,write_analytics_
 direct_api_mode = "online"
 embedded_app_direct_api_access = true
 # [END campaign-dashboard.direct-api]
-
-# The metafield definitions aren't declared here: TOML supports
-# neither analyticsQueryable nor later GraphQL edits.
 
 [webhooks]
 api_version = "2026-10"
@@ -34,9 +30,7 @@ api_version = "2026-10"
   uri = "/webhooks/app/scopes_update"
 
   # [START campaign-dashboard.compliance-webhooks]
-  # Required of every app that holds customer data. Launching a campaign saves a
-  # customer ID and display name per tier member onto the record. These three go in
-  # `compliance_topics` rather than `topics`, which rejects them at release.
+  # `topics` rejects these three at release. They go under `compliance_topics`.
   [[webhooks.subscriptions]]
   compliance_topics = ["customers/data_request"]
   uri = "/webhooks/customers/data_request"

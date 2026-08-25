@@ -1,4 +1,3 @@
-// Everything the loader and the browser derive from a stored campaign record.
 import {tierLabel} from './audiences';
 import {CHANNELS} from './channels';
 
@@ -6,11 +5,9 @@ import {CHANNELS} from './channels';
 const channelLabel = (channel) => CHANNELS[channel]?.label ?? channel;
 
 // [START campaign-dashboard.promoted-products]
-// The picker hands back GIDs. ShopifyQL wants the numeric part.
 export const productId = (gid) => String(gid).split('/').at(-1);
 
-// The filter string interpolates the ID. Only digits get through, and a quoted number
-// passes target create then fails when Shopify measures it.
+// The filter string interpolates the ID. Only digits get through.
 export function promotedFilter(campaign) {
   const ids = (campaign.products ?? [])
     .map((product) => productId(product.id))
@@ -23,14 +20,12 @@ export const promotedNames = (campaign) =>
   (campaign.products ?? []).map((product) => product.title).join(', ');
 // [END campaign-dashboard.promoted-products]
 
-// `Number('abc')` is NaN, and every comparison against NaN is false. A bare `<= 0`
-// waves non-numeric input through to a mutation that rejects it on arrival.
+// `Number('abc')` is NaN, and a bare `<= 0` waves it through.
 export const isPositiveAmount = (value) =>
   Number.isFinite(Number(value)) && Number(value) > 0;
 
-// The picker's selection arrives as a JSON string on the form. A payload the server
-// can't read returns null, an empty array is a cleared selection, and the title lands
-// in annotation text.
+// The selection arrives as a JSON string. A payload the server can't read returns
+// null, and an empty array is a cleared selection.
 export function parseProducts(input) {
   let parsed;
   try {
@@ -46,12 +41,9 @@ export function parseProducts(input) {
       title: String(product.title ?? '').trim().slice(0, 255),
     }))
     .filter((product) => /^gid:\/\/shopify\/Product\/\d+$/.test(product.id))
-    // The picker allows five.
     .slice(0, 5);
 }
 
-// `Intl` throws on a malformed tag, and the locale arrives on a query parameter that
-// nothing validates.
 export function safeLocale(value) {
   if (!value) return 'en';
   try {
@@ -62,8 +54,6 @@ export function safeLocale(value) {
   }
 }
 
-// A running campaign's window runs past today. Days that haven't happened report zero,
-// which reads as a collapse on the chart and drags every average with it.
 export function campaignWindow(campaign) {
   const today = new Date(Date.now()).toISOString().slice(0, 10);
   const running = campaign.startDate <= today;
@@ -99,15 +89,14 @@ export function recentWindow(campaign) {
   return `SINCE ${since} UNTIL ${until}`;
 }
 
-// The namespace the app's three dimensions live under. A readable namespace reads
-// back as a readable column, where `$app` resolves to `app--<app_id>`.
+// A readable namespace reads back as a readable column, where `$app` resolves to
+// `app--<app_id>`.
 export const DIMENSION_NAMESPACE = 'campaign_dashboard';
 
 export const metafieldDimension = (owner, key) =>
   `${owner}.metafields."${DIMENSION_NAMESPACE}".${key}`;
 
-// Keeps a derived date inside the campaign's window. UTC arithmetic, because a local
-// midnight date reports as the previous day east of UTC.
+// UTC arithmetic. A local midnight date reports as the previous day east of UTC.
 export function withinWindow(campaign, offsetDays) {
   const [year, month, date] = campaign.startDate.split('-').map(Number);
   const shifted = new Date(Date.UTC(year, month - 1, date + offsetDays));
@@ -122,8 +111,6 @@ const nameList = (names) =>
     : `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`;
 
 // [START campaign-dashboard.campaign]
-// The moments that make up a campaign, each with a type from a different category so
-// ANNOTATE can filter them apart, and each dated to when the thing happened.
 export function campaignMarks(campaign) {
   const channels = campaign.channels ?? [];
   const tier = tierLabel(campaign.audience);
@@ -157,7 +144,6 @@ export function campaignMarks(campaign) {
       description: `${tier} shopped it first.`,
       date: withinWindow(campaign, 1),
     },
-    // Only when the campaign has creators.
     ...(creators.length
       ? [
           {
@@ -234,17 +220,14 @@ export const touchMarks = (campaign) =>
     .filter((mark) => TOUCH_KEYS.includes(mark.key))
     .sort((first, second) => first.date.localeCompare(second.date));
 
-// Last touch. An order that beat every send stays unattributed.
 export const lastTouch = (touches, day) =>
   touches.filter((mark) => mark.date <= day).at(-1)?.title ?? null;
 // [END campaign-dashboard.last-touch]
 
 // [START campaign-dashboard.creator-codes]
-// A code lands in a quoted string inside a GraphQL string. Drop what can't appear.
 export const sanitizeCode = (code) =>
   String(code).toUpperCase().replace(/[^A-Z0-9_-]/g, '');
 
-// `discount_code` groups by code. Only the app knows which creator owns which.
 export function parseCreatorCodes(input) {
   return String(input ?? '')
     .split(',')

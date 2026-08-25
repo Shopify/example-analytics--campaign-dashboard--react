@@ -7,7 +7,6 @@ import {withinWindow} from '../campaigns';
 import {PanelHeader} from './shared';
 
 // [START campaign-dashboard.funnel-totals]
-// One row per day. A campaign total is a column summed across them.
 export function funnelTotals(funnel, cell) {
   const total = (metric) =>
     (funnel.tableData.rows ?? []).reduce(
@@ -36,8 +35,6 @@ export function funnelTotals(funnel, cell) {
 export function reachRowsFor(campaign, total) {
   const channelTotal = (key, slot) => total(CHANNELS[key].metrics[slot]);
 
-  // What the campaign cost the list, per channel. Read off the rows. A metric card
-  // resolves its columns against a catalog that has no App Events columns.
   return campaign.channels
     .map((key) => {
       const metrics = CHANNELS[key].metrics;
@@ -46,7 +43,6 @@ export function reachRowsFor(campaign, total) {
         label: CHANNELS[key].label,
         sent: channelTotal(key, 'sent'),
         reached: channelTotal(key, 'reached'),
-        // A channel with no such metric reports null.
         bounced: metrics.bounced ? channelTotal(key, 'bounced') : null,
         unsubscribed: metrics.lost ? channelTotal(key, 'lost') : null,
       };
@@ -56,8 +52,6 @@ export function reachRowsFor(campaign, total) {
 // [END campaign-dashboard.reach-stats]
 
 // [START campaign-dashboard.channel-funnels]
-// One funnel per channel. Push has no delivery stage, and comparing its middle to
-// email's would compare a send to a delivery.
 export function channelFunnels(campaign, total) {
   return campaign.channels
     .map((key) => ({
@@ -70,8 +64,6 @@ export function channelFunnels(campaign, total) {
 // [END campaign-dashboard.channel-funnels]
 
 // [START campaign-dashboard.sends-by-day]
-// An app_events metric on the sales axis. Keyed off the sales rows, which plots a day
-// this app sent nothing as a zero.
 export function sendSeries({funnel, rows, cell, shortDate}) {
   const sendsByDay = new Map(
     (funnel.tableData.rows ?? []).map((row) => [cell(row, 'day'), row]),
@@ -91,8 +83,8 @@ export function sendSeries({funnel, rows, cell, shortDate}) {
 // [END campaign-dashboard.sends-by-day]
 
 // [START campaign-dashboard.sequence-charts]
-// One chart per channel, keyed on the day each send went out. On one chart, an open
-// rate beside a click rate reads a channel change as a rate change.
+// On one chart, an open rate beside a click rate reads a channel change as a rate
+// change.
 export function sequenceInsights({
   sequence,
   campaign,
@@ -137,7 +129,6 @@ export function sequenceInsights({
     };
   }).filter(Boolean);
 
-
   const bounceReasons = (bounces.tableData.rows ?? [])
     .filter((row) => Number(cell(row, 'emails_bounced')) > 0)
     .map((row) => ({
@@ -150,9 +141,7 @@ export function sequenceInsights({
 // [END campaign-dashboard.sequence-charts]
 
 // [START campaign-dashboard.send-events-render]
-// The only panel that writes to App Events. Gates on the send count, because a
-// campaign with no events answers with a zero row. Ingestion lags. Accepted events
-// can't be deleted, which is why a campaign has to be running first.
+// The only panel that writes to App Events.
 export function SendEventsPanel({
   running,
   sent,
@@ -210,9 +199,6 @@ export function SendEventsPanel({
 // [END campaign-dashboard.send-events-render]
 
 // [START campaign-dashboard.funnel-render]
-// Stages in the order the channel reports them. App Events counts accumulate per
-// campaign, and a stage can read higher than the one above it. Sorting by count would
-// bury that.
 export function ChannelMetrics({funnels, integer}) {
   if (funnels.length === 0) return null;
 

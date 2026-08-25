@@ -56,7 +56,6 @@ function TargetCard({scope, percent, actual, by, expected, format, queryError, c
 // [END campaign-dashboard.target-bar]
 
 // [START campaign-dashboard.target-copy]
-// `filters` is ShopifyQL. Say what it narrows to, and fall back to the expression.
 function targetScope(target, campaign, dimensions) {
   if (!target.filters) return 'Total sales';
   if (target.filters.startsWith('product_id')) {
@@ -71,7 +70,6 @@ function targetScope(target, campaign, dimensions) {
 // [END campaign-dashboard.target-copy]
 
 // [START campaign-dashboard.target-split]
-// The unfiltered target is the number the campaign gets judged on.
 export function splitTargets(targets) {
   return {
     storeTarget: targets.find((target) => !target.filters) ?? null,
@@ -81,7 +79,6 @@ export function splitTargets(targets) {
 // [END campaign-dashboard.target-split]
 
 // [START campaign-dashboard.target-render]
-// Every target gets the same card, the store-wide one first.
 export function TargetsPanel({
   targets,
   storeTarget,
@@ -113,7 +110,6 @@ export function TargetsPanel({
         Shopify measures each target against the store's own sales.
       </s-paragraph>
 
-      {/* Two columns. The store-wide card and the filtered ones read side by side. */}
       <s-grid gridTemplateColumns="repeat(2, 1fr)" gap="base">
         {storeTarget && (
           <TargetCard

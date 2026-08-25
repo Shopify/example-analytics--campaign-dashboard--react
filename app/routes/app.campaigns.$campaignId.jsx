@@ -309,10 +309,8 @@ export async function action({request, params}) {
   }
 
   // [START campaign-dashboard.send-events-action]
-  // One request per event. A real app queues these as its sends happen.
   if (intent === 'send-events') {
-    // App Events can't be deleted after Shopify accepts them. Only a running campaign
-    // has sends to report, and a planned one would date them in the future.
+    // A planned campaign would date its sends in the future.
     if (campaign.status !== 'running') {
       return {problems: ['Only a running campaign can send its events.']};
     }
@@ -333,7 +331,6 @@ export async function action({request, params}) {
     });
     if (failures.length > 0) return {problems: failures};
     const sent = Object.values(accepted).reduce((total, n) => total + n, 0);
-    // Accepted isn't ingested. The funnel stays empty for a few minutes.
     return {ok: true, sentEvents: sent};
   }
   // [END campaign-dashboard.send-events-action]
@@ -348,8 +345,7 @@ export async function action({request, params}) {
       return {problems: ['This campaign has already been launched.']};
     }
 
-    // Checked against the condition that creates each target. Catching it downstream
-    // means every annotation is already up.
+    // Checked against the condition that creates each target.
     const unset = [];
     if (!isPositiveAmount(campaign.revenueTarget)) unset.push('store-wide revenue');
     if (promotedFilter(campaign) && !isPositiveAmount(campaign.productTarget)) {
@@ -378,7 +374,6 @@ export async function action({request, params}) {
     );
     if (unmarked.length) return {problems: unmarked};
 
-    // Targets aren't app-scoped. The saved IDs are the only way to cancel safely.
     // A launch that failed past this point left its IDs on the record. Reuse them,
     // or the retry creates a second set the app can never reach.
     const targets = {...(campaign.targets ?? {})};
@@ -399,7 +394,7 @@ export async function action({request, params}) {
       }
 
       // Save the IDs before the stamps run, and delete what was created if that
-      // write fails. The record is the only place the app keeps a handle.
+      // write fails.
       const created = Object.values(targets);
       if (created.length) {
         const {userErrors: unsaved} = await updateCampaign(admin, campaign.id, {

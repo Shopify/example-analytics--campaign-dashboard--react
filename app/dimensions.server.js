@@ -7,8 +7,6 @@ import {
 import {transportErrors} from './campaigns.server';
 
 // [START campaign-dashboard.metafield-dimension-read]
-// The three definitions the app owns. `eligible` is whether the types can support a
-// dimension, `enabled` is whether this app turned it on.
 const DIMENSIONS = {
   product: {
     owner: 'products',
@@ -16,7 +14,6 @@ const DIMENSIONS = {
     key: 'promoted_by',
     name: 'Promoted by',
     description: 'The campaign that promoted this product.',
-    // The app writes this at launch. A hand-edited value misattributes sales.
     adminAccess: 'MERCHANT_READ',
     // The report this blocks, and the section `id` the list links to.
     report: 'What the campaign promoted',

@@ -1,6 +1,5 @@
 // [START campaign-dashboard.close-render]
-// Closing rewrites the campaign's annotation. The writes that end a campaign sit
-// after the evidence they act on.
+// The writes that end a campaign sit after the evidence they act on.
 export function CampaignLifecycle({
   campaign,
   openCampaign,

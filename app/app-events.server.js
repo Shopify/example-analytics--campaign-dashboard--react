@@ -1,7 +1,6 @@
 import {shopMorning} from './campaigns';
 
 // [START campaign-dashboard.app-events-token]
-// App Events authenticates with a client-credentials token the app requests itself.
 let cached = {token: null, expiresAt: 0};
 
 async function getAppEventsToken() {
@@ -29,10 +28,8 @@ async function getAppEventsToken() {
 // [END campaign-dashboard.app-events-token]
 
 // [START campaign-dashboard.app-events-shared]
-// Both are dimensions. `flow_id` gathers the sends, `template_id` separates them.
 const FLOW_ID = 5501;
 
-// Attributes on every marketing touch. Each is a dimension, none is personal data.
 function marketing(channel, template, extra = {}) {
   return {
     channel,
@@ -46,8 +43,8 @@ function marketing(channel, template, extra = {}) {
 // [END campaign-dashboard.app-events-shared]
 
 // [START campaign-dashboard.app-events-funnel]
-// Nine sends over two weeks. `template_id` holds the position in the sequence.
-// Engagement dips on repeats and recovers when the offer changes.
+// Nine sends over two weeks. Engagement dips on repeats and recovers when the
+// offer changes.
 export const SEQUENCE = [
   {day: 0, channel: 'email', template: 4101, name: 'Announcement', audience: 52, engaged: 0.42, clicked: 0.28, lost: 1},
   {day: 1, channel: 'sms', template: 4102, name: 'Early access', audience: 21, engaged: 0.34, lost: 0},
@@ -147,7 +144,7 @@ const CHANNELS = {
   },
 };
 
-// One touch becomes up to six stages. Leave out what the channel can't report.
+// Leave out what the channel can't report.
 function expand(touch) {
   const channel = CHANNELS[touch.channel];
   const delivered = channel.delivery
@@ -200,20 +197,17 @@ export const funnelWindowEnd = (startDate, timeZone) =>
 const selected = (channels) =>
   STAGES.filter((stage) => (channels ?? []).includes(stage.channel));
 
-// One request per event. Derived from `SEQUENCE`, which keeps the replay copy current.
+// Derived from `SEQUENCE`, which keeps the replay copy current.
 export const eventTotal = (channels) =>
   selected(channels).reduce((total, stage) => total + stage.count, 0);
 
-// Counts sends. One send fans out into as many events as its channel reports.
+// One send fans out into as many events as its channel reports.
 export const sendCount = (channels) =>
   SEQUENCE.filter((touch) => (channels ?? []).includes(touch.channel)).length;
 
-// A key seen in the last 24 hours returns its first response, payload and all. Bump
-// this to reseed inside that window.
+// Bump this to reseed inside the 24-hour idempotency window.
 const RUN = 'r3';
 
-// Timestamps read back in the shop's timezone, where midnight UTC can be the day
-// before. Resolve a calendar date to 9am there instead.
 // A minute between recipients. The largest send finishes inside the hour it started.
 function stageTimestamp(start, day, hour, index) {
   const offset = day * 86400000 + hour * 3600000 + index * 60000;
@@ -234,14 +228,12 @@ async function sendEvent({token, shopId, stage, campaignId, start, index}) {
       // Must match the shopify.extension.toml declaration exactly.
       event_handle: stage.handle,
       timestamp: stageTimestamp(start, stage.day, stage.hour, index),
-      // Stable per recipient per stage, and capped at 64 characters. Use short codes.
       idempotency_key: `${shopId.split('/').pop()}-${campaignId}-${RUN}-${stage.code}-${index}`,
       // `campaign_id` is the join, the one dimension both categories accept.
       attributes: {campaign_id: campaignId, ...stage.attributes(index)},
     }),
   });
 
-  // 202 means received. Validation and analytics ingestion happen after.
   if (response.status === 202) return {ok: true};
   return {ok: false, status: response.status, body: await response.text()};
 }
@@ -258,7 +250,7 @@ export async function sendCampaignFunnel({
   const accepted = {};
   const failures = [];
 
-  // One request per event. A real send would work off a queue.
+  // A real send would work off a queue.
   for (const stage of selected(channels)) {
     const results = await Promise.all(
       Array.from({length: stage.count}, (_unused, index) =>

@@ -1,5 +1,4 @@
 // [START campaign-dashboard.incident-banner]
-// A bounce reaches someone who never opens this app once it's on the store's charts.
 export function IncidentBanner({
   health,
   bounced,

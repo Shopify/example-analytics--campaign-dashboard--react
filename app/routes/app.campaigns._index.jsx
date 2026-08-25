@@ -24,8 +24,6 @@ import {AUDIENCE_TIERS, isTargetedTier, tierLabel} from '../audiences';
 import {CHANNELS, CHANNEL_KEYS} from '../channels';
 
 // [START campaign-dashboard.overview-read]
-// Every campaign's progress in a fixed number of requests. Neither read grows when
-// the store adds a campaign.
 export const loader = async ({request}) => {
   const {admin} = await authenticate.admin(request);
   const {campaigns, appName, userErrors} = await ensureCampaign(admin);
@@ -36,8 +34,6 @@ export const loader = async ({request}) => {
     runOptional(admin, sliceQuery()),
   ]);
 
-  // Which campaign owns which target, from the IDs launching recorded. Start dates can't
-  // decide it, because two campaigns can open on the same day.
   const owner = new Map();
   for (const campaign of campaigns) {
     for (const id of Object.values(campaign.targets ?? {})) {
@@ -75,7 +71,6 @@ export const loader = async ({request}) => {
 // [END campaign-dashboard.overview-read]
 
 // [START campaign-dashboard.spawn-action]
-// Creating a campaign writes a record and nothing else. The launch does the rest.
 export const action = async ({request}) => {
   const {admin} = await authenticate.admin(request);
   const form = await request.formData();
@@ -153,7 +148,6 @@ export const action = async ({request}) => {
 // [END campaign-dashboard.spawn-action]
 
 // [START campaign-dashboard.overview-shape]
-// What the campaign has put on the store, which is what launching produces.
 function writtenBack(campaign) {
   const markers = Object.keys(campaign.markers ?? {}).length;
   const count = Object.keys(campaign.targets ?? {}).length;
@@ -162,7 +156,6 @@ function writtenBack(campaign) {
   return `${plural(markers, 'annotation')}, ${plural(count, 'target')}`;
 }
 
-// Every target the campaign created, as one share.
 function targetProgress(campaign, targets) {
   const mine = targets.filter(
     (target) => target.campaignId === String(campaign.id),
@@ -176,8 +169,7 @@ function targetProgress(campaign, targets) {
   return {count: mine.length, percent: Math.round((actual / expected) * 100)};
 }
 
-// `campaign_id` comes back as a string. Matched on the app too, because IDs aren't
-// unique across apps.
+// Matched on the app too, because IDs aren't unique across apps.
 function ownRow(campaign, rows, appName) {
   // Events outlive the record that emitted them, and a reused ID inherits the sends of
   // whatever held it before. The status says whether this one sent.
@@ -205,9 +197,7 @@ function sendsFor(campaign, rows, appName) {
 }
 
 // A stacked bar takes one entry per series. Pivot the rows, and channels stack.
-// Sent against opened wouldn't, because opens are a subset of the sends.
 function messageMix(campaigns, rows, appName) {
-  // Only campaigns with sends to report.
   const sending = campaigns.filter((campaign) => ownRow(campaign, rows, appName));
 
   return [
@@ -341,7 +331,6 @@ export default function CampaignsIndex() {
       )}
 
       {/* [START campaign-dashboard.overview-card-render] */}
-      {/* Each card runs a ShopifyQL query from the browser. */}
       {since && (
         <s-section heading="The store while these campaigns run">
           {cardReady ? (
@@ -453,7 +442,6 @@ export default function CampaignsIndex() {
       </s-section>
 
       {/* [START campaign-dashboard.overview-chart-render] */}
-      {/* One bar per campaign, over rows the page already loaded. */}
       {isClient && anySends && (
         <s-section heading="Messages sent by campaign">
           <s-paragraph>
@@ -476,7 +464,6 @@ export default function CampaignsIndex() {
       {/* [END campaign-dashboard.overview-chart-render] */}
 
       {/* [START campaign-dashboard.metafield-dimension-render] */}
-      {/* A metafield becomes a dimension only after the app asks for it. */}
       <s-section heading="Dimensions this app owns">
         <s-paragraph>
           One definition per dimension, not one per campaign. The campaign is
@@ -653,7 +640,6 @@ export default function CampaignsIndex() {
               onChange={(event) => setChannels([...event.currentTarget.values])}
             >
               {CHANNEL_KEYS.map((key) => (
-                // Uncontrolled. `defaultSelected` seeds it and `onChange` tracks it.
                 <s-choice
                   key={key}
                   value={key}

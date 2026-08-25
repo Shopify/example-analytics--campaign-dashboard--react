@@ -1,6 +1,5 @@
 // [START campaign-dashboard.channel-registry]
-// What each channel can report, from the standard event registry. No metric name
-// matches the handle that produces it.
+// No metric name matches the handle that produces it.
 export const CHANNELS = {
   email: {
     label: 'Email',

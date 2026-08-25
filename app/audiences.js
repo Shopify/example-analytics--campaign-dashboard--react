@@ -1,6 +1,5 @@
 // [START campaign-dashboard.audience-tiers]
-// Written onto each customer as an app-owned metafield at launch. A scalar, because
-// that's what a ShopifyQL comparison holds.
+// A scalar, because that's what a ShopifyQL comparison holds.
 export const AUDIENCE_TIERS = [
   {
     value: 'vip',

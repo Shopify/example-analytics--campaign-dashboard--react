@@ -24,8 +24,8 @@ export function useIsClient() {
 // [END campaign-dashboard.client-only]
 
 // [START campaign-dashboard.metric-card-ready]
-// A metric card needs `window.shopify.shopifyQL`, installed after load. Wait on the
-// API itself.
+// A metric card needs `window.shopify.shopifyQL`, installed after load. A card that
+// mounts before it lands stays in an error state.
 export function useMetricCardsReady() {
   const [cardReady, setCardReady] = useState(false);
   useEffect(() => {
@@ -68,7 +68,6 @@ export function salesChartSeries({rows, cell, shortDate}) {
 // [END campaign-dashboard.chart]
 
 // [START campaign-dashboard.metric-card]
-// The picker reports an alias like `last30days`. The app turns that into a SINCE.
 export function metricCardQuery(range) {
   const since = SINCE_BY_RANGE[range];
   return (metric) =>
@@ -84,7 +83,7 @@ export function metricCardQuery(range) {
 // [END campaign-dashboard.metric-card]
 
 // [START campaign-dashboard.annotations-overlay]
-// What the marks are now against what's on the store.
+// The marks this campaign should have, matched against what the store actually holds.
 export function annotationOverlay({
   campaign,
   annotations,
@@ -148,8 +147,6 @@ export function annotationOverlay({
 // [END campaign-dashboard.annotations-overlay]
 
 // [START campaign-dashboard.card-render]
-// Three numbers the app doesn't calculate. Wait for the ShopifyQL API, or the
-// cards mount into an error state they never leave.
 export function StoreTotals({statusLine, cardReady, range, setRange, cardQuery}) {
   return (
     <s-section>

@@ -4,12 +4,11 @@ An embedded Shopify app that reports whether a marketing campaign worked, then w
 
 It reports its own funnel with [App Events](https://shopify.dev/docs/apps/build/app-events/analytics), queries that funnel and the store's sales with [ShopifyQL](https://shopify.dev/docs/api/shopifyql), and records the outcome as annotations and targets on the store's analytics timeline.
 
-This repository is the finished app, and two tutorials build it. [Build a campaign performance dashboard](https://shopify.dev/docs/apps/build/analytics/build-a-campaign-dashboard) covers the whole app in one pass. The four-part series covers one capability per part, for adding a single capability to an app you already have.
+This repository is the finished app. A three-part tutorial series builds it, one capability per part.
 
-1. [Store a campaign and report its sales](https://shopify.dev/docs/apps/build/analytics/campaign-dashboard-sales) stores a campaign and reports its sales with ShopifyQL.
-2. [Set campaign targets and annotate the timeline](https://shopify.dev/docs/apps/build/analytics/campaign-dashboard-targets-and-annotations) adds revenue targets and annotations on the store's own charts.
-3. [Report a campaign funnel with App Events](https://shopify.dev/docs/apps/build/analytics/campaign-dashboard-app-events) adds the email, SMS, and push funnel.
-4. [Group campaign sales by your app's metafields](https://shopify.dev/docs/apps/build/analytics/campaign-dashboard-dimensions) turns app-owned metafields into ShopifyQL dimensions and closes the campaign.
+1. [Configure an app and query a campaign's sales](https://shopify.dev/docs/apps/build/analytics/campaign-dashboard-sales) queries a campaign's sales and your app's dimensions with ShopifyQL.
+2. [Set campaign targets and annotations](https://shopify.dev/docs/apps/build/analytics/campaign-dashboard-targets-and-annotations) sets a revenue target and marks the campaign on the store's analytics timeline.
+3. [Report on a campaign with App Events](https://shopify.dev/docs/apps/build/analytics/campaign-dashboard-app-events) reports your app's marketing events, then queries the funnel beside the sales.
 
 ## Setup
 
@@ -24,7 +23,7 @@ You'll need Node 20.19+ or 22.12+, [app development permissions](https://shopify
 2. Clone the repository and install its dependencies:
 
    ```shell
-   git clone https://github.com/Shopify/example-analytics--campaign-dashboard--react.git
+   git clone https://github.com/shopify-playground/example-analytics--campaign-dashboard--react.git
    cd example-analytics--campaign-dashboard--react
    npm install
    ```
@@ -119,7 +118,7 @@ A launched campaign opens on what it promised, then states what that added up to
 
 Each panel shows chips beside its title naming what produced the number, whether that's ShopifyQL, App Events, metafields, annotations, or web components.
 
-The [tutorial](https://shopify.dev/docs/apps/build/analytics/build-a-campaign-dashboard) walks through every panel and the queries behind it.
+The [tutorial series](https://shopify.dev/docs/apps/build/analytics) walks through every panel and the queries behind it.
 
 ## Troubleshooting
 
@@ -151,7 +150,7 @@ For a smaller starting point covering the ShopifyQL half on its own, see [Build 
 
 ## Contributions
 
-This repository is a documentation sample. It doesn't accept issues or contributions. To report a problem with the tutorial, use the feedback control on any [tutorial page](https://shopify.dev/docs/apps/build/analytics/build-a-campaign-dashboard).
+This repository is a documentation sample. It doesn't accept issues or contributions. To report a problem with the tutorial, use the feedback control on any [tutorial page](https://shopify.dev/docs/apps/build/analytics).
 
 ## License
 

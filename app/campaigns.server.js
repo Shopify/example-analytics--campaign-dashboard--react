@@ -30,6 +30,9 @@ export const CAMPAIGN_FIELDS = {
     "Target IDs the app created. Targets aren't app-scoped. Deleting only these keeps a cancel off the user's own targets.",
 };
 
+// [END campaign-dashboard.campaign-store]
+
+// [START campaign-dashboard.campaign-ids]
 // IDs stay spent. Event data can't be deleted, and a reused ID inherits its funnel.
 export const FIRST_CAMPAIGN_ID = 4210;
 
@@ -40,7 +43,7 @@ export const nextCampaignId = (campaigns) =>
     (highest, campaign) => Math.max(highest, Number(campaign.id)),
     FIRST_CAMPAIGN_ID - 1,
   ) + 1;
-// [END campaign-dashboard.campaign-store]
+// [END campaign-dashboard.campaign-ids]
 
 // [START campaign-dashboard.campaign-read]
 // A throttled or rejected request answers with `errors` and a null `data`. There are no

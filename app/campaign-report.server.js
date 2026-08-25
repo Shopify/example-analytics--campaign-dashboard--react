@@ -3,7 +3,6 @@ import {CHANNELS} from './channels';
 import {clamp} from './campaigns';
 
 // [START campaign-dashboard.sequence-read]
-// Join what the sequence sent to what the shop reported, one row per touch.
 export function readSequence(table) {
   const byTemplate = new Map(
     (table.tableData?.rows ?? []).map((row) => [Number(row['template_id']), row]),
@@ -28,7 +27,6 @@ export function readSequence(table) {
       reached,
       engaged,
       lost: metrics.lost ? Number(row[metrics.lost] ?? 0) : 0,
-      // Scored against what each send reached, which keeps bounces out of it.
       rate: reached > 0 ? (engaged / reached) * 100 : 0,
       action: CHANNELS[touch.channel].action,
     };
@@ -37,7 +35,6 @@ export function readSequence(table) {
 // [END campaign-dashboard.sequence-read]
 
 // [START campaign-dashboard.outcome-text]
-// What a closed campaign leaves behind on the store's timeline.
 export function outcomeText({campaign, revenue, target, sequence, money}) {
   const goal = Number(target ?? 0);
   const percent = goal > 0 ? Math.round((revenue / goal) * 100) : null;
@@ -67,7 +64,6 @@ export function outcomeText({campaign, revenue, target, sequence, money}) {
     );
   }
 
-  // Titles cap at 75 characters, descriptions at 150.
   return {
     title: clamp(title, 75),
     description: clamp(`${sentences.join('. ')}.`, 150),
@@ -76,14 +72,12 @@ export function outcomeText({campaign, revenue, target, sequence, money}) {
 // [END campaign-dashboard.outcome-text]
 
 // [START campaign-dashboard.detect-incident]
-// A daily timeseries has one row per day. A campaign total is the sum of a column.
 export const sumColumn = (table, metric) =>
   (table.tableData?.rows ?? []).reduce(
     (total, row) => total + Number(row[metric] ?? 0),
     0,
   );
 
-// Names the kind of bounce it found.
 export function detectIncident(campaign, funnel, bounces) {
   const sent = sumColumn(funnel, 'emails_sent');
   const bounced = sumColumn(funnel, 'emails_bounced');
