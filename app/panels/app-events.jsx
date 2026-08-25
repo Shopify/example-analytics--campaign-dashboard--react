@@ -251,9 +251,9 @@ export function SendPerformance({sequence, sequenceCharts, isClient, integer}) {
         uses={{
           appEvents: 'One event stream per send, published by this app at send time.',
           shopifyql:
-            "Groups those events by send so each one's reach stands on its own.",
+            'Groups those events by send to report each send's reach separately.',
           annotations:
-            "The campaign's own marks, drawn on the day each send went out.",
+            "The marks this campaign wrote, drawn on the day each send went out.",
         }}
       />
       {isClient && (

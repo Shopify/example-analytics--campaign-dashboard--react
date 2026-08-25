@@ -182,7 +182,7 @@ export function SegmentSales({
           shopifyql:
             "Filters the store's daily sales to the tier this campaign targeted.",
           metafields:
-            'Writes that tier onto each customer, which is what makes it queryable.',
+            'Writes that tier onto each customer to make it queryable.',
         }}
       />
       <s-paragraph>
@@ -229,7 +229,7 @@ export function OrderAttribution({touchRows, dimensions, currency}) {
       <s-paragraph>
         Each order stores the last campaign touch before it, written to{' '}
         <s-text type="strong">{dimensions.order.dimension}</s-text> when the campaign
-        closed. The store groups its own sales by that column.
+        closed. The store groups its sales by that column.
       </s-paragraph>
       <s-table variant="auto">
         <s-table-header-row>

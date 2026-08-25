@@ -23,8 +23,8 @@ export function IncidentBanner({
           {bounceReasons.length > 0 ? `, mostly ${bounceReasons[0].reason}` : ''}.
         </s-paragraph>
         <s-paragraph>
-          Marking it dates the failed send on the store's sales charts, where whoever
-          reviews this week's numbers reads it without opening this app.
+          Marking it dates the failed send on the store's sales charts. Whoever reviews
+          this week's numbers reads it without opening this app.
         </s-paragraph>
         <s-box paddingBlockStart="base">
           {incidentFlagged ? (

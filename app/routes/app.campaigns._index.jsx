@@ -466,10 +466,10 @@ export default function CampaignsIndex() {
       {/* [START campaign-dashboard.metafield-dimension-render] */}
       <s-section heading="Dimensions this app owns">
         <s-paragraph>
-          One definition per dimension, not one per campaign. The campaign is
-          the value in the column, which is what lets a single dimension report
-          every campaign's split. Creating it here lets the store group its own
-          sales by something this app knows.
+          One definition per dimension covers every campaign. The campaign is
+          the value in the column, and one dimension reports every campaign's
+          split. Create it here, and the store can group its sales by something
+          this app knows.
         </s-paragraph>
         <s-table variant="auto">
           <s-table-header-row>
