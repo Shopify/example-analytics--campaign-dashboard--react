@@ -47,7 +47,7 @@ export const nextCampaignId = (campaigns) =>
 
 // [START campaign-dashboard.campaign-read]
 // A throttled or rejected request answers with `errors` and a null `data`. There are no
-// nested `userErrors` to find, which is what makes an unchecked call read as a clean one.
+// nested `userErrors` to find, and an unchecked call reads as a clean one.
 export const transportErrors = (body) =>
   (body.errors ?? []).map((error) => ({message: error.message}));
 
@@ -72,7 +72,7 @@ export async function readCampaigns(admin) {
     // campaigns. Every write below refuses on a failed read.
     failed: transportErrors(body),
     appId: installation?.app?.id ?? null,
-    // The value `app_name` holds in App Events, which every app writes to.
+    // The value `app_name` holds in App Events. Every app writes it.
     appName: installation?.app?.title ?? null,
     installationId: installation?.id ?? null,
     campaigns: state.campaigns ?? [],
@@ -134,8 +134,8 @@ export async function rememberMarkers(admin, campaignId, markers) {
 }
 // [END campaign-dashboard.campaign-write]
 
-// The roster is the only customer data this app stores. The tier metafield
-// goes with the customer. This is what's left.
+// The roster is the only customer data this app stores. Shopify deletes the tier
+// metafield with the customer. Clearing the roster is this app's job.
 export async function forgetCustomer(admin, customerId) {
   const {installationId, campaigns, failed} = await readCampaigns(admin);
   if (failed.length) return failed;
@@ -183,7 +183,7 @@ function seedRecords() {
       markers: {},
       targets: {},
     },
-    // Starting in the future. Every panel on its page is the setup it still needs.
+    // Starting in the future. Every panel shows the setup it still needs.
     {
       id: FIRST_CAMPAIGN_ID + 1,
       title: 'Back to school',

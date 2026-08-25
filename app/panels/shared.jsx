@@ -11,8 +11,8 @@ export const CAPABILITIES = {
 };
 
 // Each chip names what one capability does in this panel. `s-chip` takes no
-// `interestFor`, which leaves the clickable variant as the tooltip's trigger.
-// `s-section`'s `heading` takes no elements, which is why each panel renders the heading itself.
+// `interestFor`, leaving the clickable variant as the tooltip's trigger.
+// `s-section`'s `heading` takes no elements. Each panel renders its heading in the body.
 export function PanelHeader({title, uses}) {
   const slug = title.replaceAll(/[^a-z0-9]+/gi, '-').toLowerCase();
   return (

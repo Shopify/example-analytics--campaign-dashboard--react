@@ -41,7 +41,7 @@ export const loader = async ({request}) => {
     }
   }
 
-  // A target with no generated query can't be measured. Dropped from the list.
+  // A target with no generated query has nothing to measure it. Drop it from the list.
   const nodes = targetsBody.data?.analyticsTargets?.nodes ?? [];
   const measurable = nodes.filter(
     (target) => target.shopifyqlQuery && owner.has(target.id),
@@ -577,7 +577,7 @@ export default function CampaignsIndex() {
                 ))}
               </s-select>
 
-              {/* The codes exist in Discounts. Who hands each out is what's recorded. */}
+              {/* The codes exist in Discounts. This records who hands each one out. */}
               <s-text-field
                 label="Creator codes"
                 name="creatorCodes"

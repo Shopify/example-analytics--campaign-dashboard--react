@@ -231,7 +231,7 @@ export async function action({request, params}) {
   const timeZone = shopBody.data?.shop?.ianaTimezone ?? 'Etc/UTC';
 
   // This writes annotation text, and the sales schema has no currency column. Take the
-  // currency off the shop, because an unknown code throws where it should format.
+  // currency off the shop. Formatting on an unknown code throws.
   const money = (value) =>
     new Intl.NumberFormat('en', {
       style: 'currency',
@@ -243,7 +243,7 @@ export async function action({request, params}) {
   const markedAt = (date) =>
     new Date(shopMorning(date, timeZone)).toISOString();
 
-  // `en-CA` formats as YYYY-MM-DD, which every date on a record already is.
+  // `en-CA` formats as YYYY-MM-DD. Every date on a record is already in that shape.
   const shopToday = new Intl.DateTimeFormat('en-CA', {
     timeZone,
     year: 'numeric',
@@ -252,7 +252,7 @@ export async function action({request, params}) {
   }).format(new Date());
 
   // Both edits move what a launched target filters on. Gate on the record's status,
-  // which is what the panel reads to decide whether to offer the control.
+  // the same field the panel reads before it offers the control.
   if (intent === 'set-products' || intent === 'set-audience') {
     if (campaign.status !== 'planned') {
       return {problems: ['Only a planned campaign can change this.']};
@@ -538,8 +538,8 @@ export async function action({request, params}) {
 
   if (intent === 'close') {
     // A closed campaign's outcome annotation is its permanent record, and measuring
-    // again would rewrite it. The status write lands last, which leaves a failed
-    // attempt retryable.
+    // again would rewrite it. The status write lands last, and a failed attempt
+    // stays retryable.
     if (campaign.status !== 'running') {
       return {problems: ['Only a running campaign can be closed.']};
     }
@@ -591,8 +591,8 @@ export async function action({request, params}) {
     );
     if (errors.length) return {problems: errors.map((error) => error.message)};
 
-    // Orders can only be attributed after they exist, which is why this waits for
-    // close. Skipped until the definition is a dimension.
+    // Attribution needs the orders to exist, and close is the first point they do.
+    // Skipped until the definition is a dimension.
     const unattributed = dimensions.order.enabled
       ? await stampOrders(admin, closing)
       : [];
@@ -611,8 +611,8 @@ export async function action({request, params}) {
   }
 
   if (intent === 'cancel') {
-    // A closed campaign keeps its outcome on the store's charts. A planned or running
-    // one is what a cancel can take down.
+    // A closed campaign keeps its outcome on the store's charts. A cancel only takes
+    // down a planned or running one.
     if (campaign.status !== 'planned' && campaign.status !== 'running') {
       return {problems: ['Only a planned or running campaign can be canceled.']};
     }
@@ -676,8 +676,8 @@ export async function action({request, params}) {
     if (campaign.status !== 'canceled') {
       return {problems: ['Only a canceled campaign can be planned again.']};
     }
-    // A canceled campaign is a record with nothing on the store, which is what a planned
-    // one is.
+    // Canceling already took everything off the store, leaving the same state a
+    // planned campaign is in.
     const {userErrors} = await updateCampaign(admin, campaign.id, {status: 'planned'});
     if (userErrors.length) {
       return {problems: userErrors.map((error) => error.message)};
@@ -690,7 +690,7 @@ export async function action({request, params}) {
 // [END campaign-dashboard.lifecycle]
 
 // [START campaign-dashboard.unavailable-note]
-// A query that never ran looks like a store that sold nothing. Only one is actionable.
+// A query that never ran looks like a store that sold nothing. Only the failure is actionable.
 function Unavailable({reason, heading}) {
   if (!reason) return null;
   const note = (
@@ -764,7 +764,7 @@ export default function CampaignDashboard() {
   // [END campaign-dashboard.read]
 
   // [START campaign-dashboard.format]
-  // Money comes back as a string, to keep precision. Format it here.
+  // Money comes back as a string for precision. Format it here.
   const currency = (value) =>
     new Intl.NumberFormat(locale, {
       style: 'currency',
@@ -933,7 +933,7 @@ export default function CampaignDashboard() {
     </s-stack>
   );
 
-  // A percentage says nothing about whether the rest can be earned. This divides the
+  // A percentage says nothing about whether the rest is reachable. This divides the
   // same two numbers by the days on either side of today.
   const dayGap = (from, to) =>
     Math.round(
@@ -985,7 +985,7 @@ export default function CampaignDashboard() {
       )}
 
       {/* [START campaign-dashboard.status-render] */}
-      {/* Before a launch there are no totals to sit beside, and one action to offer. */}
+      {/* Before a launch there are no totals to sit beside, and only one action to offer. */}
       {planned && (
         <s-section>
           <s-stack direction="block" gap="base">

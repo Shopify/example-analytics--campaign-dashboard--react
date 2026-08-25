@@ -19,7 +19,7 @@ export const SHOP_QUERY = `
 export const STATE_NAMESPACE = 'campaign_dashboard';
 export const STATE_KEY = 'campaigns';
 
-// Returns this app's ID, which separates its annotations from another app's.
+// Returns this app's ID. `createdByApp` matches on it to find this app's annotations.
 export const STATE_QUERY = `
   query CampaignState {
     currentAppInstallation {
@@ -81,7 +81,7 @@ export const salesQuery = (campaign) => `
 // [END campaign-dashboard.query]
 
 // [START campaign-dashboard.optional-query]
-// Built per panel, which keeps two skipped panels from sharing a rows array.
+// Built per panel. Two skipped panels would otherwise share a rows array.
 export const emptyTable = () => ({
   tableData: {columns: [], rows: []},
   parseErrors: [],
@@ -109,7 +109,7 @@ export async function runOptional(admin, query) {
 
 // [START campaign-dashboard.supported-query]
 // Targets and annotations are newer than the sales query. On an older API version the
-// whole request fails, where an empty body leaves the other panels rendering.
+// whole request fails. An empty body leaves the other panels rendering.
 export async function runIfSupported(admin, query) {
   try {
     return await (await admin.graphql(query)).json();
@@ -543,7 +543,7 @@ export const DEFINITION_UPDATE = `
 // being written inside a GraphQL string.
 const inGraphQLString = (dimension) => dimension.replaceAll('"', '\\"');
 
-// `AS` is what names the column, or it comes back as the whole dotted expression. A day
+// `AS` names the column. Without it the column is the whole dotted expression. A day
 // bucket splits the window into the campaign's products and everything else.
 export const promotedByQuery = (campaign, dimension) => `
   query CampaignPromotedSplit {

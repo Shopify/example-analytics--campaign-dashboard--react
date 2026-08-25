@@ -1,7 +1,7 @@
 import {progressQuery, progressValue} from './campaign-queries.server';
 
 // [START campaign-dashboard.measure-targets]
-// Results read back by position, which is what `measurable.indexOf` recovers.
+// Results read back by position. `measurable.indexOf` maps each one to its target.
 export async function measureTargets(admin, campaign, targetsBody) {
   const recorded = new Set(Object.values(campaign.targets ?? {}));
   const targetNodes = (targetsBody.data?.analyticsTargets?.nodes ?? []).filter(

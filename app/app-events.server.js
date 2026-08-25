@@ -197,7 +197,7 @@ export const funnelWindowEnd = (startDate, timeZone) =>
 const selected = (channels) =>
   STAGES.filter((stage) => (channels ?? []).includes(stage.channel));
 
-// Derived from `SEQUENCE`, which keeps the replay copy current.
+// Derived from `SEQUENCE`. A change to the send plan updates this count with it.
 export const eventTotal = (channels) =>
   selected(channels).reduce((total, stage) => total + stage.count, 0);
 

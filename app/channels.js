@@ -41,7 +41,7 @@ export const CHANNELS = {
       {label: 'Sent', metric: 'push_notifications_sent'},
       {label: 'Opened', metric: 'push_notifications_opened'},
     ],
-    // Push has no delivery receipt. What it reached is what it sent.
+    // Push has no delivery receipt. Reach reads off the send count.
     metrics: {
       sent: 'push_notifications_sent',
       reached: 'push_notifications_sent',

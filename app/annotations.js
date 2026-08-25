@@ -26,7 +26,7 @@ export function annotateClause(types) {
 // [END campaign-dashboard.annotate-clause]
 
 // [START campaign-dashboard.category-colors]
-// Colored by category, which makes the strip a legend for the ANNOTATE clause.
+// Colored by category. The strip doubles as a legend for the ANNOTATE clause.
 const CATEGORY_COLORS = {
   marketing_events: '#005bd3',
   product_events: '#29845a',

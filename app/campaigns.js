@@ -61,8 +61,8 @@ export function campaignWindow(campaign) {
   return `SINCE ${campaign.startDate} UNTIL ${until}`;
 }
 
-// Timestamps read back in the shop's timezone, where midnight UTC can be the day
-// before. Resolve a calendar date to 9am there.
+// Timestamps read back in the shop's timezone, and midnight UTC lands on the
+// previous day east of it. Resolve a calendar date to 9am there.
 export function shopMorning(date, timeZone) {
   const guess = new Date(`${date}T09:00:00Z`);
   if (!timeZone) return guess.getTime();
@@ -73,7 +73,7 @@ export function shopMorning(date, timeZone) {
 }
 
 // `app_events` holds 30 days, and a window reaching further back fails outright.
-// Clamp to relative tokens, which ShopifyQL resolves in the store's timezone.
+// Clamp to relative tokens. ShopifyQL resolves them in the store's timezone.
 const RECENT_DAYS = 29;
 
 export function recentWindow(campaign) {
@@ -89,7 +89,7 @@ export function recentWindow(campaign) {
   return `SINCE ${since} UNTIL ${until}`;
 }
 
-// A readable namespace reads back as a readable column, where `$app` resolves to
+// A readable namespace reads back as a readable column. `$app` resolves to
 // `app--<app_id>`.
 export const DIMENSION_NAMESPACE = 'campaign_dashboard';
 
@@ -149,8 +149,8 @@ export function campaignMarks(campaign) {
           {
             key: 'creator',
             type: 'influencer_collaboration',
-            // `title` names the campaign for the store's chart, where other
-            // campaigns' marks sit beside it. `label` is the in-app short form.
+            // `title` names the campaign on the store's chart, beside other
+            // campaigns' marks. `label` is the in-app short form.
             label: 'Influencer drop',
             title: `Influencer drop for ${campaign.title}`,
             description:
@@ -171,7 +171,7 @@ export function campaignMarks(campaign) {
     },
   ];
 
-  // Both the day and the name come from `SEQUENCE`, which is what the events report.
+  // The events report `SEQUENCE`. Both the day and the name come from it.
   // A mark named for a send that never went out reads as that send on the chart.
   const sends = {
     email: {offset: 0, title: 'Announcement', did: 'Opened the campaign for'},
@@ -207,7 +207,7 @@ export const clamp = (value, max) =>
 // sale isn't a touch.
 const TOUCH_KEYS = ['email', 'push', 'creator', 'promo', 'sms'];
 
-// The touches the creators drove. Matched by title, which is what the order stores.
+// The touches the creators drove. Match on title, the field the order stores.
 const CREATOR_KEYS = ['creator'];
 
 export const creatorTouches = (campaign) =>
@@ -240,7 +240,8 @@ export function parseCreatorCodes(input) {
 
 export const creatorCodes = (campaign) => campaign.creatorCodes ?? [];
 
-// The codes as ShopifyQL sees them. Sanitized on the way in, which leaves quoting.
+// The codes as ShopifyQL sees them. Sanitized on the way in, leaving quoting as
+// the only job here.
 export const codeFilter = (campaign) => {
   const codes = creatorCodes(campaign).map((pair) => `'${pair.code}'`);
   return codes.length ? `discount_code IN (${codes.join(', ')})` : null;

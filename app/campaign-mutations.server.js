@@ -197,7 +197,7 @@ async function clearOwnMarks(admin, campaign, appId, keys) {
 // [END campaign-dashboard.clear-marks]
 
 // [START campaign-dashboard.write-marks]
-// Clear before writing, which makes launching and rewriting the same operation.
+// Clear before writing. Launching and rewriting become the same operation.
 // Each ID persists as it lands. A retry or a cancel can then finish a partial write.
 export async function writeMarks(admin, campaign, appId, markedAt) {
   // Separate keys hold milestones and incidents, and each marks a day that happened.
@@ -361,7 +361,7 @@ export async function stampOrders(admin, campaign) {
 export const setProducts = (admin, campaign, products) =>
   updateCampaign(admin, campaign.id, {products});
 
-// Launch is what turns an amount into a target, and it rejects a zero. Editable
+// Launch turns an amount into a target, and it rejects a zero. Editable
 // until then, or adding products locks a campaign out of launching.
 export const setTargetAmounts = (admin, campaign, amounts) =>
   updateCampaign(admin, campaign.id, amounts);
@@ -392,7 +392,7 @@ export async function closeCampaign(admin, campaign, text, endedAt) {
 // [END campaign-dashboard.close-with-outcome]
 
 // [START campaign-dashboard.milestone]
-// A milestone is one moment, which leaves `endedAt` off.
+// A milestone is one moment. Leave `endedAt` off.
 export async function markMilestone(admin, target, markedAt, money) {
   const body = await (
     await admin.graphql(measureQuery(target.shopifyqlQuery))
