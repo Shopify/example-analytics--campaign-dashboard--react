@@ -89,12 +89,15 @@ export function recentWindow(campaign) {
   return `SINCE ${since} UNTIL ${until}`;
 }
 
-// A readable namespace reads back as a readable column. `$app` resolves to
-// `app--<app_id>`.
-export const DIMENSION_NAMESPACE = 'campaign_dashboard';
+// Only the owning app can change an app-owned definition. Writes take the `$app:`
+// alias. Reads and analytics columns take the namespace it resolves to.
+export const DIMENSION_NAMESPACE = '$app:campaign_dashboard';
 
-export const metafieldDimension = (owner, key) =>
-  `${owner}.metafields."${DIMENSION_NAMESPACE}".${key}`;
+export const dimensionNamespace = (appId) =>
+  `app--${String(appId).split('/').at(-1)}--campaign_dashboard`;
+
+export const metafieldDimension = (appId, owner, key) =>
+  `${owner}.metafields."${dimensionNamespace(appId)}".${key}`;
 
 // UTC arithmetic. A local midnight date reports as the previous day east of UTC.
 export function withinWindow(campaign, offsetDays) {

@@ -126,7 +126,7 @@ export async function loader({request, params}) {
   const locale = safeLocale(new URL(request.url).searchParams.get('locale'));
   // [END campaign-dashboard.locale]
 
-  const dimensions = await readDimensions(admin);
+  const dimensions = await readDimensions(admin, appId);
   const queryWindow = campaignWindow(campaign);
 
   const [
@@ -344,7 +344,7 @@ export async function action({request, params}) {
   // [END campaign-dashboard.send-events-action]
 
   // Read by the launch and close branches below.
-  const dimensions = await readDimensions(admin);
+  const dimensions = await readDimensions(admin, appId);
 
   if (intent === 'launch') {
     // Gate on the record's status. A target the user set on the same date isn't

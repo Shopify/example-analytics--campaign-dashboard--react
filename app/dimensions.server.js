@@ -1,4 +1,8 @@
-import {DIMENSION_NAMESPACE, metafieldDimension} from './campaigns';
+import {
+  DIMENSION_NAMESPACE,
+  dimensionNamespace,
+  metafieldDimension,
+} from './campaigns';
 import {
   DEFINITION_CREATE,
   DEFINITION_QUERY,
@@ -41,10 +45,10 @@ const DIMENSIONS = {
   },
 };
 
-export async function readDimensions(admin) {
+export async function readDimensions(admin, appId) {
   const body = await (
     await admin.graphql(DEFINITION_QUERY, {
-      variables: {namespace: DIMENSION_NAMESPACE},
+      variables: {namespace: dimensionNamespace(appId)},
     })
   ).json();
 
@@ -62,7 +66,7 @@ export async function readDimensions(admin) {
       defined: Boolean(node),
       eligible: Boolean(capability?.eligible),
       enabled: Boolean(capability?.enabled),
-      dimension: metafieldDimension(which, spec.key),
+      dimension: metafieldDimension(appId, which, spec.key),
       href: id && `shopify://admin/settings/custom_data/${owner}/metafields/${id}`,
     };
   };

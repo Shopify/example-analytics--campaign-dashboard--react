@@ -4,7 +4,7 @@ import {BarChart, PolarisVizProvider} from '@shopify/polaris-viz';
 import '@shopify/polaris-viz/build/esm/styles.css';
 import '../chart-tooltip.css';
 import {authenticate} from '../shopify.server';
-import {createCampaign, ensureCampaign} from '../campaigns.server';
+import {createCampaign, ensureCampaign, readCampaigns} from '../campaigns.server';
 import {
   ALL_TARGETS_QUERY,
   progressQuery,
@@ -26,10 +26,10 @@ import {CHANNELS, CHANNEL_KEYS} from '../channels';
 // [START campaign-dashboard.overview-read]
 export const loader = async ({request}) => {
   const {admin} = await authenticate.admin(request);
-  const {campaigns, appName, userErrors} = await ensureCampaign(admin);
+  const {appId, campaigns, appName, userErrors} = await ensureCampaign(admin);
 
   const [dimensions, targetsBody, sends] = await Promise.all([
-    readDimensions(admin),
+    readDimensions(admin, appId),
     runIfSupported(admin, ALL_TARGETS_QUERY),
     runOptional(admin, sliceQuery()),
   ]);
@@ -78,7 +78,8 @@ export const action = async ({request}) => {
   // Setup for every campaign, sharing this route's action with the create form.
   if (String(form.get('intent')) === 'enable-dimension') {
     const which = String(form.get('which'));
-    const definition = (await readDimensions(admin))[which];
+    const {appId} = await readCampaigns(admin);
+    const definition = (await readDimensions(admin, appId))[which];
     if (!definition) return {problems: [`No dimension named ${which}.`]};
     const errors = await enableDimension(admin, definition);
     return errors.length
