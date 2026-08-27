@@ -167,7 +167,7 @@ export function SendEventsPanel({
         title="Campaign events"
         uses={{
           appEvents:
-            'The events this app published as the campaign ran, queried like any schema.',
+            'The events this app published as the campaign ran, queryable like any schema.',
         }}
       />
       {blocked ? (
@@ -213,7 +213,7 @@ export function ChannelMetrics({funnels, integer}) {
         uses={{
           appEvents:
             'Sends, deliveries, and engagement, from the events this app published.',
-          shopifyql: "Buckets those events by day across the campaign's own window.",
+          shopifyql: "Buckets the events by day across the campaign's window.",
         }}
       />
       <s-table>
@@ -255,7 +255,7 @@ export function SendPerformance({sequence, sequenceCharts, isClient, integer}) {
         uses={{
           appEvents: 'One event stream per send, published by this app at send time.',
           shopifyql:
-            'Groups those events by send to report each send's reach separately.',
+            'Groups the events by send and reports the reach of each one.',
           annotations:
             "The marks this campaign wrote, drawn on the day each send went out.",
         }}
@@ -356,7 +356,7 @@ export function Deliverability({
         uses={{
           appEvents:
             'Bounces and unsubscribes, from the events this app published per send.',
-          shopifyql: 'Filters those events to this campaign and totals them by send.',
+          shopifyql: 'Filters the events to this campaign and totals them by send.',
         }}
       />
       <s-paragraph>

@@ -101,13 +101,13 @@ export function TargetsPanel({
         title="Targets"
         uses={{
           targets:
-            'Every target on this panel is a target on the store, created and measured by Shopify.',
+            'Every target here is a record on the store, created by this app.',
           shopifyql:
             "Reads the store's actual sales for the window each target is measured against.",
         }}
       />
       <s-paragraph>
-        Shopify measures each target against the store's own sales.
+        Shopify measures each target against the store's sales.
       </s-paragraph>
 
       <s-grid gridTemplateColumns="repeat(2, 1fr)" gap="base">

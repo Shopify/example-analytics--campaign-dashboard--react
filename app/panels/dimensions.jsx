@@ -140,8 +140,8 @@ export function PromotedProductSales({
         }}
       />
       <s-paragraph>
-        {currency(promotedSales)} of {currency(totalSales)} came from products this
-        campaign promoted, which is {promotedShare.toFixed(0)}% of what the store sold.
+        Products this campaign promoted earned {currency(promotedSales)} of the store's{' '}
+        {currency(totalSales)}, or {promotedShare.toFixed(0)}%.
       </s-paragraph>
       <s-paragraph>
         The store grouped that split by{' '}
@@ -182,13 +182,12 @@ export function SegmentSales({
           shopifyql:
             "Filters the store's daily sales to the tier this campaign targeted.",
           metafields:
-            'Writes that tier onto each customer to make it queryable.',
+            'Writes the tier onto each customer to make it queryable.',
         }}
       />
       <s-paragraph>
-        {currency(tierTotal)} of {currency(totalSales)} came from the segment this
-        campaign targeted, which is {tierShare.toFixed(0)}% of the store's sales over
-        the same window.
+        The segment this campaign targeted bought {currency(tierTotal)} of the store's{' '}
+        {currency(totalSales)} over the same window, or {tierShare.toFixed(0)}%.
       </s-paragraph>
       {isClient && (
         <div className="chart-tooltip-fix" style={{height: '220px'}}>
@@ -223,7 +222,7 @@ export function OrderAttribution({touchRows, dimensions, currency}) {
         title="Order attribution"
         uses={{
           shopifyql: "Groups the campaign's sales by the touch each order followed.",
-          metafields: 'Writes that touch onto each order when the campaign closes.',
+          metafields: 'Writes the touch onto each order when the campaign closes.',
         }}
       />
       <s-paragraph>
@@ -267,8 +266,7 @@ export function CreatorRevenue({creatorRows, codeTotal, touchedTotal, currency})
         }}
       />
       <s-paragraph>
-        Code revenue comes from <s-text type="strong">discount_code</s-text>, which the
-        store already has. Grouping several codes under one creator is the part only
+        The store already records <s-text type="strong">discount_code</s-text>. Grouping several codes under one creator is the part only
         this app can do, because only it knows who hands out which code.
       </s-paragraph>
       <s-table variant="auto">

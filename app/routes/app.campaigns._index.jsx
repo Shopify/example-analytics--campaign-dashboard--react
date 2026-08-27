@@ -285,7 +285,7 @@ export default function CampaignsIndex() {
     campaigns.find((campaign) => campaign.status !== 'planned') ?? campaigns[0];
 
   // [START campaign-dashboard.product-picker]
-  // The store's product search. The app never builds a product list.
+  // The app never builds a product list.
   async function pickProducts() {
     const selection = await shopify.resourcePicker({
       type: 'product',

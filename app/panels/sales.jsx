@@ -46,7 +46,7 @@ export function useMetricCardsReady() {
 // [END campaign-dashboard.metric-card-ready]
 
 // [START campaign-dashboard.chart]
-// Money and a count can't share an axis. A ComboChart gives each one an axis.
+// Money and a count can't share an axis. A ComboChart gives each series an axis.
 export function salesChartSeries({rows, cell, shortDate}) {
   return {
     salesSeries: {
@@ -154,7 +154,7 @@ export function StoreTotals({statusLine, cardReady, range, setRange, cardQuery})
         title="Store totals"
         uses={{
           components:
-            "Each card is Shopify's own metric card, which renders the query itself.",
+            'Shopify metric cards, each running the query it displays.',
           shopifyql:
             'The query behind every card, down to the VISUALIZE clause that draws it.',
         }}
@@ -212,7 +212,7 @@ export function SalesAndOrders({
           shopifyql:
             'One row per day for sales and orders, with the previous period beside it.',
           annotations:
-            "The marks on the chart, read back from the store's own annotations.",
+            "The marks on the chart, read back from the store's annotations.",
         }}
       />
       {/* The percentage is Shopify's, from COMPARE TO previous_period. */}

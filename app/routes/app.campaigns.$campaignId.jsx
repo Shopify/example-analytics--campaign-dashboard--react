@@ -617,7 +617,7 @@ export async function action({request, params}) {
       return {problems: ['Only a planned or running campaign can be canceled.']};
     }
     // Only the IDs on the record. `analyticsTargetsDelete` deletes any target on the
-    // shop, including the ones the user set. Each ID drops off the record as its delete lands.
+    // shop, including the targets the user set. Each ID drops off the record as its delete lands.
     const undone = [];
     const markers = {};
     for (const [key, id] of Object.entries(campaign.markers ?? {})) {
@@ -759,7 +759,7 @@ export default function CampaignDashboard() {
   } = data;
 
   // [START campaign-dashboard.read]
-  // Generated column names are the contract. Every read goes through one helper.
+  // Generated column names are the contract.
   const cell = (row, name) => row[name];
   // [END campaign-dashboard.read]
 
