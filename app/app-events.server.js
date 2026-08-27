@@ -192,6 +192,11 @@ const LAST_OFFSET = Math.max(
 export const funnelWindowEnd = (startDate, timeZone) =>
   shopMorning(startDate, timeZone) + LAST_OFFSET;
 
+// The schedule runs two weeks from the start date. A campaign that ends sooner would
+// date sends after it closed, and an accepted event can't be deleted.
+export const funnelFitsWindow = (startDate, endDate, timeZone) =>
+  funnelWindowEnd(startDate, timeZone) <= shopMorning(endDate, timeZone) + 86400000;
+
 // Event data can't be deleted. Sending a channel the campaign didn't select would leave
 // permanent numbers on a funnel the app never renders.
 const selected = (channels) =>

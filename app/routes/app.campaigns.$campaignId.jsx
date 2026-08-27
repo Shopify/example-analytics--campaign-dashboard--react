@@ -5,6 +5,7 @@ import '../chart-tooltip.css';
 import {authenticate} from '../shopify.server';
 import {
   eventTotal,
+  funnelFitsWindow,
   funnelWindowEnd,
   sendCampaignFunnel,
   sendCount,
@@ -313,6 +314,13 @@ export async function action({request, params}) {
     // A planned campaign would date its sends in the future.
     if (campaign.status !== 'running') {
       return {problems: ['Only a running campaign can send its events.']};
+    }
+    if (!funnelFitsWindow(campaign.startDate, campaign.endDate, timeZone)) {
+      return {
+        problems: [
+          'This campaign ends before the two-week send schedule does. Extend the end date to at least 14 days after the start.',
+        ],
+      };
     }
     // The replay dates its events across the two weeks after the start date. A campaign
     // still mid-schedule would stamp the remainder ahead of today.
