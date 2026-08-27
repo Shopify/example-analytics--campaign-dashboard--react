@@ -1023,7 +1023,11 @@ export default function CampaignDashboard() {
                 {shortDate(campaign.startDate)} to {shortDate(campaign.endDate)}.
               </s-list-item>
               <s-list-item>
-                Stamp {campaign.products.length} products with{' '}
+                {campaign.products.length === 0
+                  ? 'Stamp the products you select with '
+                  : `Stamp ${campaign.products.length} ${
+                      campaign.products.length === 1 ? 'product' : 'products'
+                    } with `}
                 <s-text>promoted_by</s-text>
                 {isTargetedTier(campaign.audience)
                   ? ` and tag the ${tierLabel(campaign.audience).toLowerCase()} segment.`

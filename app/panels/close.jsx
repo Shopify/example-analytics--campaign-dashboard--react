@@ -9,6 +9,9 @@ export function CampaignLifecycle({
   submit,
   shortDate,
 }) {
+  // A closed campaign gates out every control below.
+  if (campaign.status === 'closed') return null;
+
   return (
     <s-section heading="Campaign lifecycle">
       <s-stack direction="block" gap="base">

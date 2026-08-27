@@ -34,7 +34,7 @@ You'll need Node 20.19+ or 22.12+, [app development permissions](https://shopify
    npm run config:link
    ```
 
-4. Restore `access_scopes.scopes` in `shopify.app.toml`. `config:link` empties it, and an app installed with no scopes fails every query and every write:
+4. Restore `access_scopes.scopes` in `shopify.app.toml`. `config:link` overwrites the line with whatever the app record holds, and a new record holds nothing. An app installed with no scopes fails every query and every write:
 
    ```toml
    [access_scopes]
@@ -60,18 +60,23 @@ The app opens on a campaign list holding two seeded campaigns. Every panel reads
 
 | Access | What stays empty without it |
 |--------|-----------------------------|
-| [Level 2 protected customer data](https://shopify.dev/docs/apps/launch/protected-customer-data) | Every panel that reads sales. `shopifyqlQuery` returns no data. |
+| [Level 2 protected customer data](https://shopify.dev/docs/apps/launch/protected-customer-data) | The campaign detail page. `shopifyqlQuery` returns an access error, the loader throws, and the route's error boundary replaces the page. The campaign list still loads. |
 | [App Events in Analytics](https://shopify.dev/docs/apps/build/app-events/analytics) | **Campaign events**, **Channel metrics**, **Send performance**, and **Deliverability**. |
 
 ### Level 2 protected customer data
 
-This app needs Level 2 because the audience roster reads `Customer.displayName`, a protected name field. On a dev store it's self-serve, with no review to wait on:
+`shopifyqlQuery` requires Level 2 across all four protected fields, and the error names them: `Level 2 access to Customer data including name, address, phone, and email fields`. Request only **Name** and every sales panel stays empty.
 
-1. Open the app that `config:link` created in the [Dev Dashboard](https://dev.shopify.com/dashboard). Shopify CLI creates its app records there.
-2. [Select a distribution method](https://shopify.dev/docs/apps/launch/distribution/select-distribution-method) and pick **Custom distribution**. You can't request customer data access without one, and you can't change the choice afterward. Custom distribution needs no approval and covers your dev store.
-3. [Request access to protected customer data](https://shopify.dev/docs/apps/launch/protected-customer-data#request-access-to-protected-customer-data) and select the **Name** field, the only protected field this app reads.
+On a dev store the request is self-serve, with no review to wait on:
 
-Saving the request grants the access.
+1. Open the app that `config:link` created in the [Partner Dashboard](https://partners.shopify.com), then go to **API access requests**.
+2. Under **Protected customer data access**, click **Manage**.
+3. Click **Select** on **Protected customer data**, choose your reasons, then click **Save**.
+4. Repeat step 3 for **Name**, **Email**, **Phone**, and **Address**.
+
+Saving each request grants the access.
+
+Leave this app's distribution method unset. [Requesting protected customer data](https://shopify.dev/docs/apps/launch/protected-customer-data#request-access-to-protected-customer-data) needs no distribution method, and picking **Custom distribution** removes the request flow for good.
 
 ### App Events in Analytics
 
@@ -91,7 +96,7 @@ The first load seeds two campaigns, both planned, dated relative to your install
 
 | Campaign | Window | What it shows |
 |----------|--------|---------------|
-| `Summer launch` | Opened 20 days ago, a week left | Nine sends finished a week ago, leaving room for the sales they moved. |
+| `Summer launch` | Opened 20 days ago, a week left | Nine sends dated between 20 and 7 days ago. Step 4 posts them. |
 | `Back to school` | Starts in two weeks | Nothing to report. Every panel shows the setup it still needs. |
 
 1. On the campaign list, under **Dimensions this app owns**, click **Create it as a dimension** on each of the three rows. Do this once. A report that groups on a dimension returns no rows until the dimension is queryable.
@@ -130,6 +135,7 @@ The [tutorial series](https://shopify.dev/docs/apps/build/analytics) walks throu
 | `Column Not Found` on an `app_events` query | The declaration hasn't reached the store. Don't send events until it clears. |
 | **Creator revenue** doesn't appear | No sale has one of the three codes. A discount added to an order in the admin doesn't count, because analytics reads the code off the discount itself and a manual discount has none. |
 | **Promoted product sales** or a segment panel is empty | The dimension isn't queryable yet. Create it from **Dimensions this app owns**. |
+| **Order attribution** is missing after a close | Analytics takes a few minutes to index the order metafields the close wrote. Reload the page then. |
 | A campaign shows a status you didn't set | Records live on the store. The clone holds none of them. |
 | An event replay posts but nothing changes | A reused idempotency key is dropped with its payload. Bump the `RUN` constant in `app/app-events.server.js`. No query filters on `RUN`. A replay adds to the events already recorded under that `campaign_id`. Create a new campaign for a clean set of numbers. |
 
