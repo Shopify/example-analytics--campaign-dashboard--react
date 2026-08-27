@@ -1088,7 +1088,7 @@ export default function CampaignDashboard() {
       )}
 
       {/* A campaign that hasn't launched has nothing attributed to it. Reporting the
-          store's sales for those dates would read as a result the campaign produced. */}
+          store's sales for its window would read as a result the campaign produced. */}
       {!planned && !canceled && (
         <Fragment>
         <TargetsPanel

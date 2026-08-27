@@ -577,7 +577,7 @@ export default function CampaignsIndex() {
                 ))}
               </s-select>
 
-              {/* The codes exist in Discounts. This records who hands each one out. */}
+              {/* The codes exist in Discounts. This records who hands each code out. */}
               <s-text-field
                 label="Creator codes"
                 name="creatorCodes"
