@@ -15,6 +15,7 @@ import {
 } from '../campaign-queries.server';
 import {enableDimension, readDimensions} from '../dimensions.server';
 import {
+  isCalendarDate,
   isPositiveAmount,
   parseCreatorCodes,
   parseProducts,
@@ -108,6 +109,11 @@ export const action = async ({request}) => {
   if (!fields.title) problems.push('Give the campaign a name.');
   if (!fields.startDate || !fields.endDate) {
     problems.push('Set both a start and an end date.');
+  } else if (
+    !isCalendarDate(fields.startDate) ||
+    !isCalendarDate(fields.endDate)
+  ) {
+    problems.push('Set both dates as a calendar day, such as 2026-09-10.');
   } else if (fields.endDate < fields.startDate) {
     problems.push('The campaign ends before it starts.');
   }
