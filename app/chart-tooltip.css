@@ -1,8 +1,0 @@
-/* ComboChart is the one chart that doesn't portal its tooltip to document.body.
-   The tooltip lands at the chart's offset plus the page offset and gets clipped.
-   Fixed positioning resolves against the viewport, and the negative margin turns
-   the document coordinate back into a viewport one. */
-.chart-tooltip-fix [data-tooltip] {
-  position: fixed;
-  margin-top: calc(-1 * var(--chart-scroll-y, 0px));
-}

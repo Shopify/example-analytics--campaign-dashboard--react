@@ -1,8 +1,6 @@
 import {Fragment} from 'react';
-import {ComboChart, PolarisVizProvider} from '@shopify/polaris-viz';
 
-import {CHANNEL_KEYS, CHANNELS} from '../channels';
-import {withinWindow} from '../campaigns';
+import {CHANNELS} from '../channels';
 
 import {PanelHeader} from './shared';
 
@@ -64,81 +62,30 @@ export function channelFunnels(campaign, total) {
 // [END campaign-dashboard.channel-funnels]
 
 // [START campaign-dashboard.sends-by-day]
-export function sendSeries({funnel, rows, cell, shortDate}) {
-  const sendsByDay = new Map(
-    (funnel.tableData.rows ?? []).map((row) => [cell(row, 'day'), row]),
+// One total per day, for the Messages sent column beside sales and orders.
+export function sendsByDay(funnel, cell) {
+  return new Map(
+    (funnel.tableData.rows ?? []).map((row) => [
+      String(cell(row, 'day')),
+      Number(cell(row, 'emails_sent') ?? 0) +
+        Number(cell(row, 'sms_messages_sent') ?? 0) +
+        Number(cell(row, 'push_notifications_sent') ?? 0),
+    ]),
   );
-  const daily = (metric) =>
-    rows.map((row) => ({
-      key: shortDate(cell(row, 'day')),
-      value: Number(cell(sendsByDay.get(cell(row, 'day')) ?? {}, metric) ?? 0),
-    }));
-
-  return [
-    {name: 'Emails', data: daily('emails_sent')},
-    {name: 'Texts', data: daily('sms_messages_sent')},
-    {name: 'Pushes', data: daily('push_notifications_sent')},
-  ].filter((series) => series.data.some((point) => point.value > 0));
 }
 // [END campaign-dashboard.sends-by-day]
 
-// [START campaign-dashboard.sequence-charts]
-// On one chart, an open rate beside a click rate reads a channel change as a rate
-// change.
-export function sequenceInsights({
-  sequence,
-  campaign,
-  chartAnnotations,
-  bounces,
-  cell,
-  shortDate,
-  humanize,
-}) {
-  const sequenceCharts = CHANNEL_KEYS.map((key) => {
-    const touches = sequence
-      .filter((touch) => touch.channel === key)
-      .map((touch) => ({
-        ...touch,
-        axis: shortDate(withinWindow(campaign, touch.day)),
-      }));
-    if (touches.length === 0) return null;
-
-    return {
-      channel: key,
-      label: CHANNELS[key].label,
-      reached: [
-        {
-          name: 'Reached',
-          data: touches.map((touch) => ({key: touch.axis, value: touch.reached})),
-        },
-      ],
-      rate: [
-        {
-          name: 'Engagement',
-          data: touches.map((touch) => ({
-            key: touch.axis,
-            value: Math.round(touch.rate),
-          })),
-        },
-      ],
-      // Only the marks dated to this channel's send days. Polaris Viz keys an
-      // annotation to a label it drew, and the other days aren't on this axis.
-      annotations: chartAnnotations.filter((annotation) =>
-        touches.some((touch) => touch.axis === annotation.startKey),
-      ),
-    };
-  }).filter(Boolean);
-
-  const bounceReasons = (bounces.tableData.rows ?? [])
+// [START campaign-dashboard.bounce-reasons]
+// The bounce query groups by recipient_status. Each row names one failure.
+export function bounceReasons({bounces, cell, humanize}) {
+  return (bounces.tableData.rows ?? [])
     .filter((row) => Number(cell(row, 'emails_bounced')) > 0)
     .map((row) => ({
       reason: humanize(cell(row, 'recipient_status') ?? 'unrecorded'),
       count: Number(cell(row, 'emails_bounced')),
     }));
-
-  return {sequenceCharts, bounceReasons};
 }
-// [END campaign-dashboard.sequence-charts]
+// [END campaign-dashboard.bounce-reasons]
 
 // [START campaign-dashboard.send-events-render]
 // The only panel that writes to App Events.
@@ -248,7 +195,7 @@ export function ChannelMetrics({funnels, integer}) {
 
 // [START campaign-dashboard.app-events-render]
 // Reach falls because lists shrink. Engagement tracks the offer.
-export function SendPerformance({sequence, sequenceCharts, isClient, integer}) {
+export function SendPerformance({sequence, integer}) {
   if (sequence.length === 0) return null;
 
   return (
@@ -259,46 +206,8 @@ export function SendPerformance({sequence, sequenceCharts, isClient, integer}) {
           appEvents: 'One event stream per send, published by this app at send time.',
           shopifyql:
             'Groups the events by send and reports the reach of each send.',
-          annotations:
-            "The marks this campaign wrote, drawn on the day each send went out.",
         }}
       />
-      {isClient && (
-        <s-query-container>
-          <s-grid gridTemplateColumns="repeat(auto-fit, minmax(280px, 1fr))" gap="base">
-            {sequenceCharts.map((chart) => (
-              <s-grid-item key={chart.channel}>
-                <s-heading>{chart.label}</s-heading>
-                <div className="chart-tooltip-fix" style={{height: '220px'}}>
-                  <PolarisVizProvider>
-                    <ComboChart
-                      data={[
-                        {
-                          shape: 'Bar',
-                          // No `name`. A named group adds a rotated axis title the
-                          // legend already states.
-                          yAxisOptions: {integersOnly: true},
-                          series: chart.reached,
-                        },
-                        {
-                          shape: 'Line',
-                          yAxisOptions: {
-                            labelFormatter: (value) => `${Math.round(value)}%`,
-                          },
-                          series: chart.rate,
-                        },
-                      ]}
-                      annotations={chart.annotations}
-                      theme="Light"
-                    />
-                  </PolarisVizProvider>
-                </div>
-              </s-grid-item>
-            ))}
-          </s-grid>
-        </s-query-container>
-      )}
-
       <s-table>
         <s-table-header-row>
           <s-table-header listSlot="primary">Message</s-table-header>

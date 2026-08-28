@@ -1,7 +1,5 @@
-import {Fragment, useEffect, useState} from 'react';
+import {Fragment, useState} from 'react';
 import {redirect, useFetcher, useLoaderData, useRouteError} from 'react-router';
-import '@shopify/polaris-viz/build/esm/styles.css';
-import '../chart-tooltip.css';
 import {authenticate} from '../shopify.server';
 import {
   eventTotal,
@@ -57,11 +55,11 @@ import {
   Deliverability,
   SendEventsPanel,
   SendPerformance,
+  bounceReasons as readBounceReasons,
   channelFunnels,
   funnelTotals,
   reachRowsFor,
-  sendSeries,
-  sequenceInsights,
+  sendsByDay,
 } from '../panels/app-events';
 import {
   closeCampaign,
@@ -86,10 +84,8 @@ import {CampaignLifecycle} from '../panels/close';
 import {
   SalesAndOrders,
   StoreTotals,
-  annotationOverlay,
+  annotationStatus,
   metricCardQuery,
-  salesChartSeries,
-  useIsClient,
   useMetricCardsReady,
 } from '../panels/sales';
 import {
@@ -98,7 +94,7 @@ import {
   PromotedProductSales,
   SegmentSales,
   creatorShape,
-  promotedSeries,
+  promotedShape,
   tierShape,
   touchShape,
 } from '../panels/dimensions';
@@ -730,22 +726,9 @@ export default function CampaignDashboard() {
   const data = useLoaderData();
   const fetcher = useFetcher();
 
-  const isClient = useIsClient();
-
   const cardReady = useMetricCardsReady();
 
   const [range, setRange] = useState('last30days');
-
-  useEffect(() => {
-    const onScroll = () =>
-      document.documentElement.style.setProperty(
-        '--chart-scroll-y',
-        `${window.scrollY}px`,
-      );
-    onScroll();
-    window.addEventListener('scroll', onScroll, {passive: true});
-    return () => window.removeEventListener('scroll', onScroll);
-  }, []);
 
   const {campaign, locale, fatal} = data;
 
@@ -835,16 +818,17 @@ export default function CampaignDashboard() {
 
   const {storeTarget, scopedTargets} = splitTargets(targets);
 
-  const {marks, ours, chartAnnotations, openCampaign, incidentFlagged, legend} =
-    annotationOverlay({campaign, annotations, appId, dayOf, shortDate});
+  const {marks, ours, openCampaign, incidentFlagged} = annotationStatus({
+    campaign,
+    annotations,
+    appId,
+  });
 
   // The same conditions the launch applies.
   const plannedTargetCount =
     1 +
     (campaign.products.length > 0 ? 1 : 0) +
     (isTargetedTier(campaign.audience) && dimensions.customer.enabled ? 1 : 0);
-
-  const {salesSeries, ordersSeries} = salesChartSeries({rows, cell, shortDate});
 
   const cardQuery = metricCardQuery(range);
 
@@ -854,30 +838,21 @@ export default function CampaignDashboard() {
 
   const funnels = channelFunnels(campaign, total);
 
-  const sends = sendSeries({funnel, rows, cell, shortDate});
+  const sends = sendsByDay(funnel, cell);
 
-  const {sequenceCharts, bounceReasons} = sequenceInsights({
-    sequence,
-    campaign,
-    chartAnnotations,
-    bounces,
-    cell,
-    shortDate,
-    humanize,
-  });
+  const bounceReasons = readBounceReasons({bounces, cell, humanize});
 
   const exploreHref = analyticsReportHref({
     window: queryWindow,
     annotations: ours,
   });
 
-  const {promotedByDay, promotedSplit, promotedSales, promotedShare} = promotedSeries({
+  const {promotedRows, promotedSales, promotedShare} = promotedShape({
     promoted,
     campaign,
     totalSales,
     cell,
     rate,
-    shortDate,
   });
 
   const {tierRows, tierTotal, tierShare} = tierShape({
@@ -980,10 +955,10 @@ export default function CampaignDashboard() {
 
   const markNote =
     !planned && ours.length === 0
-      ? 'This campaign has no annotations on the chart.'
+      ? "This campaign has no annotations in the store's analytics."
       : ours.length > marks.length
-        ? `${ours.length - marks.length} annotations on this chart are left over from ` +
-          `earlier marks on this campaign. Rewriting replaces them with the current ${marks.length}.`
+        ? `${ours.length - marks.length} annotations are left over from earlier ` +
+          `marks on this campaign. Rewriting replaces them with the current ${marks.length}.`
         : null;
 
   return (
@@ -1145,12 +1120,10 @@ export default function CampaignDashboard() {
           campaign={campaign}
           totalSales={totalSales}
           percentChange={percentChange}
-          isClient={isClient}
+          rows={rows}
+          cell={cell}
+          shortDate={shortDate}
           sends={sends}
-          salesSeries={salesSeries}
-          ordersSeries={ordersSeries}
-          chartAnnotations={chartAnnotations}
-          legend={legend}
           marks={marks}
           ours={ours}
           running={running}
@@ -1176,7 +1149,7 @@ export default function CampaignDashboard() {
           submit={submit}
         />
 
-        {isClient && <ChannelMetrics funnels={funnels} integer={integer} />}
+        <ChannelMetrics funnels={funnels} integer={integer} />
 
         <IncidentBanner
           health={health}
@@ -1190,12 +1163,7 @@ export default function CampaignDashboard() {
           today={today}
         />
 
-        <SendPerformance
-          sequence={sequence}
-          sequenceCharts={sequenceCharts}
-          isClient={isClient}
-          integer={integer}
-        />
+        <SendPerformance sequence={sequence} integer={integer} />
 
         <Deliverability
           sent={sent}
@@ -1212,14 +1180,13 @@ export default function CampaignDashboard() {
         />
 
         <PromotedProductSales
-          promotedByDay={promotedByDay}
-          promotedSplit={promotedSplit}
+          promotedRows={promotedRows}
           promotedSales={promotedSales}
           promotedShare={promotedShare}
           totalSales={totalSales}
           dimensions={dimensions}
-          isClient={isClient}
           currency={currency}
+          shortDate={shortDate}
         />
 
         <Unavailable
@@ -1233,7 +1200,6 @@ export default function CampaignDashboard() {
           tierTotal={tierTotal}
           tierShare={tierShare}
           totalSales={totalSales}
-          isClient={isClient}
           currency={currency}
           shortDate={shortDate}
         />

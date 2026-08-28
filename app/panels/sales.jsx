@@ -1,8 +1,6 @@
 import {Fragment, useEffect, useState} from 'react';
-import {ComboChart, PolarisVizProvider} from '@shopify/polaris-viz';
 
-import {annotationColor, categoryLegend} from '../annotations';
-import {campaignMarks, clamp} from '../campaigns';
+import {campaignMarks, campaignWindow} from '../campaigns';
 
 import {PanelHeader} from './shared';
 
@@ -13,15 +11,6 @@ const SINCE_BY_RANGE = {
   last90days: 'startOfDay(-90d)',
   last365days: 'startOfDay(-365d)',
 };
-
-// [START campaign-dashboard.client-only]
-// Polaris Viz measures the element it draws into. Gate every chart on mount.
-export function useIsClient() {
-  const [isClient, setIsClient] = useState(false);
-  useEffect(() => setIsClient(true), []);
-  return isClient;
-}
-// [END campaign-dashboard.client-only]
 
 // [START campaign-dashboard.metric-card-ready]
 // A metric card needs `window.shopify.shopifyQL`, installed after load. A card that
@@ -45,28 +34,6 @@ export function useMetricCardsReady() {
 }
 // [END campaign-dashboard.metric-card-ready]
 
-// [START campaign-dashboard.chart]
-// Money and a count can't share an axis. A ComboChart gives each series an axis.
-export function salesChartSeries({rows, cell, shortDate}) {
-  return {
-    salesSeries: {
-      name: 'Sales',
-      data: rows.map((row) => ({
-        key: shortDate(cell(row, 'day')),
-        value: Number(cell(row, 'total_sales') ?? 0),
-      })),
-    },
-    ordersSeries: {
-      name: 'Orders',
-      data: rows.map((row) => ({
-        key: shortDate(cell(row, 'day')),
-        value: Number(cell(row, 'orders') ?? 0),
-      })),
-    },
-  };
-}
-// [END campaign-dashboard.chart]
-
 // [START campaign-dashboard.metric-card]
 export function metricCardQuery(range) {
   const since = SINCE_BY_RANGE[range];
@@ -82,69 +49,42 @@ export function metricCardQuery(range) {
 }
 // [END campaign-dashboard.metric-card]
 
-// [START campaign-dashboard.annotations-overlay]
+// [START campaign-dashboard.sales-card]
+// Shopify runs the query and draws the result. ANNOTATE ALL overlays every
+// annotation on the store, this app's included.
+export function salesCardQuery(campaign) {
+  return [
+    'FROM sales',
+    'SHOW total_sales',
+    'TIMESERIES day',
+    campaignWindow(campaign),
+    'VISUALIZE total_sales TYPE line ANNOTATE ALL',
+  ].join(' ');
+}
+// [END campaign-dashboard.sales-card]
+
+// [START campaign-dashboard.annotation-status]
 // The marks this campaign should have, matched against what the store actually holds.
-export function annotationOverlay({
-  campaign,
-  annotations,
-  appId,
-  dayOf,
-  shortDate,
-}) {
+export function annotationStatus({campaign, annotations, appId}) {
   const marks = campaignMarks(campaign);
 
-  // Split by who wrote them. Grey the rest, which the app can't update or delete.
+  // Only the app's annotations count toward the rewrite. It can't update or
+  // delete another app's.
   const ours = annotations.filter(
     (annotation) => annotation.createdByApp?.id === appId,
   );
-  const others = annotations.filter(
-    (annotation) => annotation.createdByApp?.id !== appId,
-  );
-
-  // Group by day before anything draws them. A launch writes several on one date.
-  const byDay = new Map();
-  for (const annotation of annotations) {
-    const day = dayOf(annotation.startedAt);
-    if (!byDay.has(day)) byDay.set(day, []);
-    byDay.get(day).push(annotation);
-  }
-  const annotationDays = [...byDay.entries()].sort(([a], [b]) => a.localeCompare(b));
-
-  // Keyed on the formatted day, because Polaris Viz matches the axis label it drew and
-  // holds one annotation per key. The pill fits the mark's name and the tooltip the title.
-  const chartLabel = (title) => clamp(title.replace(/ (?:for|on) .+$/, ''), 24);
-  const chartAnnotations = annotationDays.map(([day, list]) => ({
-    startKey: shortDate(day),
-    label: list.length > 1 ? `${list.length} annotations` : chartLabel(list[0].title),
-    content: {
-      // Portaled into a `foreignObject`. Plain HTML only.
-      content: (
-        <Fragment>
-          {list.map((annotation) => (
-            <div key={annotation.id}>{annotation.description ?? annotation.title}</div>
-          ))}
-        </Fragment>
-      ),
-      title: list.length > 1 ? shortDate(day) : list[0].title,
-    },
-    axis: 'x',
-    color: annotationColor(list[0], appId),
-  }));
 
   return {
     marks,
     ours,
-    others,
-    chartAnnotations,
     openCampaign: ours.find((annotation) => !annotation.endedAt) ?? null,
     // Read off the record. The annotations query is windowed and would miss a duplicate.
     incidentFlagged: Object.keys(campaign.markers ?? {}).some((key) =>
       key.startsWith('incident:'),
     ),
-    legend: categoryLegend(annotations, appId),
   };
 }
-// [END campaign-dashboard.annotations-overlay]
+// [END campaign-dashboard.annotation-status]
 
 // [START campaign-dashboard.card-render]
 export function StoreTotals({statusLine, cardReady, range, setRange, cardQuery}) {
@@ -188,12 +128,10 @@ export function SalesAndOrders({
   campaign,
   totalSales,
   percentChange,
-  isClient,
-  sends,
-  salesSeries,
-  ordersSeries,
-  chartAnnotations,
-  legend,
+  rows,
+  cell,
+  shortDate,
+  sends = new Map(),
   marks,
   ours,
   running,
@@ -204,6 +142,9 @@ export function SalesAndOrders({
   currency,
   percent,
 }) {
+  const cardReady = useMetricCardsReady();
+  const showSends = [...sends.values()].some((value) => value > 0);
+
   return (
     <s-section>
       <PanelHeader
@@ -212,7 +153,7 @@ export function SalesAndOrders({
           shopifyql:
             'One row per day for sales and orders, with the previous period beside it.',
           annotations:
-            "The marks on the chart, read back from the store's annotations.",
+            "Every annotation on the store, drawn onto the chart by ANNOTATE ALL.",
         }}
       />
       {/* The percentage is Shopify's, from COMPARE TO previous_period. */}
@@ -231,68 +172,56 @@ export function SalesAndOrders({
         </s-stack>
       </div>
 
-      {/* [START campaign-dashboard.chart-render] */}
-      {/* Each group gets an axis. `series` is the data, `data` the groups. */}
-      {isClient && (
-        <div className="chart-tooltip-fix" style={{height: '320px'}}>
-          <PolarisVizProvider>
-            <ComboChart
-              data={[
-                {
-                  shape: 'Bar',
-                  name: sends.length > 0 ? 'Messages sent' : 'Orders',
-                  yAxisOptions: {integersOnly: true},
-                  series: sends.length > 0 ? sends : [ordersSeries],
-                },
-                {
-                  shape: 'Line',
-                  name: 'Sales',
-                  yAxisOptions: {labelFormatter: currency},
-                  series: [salesSeries],
-                },
-              ]}
-              annotations={chartAnnotations}
-              theme="Light"
-            />
-          </PolarisVizProvider>
-        </div>
+      {/* [START campaign-dashboard.sales-card-render] */}
+      {cardReady ? (
+        <s-metrics-bar accessibilityLabel={`Sales during ${campaign.title}`}>
+          <s-shopifyql-metric-card
+            heading="Sales by day"
+            query={salesCardQuery(campaign)}
+          />
+        </s-metrics-bar>
+      ) : (
+        <s-metrics-bar loading accessibilityLabel="Loading the sales chart" />
       )}
-      {/* [END campaign-dashboard.chart-render] */}
+      {/* [END campaign-dashboard.sales-card-render] */}
+
+      {/* [START campaign-dashboard.sales-table-render] */}
+      {/* The rows render as the query returned them. `cell` reads the generated columns. */}
+      <s-table variant="auto">
+        <s-table-header-row>
+          <s-table-header listSlot="primary">Day</s-table-header>
+          {showSends && (
+            <s-table-header listSlot="labeled">Messages sent</s-table-header>
+          )}
+          <s-table-header listSlot="labeled">Orders</s-table-header>
+          <s-table-header listSlot="labeled">Sales</s-table-header>
+        </s-table-header-row>
+        <s-table-body>
+          {rows.map((row) => (
+            <s-table-row key={String(cell(row, 'day'))}>
+              <s-table-cell>{shortDate(cell(row, 'day'))}</s-table-cell>
+              {showSends && (
+                <s-table-cell>{sends.get(String(cell(row, 'day'))) ?? 0}</s-table-cell>
+              )}
+              <s-table-cell>{Number(cell(row, 'orders') ?? 0)}</s-table-cell>
+              <s-table-cell>{currency(cell(row, 'total_sales'))}</s-table-cell>
+            </s-table-row>
+          ))}
+        </s-table-body>
+      </s-table>
+      {/* [END campaign-dashboard.sales-table-render] */}
 
       <s-stack direction="block" gap="base">
-        <s-stack direction="inline" gap="base">
-          {legend.map((entry) => (
-            <s-stack
-              key={entry.label}
-              direction="inline"
-              gap="small-500"
-              alignItems="center"
-            >
-              <div
-                style={{
-                  width: '12px',
-                  height: '12px',
-                  borderRadius: '2px',
-                  backgroundColor: entry.color,
-                }}
-              />
-              <s-text color="subdued">
-                {entry.label} ({entry.count})
-              </s-text>
-            </s-stack>
-          ))}
-        </s-stack>
-
         {/* [START campaign-dashboard.rewrite-render] */}
-        {/* Replacing what the app already wrote, or the chart accumulates every version
-            of the story. */}
+        {/* Replacing what the app already wrote, or the store's timeline accumulates
+            every version of the story. */}
         {running && (
           <Fragment>
             {markNote && <s-text color="subdued">{markNote}</s-text>}
             <s-stack direction="inline">
               <s-button loading={busy} onClick={() => submit('rewrite-marks')}>
                 {ours.length > 0 ? 'Rewrite' : 'Write'} the {marks.length} annotations
-                on this chart
+                for this campaign
               </s-button>
             </s-stack>
           </Fragment>

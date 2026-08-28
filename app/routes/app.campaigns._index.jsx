@@ -1,8 +1,5 @@
 import {Fragment, useEffect, useState} from 'react';
 import {redirect, useFetcher, useLoaderData, useRouteError} from 'react-router';
-import {BarChart, PolarisVizProvider} from '@shopify/polaris-viz';
-import '@shopify/polaris-viz/build/esm/styles.css';
-import '../chart-tooltip.css';
 import {authenticate} from '../shopify.server';
 import {createCampaign, ensureCampaign, readCampaigns} from '../campaigns.server';
 import {
@@ -203,21 +200,17 @@ function sendsFor(campaign, rows, appName) {
   };
 }
 
-// A stacked bar takes one entry per series. Pivot the rows, and channels stack.
+// One row per campaign that sent, with the per-channel split beside it.
 function messageMix(campaigns, rows, appName) {
-  const sending = campaigns.filter((campaign) => ownRow(campaign, rows, appName));
-
-  return [
-    {name: 'Email', column: 'emails_sent'},
-    {name: 'SMS', column: 'sms_messages_sent'},
-    {name: 'Push', column: 'push_notifications_sent'},
-  ].map(({name, column}) => ({
-    name,
-    data: sending.map((campaign) => ({
-      key: campaign.title,
-      value: Number(ownRow(campaign, rows, appName)?.[column] ?? 0),
-    })),
-  }));
+  return campaigns
+    .map((campaign) => ({campaign, row: ownRow(campaign, rows, appName)}))
+    .filter(({row}) => row)
+    .map(({campaign, row}) => ({
+      title: campaign.title,
+      email: Number(row['emails_sent'] ?? 0),
+      sms: Number(row['sms_messages_sent'] ?? 0),
+      push: Number(row['push_notifications_sent'] ?? 0),
+    }));
 }
 
 // The store from the earliest campaign onwards, floored so an old campaign can't ask
@@ -253,11 +246,9 @@ export default function CampaignsIndex() {
     );
 
   // [START campaign-dashboard.overview-graphics]
-  // Polaris Viz measures the element it draws into, and a metric card needs
-  // `window.shopify.shopifyQL`. Two flags, because they turn true at different moments.
-  const [isClient, setIsClient] = useState(false);
+  // A metric card needs `window.shopify.shopifyQL`, installed after load. Poll
+  // until it lands.
   const [cardReady, setCardReady] = useState(false);
-  useEffect(() => setIsClient(true), []);
   useEffect(() => {
     const poll = setInterval(() => {
       if (window.shopify?.shopifyQL) {
@@ -280,11 +271,9 @@ export default function CampaignsIndex() {
       `VISUALIZE ${metric} TYPE line`,
     ].join(' ');
 
-  // Nothing sent is a chart of two empty bars. Don't draw one.
+  // Nothing sent is a table of zeros. Don't draw one.
   const mix = messageMix(campaigns, sends, appName);
-  const anySends = mix.some((series) =>
-    series.data.some((point) => point.value > 0),
-  );
+  const anySends = mix.some((row) => row.email + row.sms + row.push > 0);
   // [END campaign-dashboard.overview-graphics]
 
   // The link needs a campaign to point at. Prefer one that launched.
@@ -449,23 +438,31 @@ export default function CampaignsIndex() {
       </s-section>
 
       {/* [START campaign-dashboard.overview-chart-render] */}
-      {isClient && anySends && (
+      {anySends && (
         <s-section heading="Messages sent by campaign">
           <s-paragraph>
             Every campaign this app sent for, over the last 29 days.
             Attributes on App Events reach back 30 days. A campaign that ran
             before then reports nothing here.
           </s-paragraph>
-          <div className="chart-tooltip-fix" style={{height: '220px'}}>
-            <PolarisVizProvider>
-              <BarChart
-                direction="horizontal"
-                type="stacked"
-                data={mix}
-                theme="Light"
-              />
-            </PolarisVizProvider>
-          </div>
+          <s-table variant="auto">
+            <s-table-header-row>
+              <s-table-header listSlot="primary">Campaign</s-table-header>
+              <s-table-header listSlot="labeled">Email</s-table-header>
+              <s-table-header listSlot="labeled">SMS</s-table-header>
+              <s-table-header listSlot="labeled">Push</s-table-header>
+            </s-table-header-row>
+            <s-table-body>
+              {mix.map((row) => (
+                <s-table-row key={row.title}>
+                  <s-table-cell>{row.title}</s-table-cell>
+                  <s-table-cell>{integer(row.email)}</s-table-cell>
+                  <s-table-cell>{integer(row.sms)}</s-table-cell>
+                  <s-table-cell>{integer(row.push)}</s-table-cell>
+                </s-table-row>
+              ))}
+            </s-table-body>
+          </s-table>
         </s-section>
       )}
       {/* [END campaign-dashboard.overview-chart-render] */}

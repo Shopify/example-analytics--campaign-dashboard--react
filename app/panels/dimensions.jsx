@@ -1,12 +1,10 @@
-import {LineChart, PolarisVizProvider, StackedAreaChart} from '@shopify/polaris-viz';
-
 import {creatorCodes, creatorTouches, touchMarks} from '../campaigns';
 import {tierLabel} from '../audiences';
 
 import {PanelHeader} from './shared';
 
 // [START campaign-dashboard.promoted-split]
-export function promotedSeries({promoted, campaign, totalSales, cell, rate, shortDate}) {
+export function promotedShape({promoted, campaign, totalSales, cell, rate}) {
   const promotedByDay = new Map();
   const otherByDay = new Map();
   for (const row of promoted.tableData.rows ?? []) {
@@ -27,25 +25,13 @@ export function promotedSeries({promoted, campaign, totalSales, cell, rate, shor
   );
 
   return {
-    promotedByDay,
+    promotedRows: promotedDays.map((day) => ({
+      day,
+      promoted: promotedByDay.get(day) ?? 0,
+      rest: otherByDay.get(day) ?? 0,
+    })),
     promotedSales,
     promotedShare: rate(promotedSales, Number(totalSales)),
-    promotedSplit: [
-      {
-        name: 'Promoted products',
-        data: promotedDays.map((day) => ({
-          key: shortDate(day),
-          value: promotedByDay.get(day) ?? 0,
-        })),
-      },
-      {
-        name: 'The rest of the store',
-        data: promotedDays.map((day) => ({
-          key: shortDate(day),
-          value: otherByDay.get(day) ?? 0,
-        })),
-      },
-    ],
   };
 }
 // [END campaign-dashboard.promoted-split]
@@ -118,16 +104,15 @@ export function creatorShape({codeSales, campaign, touchRows, cell}) {
 
 // [START campaign-dashboard.promoted-render]
 export function PromotedProductSales({
-  promotedByDay,
-  promotedSplit,
+  promotedRows,
   promotedSales,
   promotedShare,
   totalSales,
   dimensions,
-  isClient,
   currency,
+  shortDate,
 }) {
-  if (promotedByDay.size === 0) return null;
+  if (!promotedRows.some((row) => row.promoted > 0)) return null;
 
   return (
     <s-section id="promoted">
@@ -148,13 +133,22 @@ export function PromotedProductSales({
         <s-text type="strong">{dimensions.product.dimension}</s-text>, the dimension
         this app created.
       </s-paragraph>
-      {isClient && (
-        <div className="chart-tooltip-fix" style={{height: '260px'}}>
-          <PolarisVizProvider>
-            <StackedAreaChart data={promotedSplit} theme="Light" />
-          </PolarisVizProvider>
-        </div>
-      )}
+      <s-table variant="auto">
+        <s-table-header-row>
+          <s-table-header listSlot="primary">Day</s-table-header>
+          <s-table-header listSlot="labeled">Promoted products</s-table-header>
+          <s-table-header listSlot="labeled">The rest of the store</s-table-header>
+        </s-table-header-row>
+        <s-table-body>
+          {promotedRows.map((row) => (
+            <s-table-row key={row.day}>
+              <s-table-cell>{shortDate(row.day)}</s-table-cell>
+              <s-table-cell>{currency(row.promoted)}</s-table-cell>
+              <s-table-cell>{currency(row.rest)}</s-table-cell>
+            </s-table-row>
+          ))}
+        </s-table-body>
+      </s-table>
     </s-section>
   );
 }
@@ -168,7 +162,6 @@ export function SegmentSales({
   tierTotal,
   tierShare,
   totalSales,
-  isClient,
   currency,
   shortDate,
 }) {
@@ -189,24 +182,20 @@ export function SegmentSales({
         The segment this campaign targeted bought {currency(tierTotal)} of the store's{' '}
         {currency(totalSales)} over the same window, or {tierShare.toFixed(0)}%.
       </s-paragraph>
-      {isClient && (
-        <div className="chart-tooltip-fix" style={{height: '220px'}}>
-          <PolarisVizProvider>
-            <LineChart
-              data={[
-                {
-                  name: tierLabel(campaign.audience),
-                  data: tierRows.map((row) => ({
-                    key: shortDate(row.day),
-                    value: row.sales,
-                  })),
-                },
-              ]}
-              theme="Light"
-            />
-          </PolarisVizProvider>
-        </div>
-      )}
+      <s-table variant="auto">
+        <s-table-header-row>
+          <s-table-header listSlot="primary">Day</s-table-header>
+          <s-table-header listSlot="labeled">Sales</s-table-header>
+        </s-table-header-row>
+        <s-table-body>
+          {tierRows.map((row) => (
+            <s-table-row key={row.day}>
+              <s-table-cell>{shortDate(row.day)}</s-table-cell>
+              <s-table-cell>{currency(row.sales)}</s-table-cell>
+            </s-table-row>
+          ))}
+        </s-table-body>
+      </s-table>
     </s-section>
   );
 }
