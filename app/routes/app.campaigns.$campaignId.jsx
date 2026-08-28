@@ -315,6 +315,17 @@ export async function action({request, params}) {
     if (campaign.status !== 'running') {
       return {problems: ['Only a running campaign can send its events.']};
     }
+    // Shopify never deletes an accepted event, and every funnel query filters on
+    // `campaign_id` alone. A second replay would sum both runs into one funnel and
+    // measure every rate against a doubled denominator. The record is the gate,
+    // because the funnel read behind the panel lags ingestion by minutes.
+    if (campaign.sentEvents) {
+      return {
+        problems: [
+          'This campaign already sent its events. Create a new campaign to send another run.',
+        ],
+      };
+    }
     if (!funnelFitsWindow(campaign.startDate, campaign.endDate, timeZone)) {
       return {
         problems: [
@@ -339,6 +350,10 @@ export async function action({request, params}) {
     });
     if (failures.length > 0) return {problems: failures};
     const sent = Object.values(accepted).reduce((total, n) => total + n, 0);
+    const {userErrors} = await updateCampaign(admin, campaign.id, {sentEvents: sent});
+    if (userErrors.length) {
+      return {problems: userErrors.map((error) => error.message)};
+    }
     return {ok: true, sentEvents: sent};
   }
   // [END campaign-dashboard.send-events-action]
@@ -1154,6 +1169,7 @@ export default function CampaignDashboard() {
           funnel={funnel}
           sendCount={sendCount}
           eventTotal={eventTotal}
+          alreadySent={Boolean(campaign.sentEvents)}
           sentEvents={fetcher.data?.sentEvents}
           integer={integer}
           busy={busy}

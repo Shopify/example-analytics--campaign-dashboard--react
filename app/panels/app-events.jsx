@@ -144,6 +144,7 @@ export function sequenceInsights({
 // The only panel that writes to App Events.
 export function SendEventsPanel({
   running,
+  alreadySent,
   sent,
   funnel,
   sendCount,
@@ -153,7 +154,9 @@ export function SendEventsPanel({
   busy,
   submit,
 }) {
-  if (sent !== 0 || !running) return null;
+  // `sent` comes off the funnel query, which trails ingestion. The record says
+  // whether this campaign has already sent, the moment it has.
+  if (alreadySent || sent !== 0 || !running) return null;
 
   // An undeclared column fails on `parseErrors` while the request itself succeeds.
   // Before the declaration propagates, that's the only signal App Events is unready.
