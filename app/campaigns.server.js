@@ -28,6 +28,8 @@ export const CAMPAIGN_FIELDS = {
   markers: 'Annotation IDs the app wrote, keyed by mark. What a rewrite addresses.',
   targets:
     "Target IDs the app created. Targets aren't app-scoped. Deleting only these keeps a cancel off the user's own targets.",
+  sentEvents:
+    'Events accepted at send. A recorded count blocks a second send from doubling every funnel rate.',
 };
 
 // [END campaign-dashboard.campaign-store]
