@@ -484,10 +484,12 @@ export async function action({request, params}) {
     const measured = await (
       await admin.graphql(measureQuery(target.shopifyqlQuery))
     ).json();
-    const userErrors = await raiseTarget(admin, {
-      ...target,
-      actual: progressValue(measured.data?.shopifyqlQuery) ?? 0,
-    });
+    const actual = progressValue(measured.data?.shopifyqlQuery);
+    // A raise is permanent. An unmeasured target would move the goal to the floor.
+    if (actual === null) {
+      return {problems: ['This target came back unmeasured. Reload and raise it again.']};
+    }
+    const userErrors = await raiseTarget(admin, {...target, actual});
     if (userErrors.length) {
       return {problems: userErrors.map((error) => error.message)};
     }
@@ -592,7 +594,13 @@ export async function action({request, params}) {
     const measured = store?.shopifyqlQuery
       ? await (await admin.graphql(measureQuery(store.shopifyqlQuery))).json()
       : null;
-    const revenue = progressValue(measured?.data?.shopifyqlQuery) ?? 0;
+    const measurement = progressValue(measured?.data?.shopifyqlQuery);
+    // Closing is permanent, and a failed read would record the campaign at zero. A
+    // target that no longer exists never measures. Closing stays available.
+    if (measured && measurement === null) {
+      return {problems: ['This target came back unmeasured. Reload and close it again.']};
+    }
+    const revenue = measurement ?? 0;
 
     const text = outcomeText({
       campaign: closing,

@@ -93,10 +93,9 @@ export function recentWindow(campaign) {
   const day = (offset) =>
     new Date(Date.now() - offset * 86400000).toISOString().slice(0, 10);
   const floor = day(RECENT_DAYS);
-  const since =
-    campaign.endDate >= floor && campaign.startDate < floor
-      ? `-${RECENT_DAYS}d`
-      : campaign.startDate;
+  // A campaign that ended before the retained days has no events left to count.
+  if (campaign.endDate < floor) return `SINCE -${RECENT_DAYS}d UNTIL -${RECENT_DAYS}d`;
+  const since = campaign.startDate < floor ? `-${RECENT_DAYS}d` : campaign.startDate;
   const running = campaign.startDate <= day(0);
   const until = running && campaign.endDate > day(0) ? 'today' : campaign.endDate;
   return `SINCE ${since} UNTIL ${until}`;
