@@ -65,9 +65,11 @@ export function safeLocale(value) {
   }
 }
 
+// `today` is a token ShopifyQL resolves in the store's timezone, and this date is UTC.
+// A store west of UTC is still on the previous day. Wait a day before using the token.
 export function campaignWindow(campaign) {
   const today = new Date(Date.now()).toISOString().slice(0, 10);
-  const running = campaign.startDate <= today;
+  const running = campaign.startDate < today;
   const until = running && campaign.endDate > today ? 'today' : campaign.endDate;
   return `SINCE ${campaign.startDate} UNTIL ${until}`;
 }

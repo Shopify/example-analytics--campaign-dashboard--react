@@ -94,7 +94,8 @@ export async function createAudienceTarget(admin, campaign, definition) {
 export async function raiseTarget(admin, target) {
   const actual = Number(target.actual ?? 0);
   const step = Math.max(1000, 10 ** (Math.floor(Math.log10(actual)) - 1));
-  const raised = String(Math.ceil(actual / step) * step);
+  // The next increment above the amount. An exact multiple has to move too.
+  const raised = String((Math.floor(actual / step) + 1) * step);
 
   const body = await (
     await admin.graphql(TARGET_UPDATE, {
