@@ -586,6 +586,12 @@ export async function action({request, params}) {
       admin.graphql(targetsQuery(closing)).then((response) => response.json()),
     ]);
 
+    // A failed read returns no nodes, the same shape as a deleted target. Closing
+    // is permanent. Only the deleted case is allowed through.
+    if (targetsBody.errors?.length) {
+      return {problems: ['The targets read failed. Reload and close it again.']};
+    }
+
     // The ID the launch recorded. A target the user made on the same date
     // measures the same days without being this campaign's.
     const store = (targetsBody.data?.analyticsTargets?.nodes ?? []).find(

@@ -147,7 +147,7 @@ export const action = async ({request}) => {
     return {problems: userErrors.map((error) => error.message)};
   }
 
-  return redirect(`/app/campaigns/${campaign.id}`);
+  return redirect(`/app/campaigns/${campaign.id}${new URL(request.url).search}`);
 };
 // [END campaign-dashboard.spawn-action]
 
