@@ -92,7 +92,6 @@ export function bounceReasons({bounces, cell, humanize}) {
 export function SendEventsPanel({
   running,
   alreadySent,
-  sent,
   funnel,
   sendCount,
   eventTotal,
@@ -101,9 +100,9 @@ export function SendEventsPanel({
   busy,
   submit,
 }) {
-  // `sent` comes off the funnel query, which trails ingestion. The record says
-  // whether this campaign has already sent, the moment it has.
-  if (alreadySent || sent !== 0 || !running) return null;
+  // The record is the gate, and a partial send leaves it unset. Retry stays available,
+  // because the deterministic idempotency key makes a replay of an accepted event a no-op.
+  if (alreadySent || !running) return null;
 
   // An undeclared column fails on `parseErrors` while the request itself succeeds.
   // Before the declaration propagates, that's the only signal App Events is unready.

@@ -1146,7 +1146,6 @@ export default function CampaignDashboard() {
 
         <SendEventsPanel
           running={running}
-          sent={sent}
           funnel={funnel}
           sendCount={sendCount}
           eventTotal={eventTotal}
