@@ -9,8 +9,9 @@ export function CampaignLifecycle({
   submit,
   shortDate,
 }) {
-  // A closed campaign gates out every control below.
-  if (campaign.status === 'closed') return null;
+  // A closed campaign gates out every control below. A planned one offers
+  // Cancel beside Launch at the top of the page instead of a section here.
+  if (campaign.status === 'closed' || campaign.status === 'planned') return null;
 
   return (
     <s-section heading="Campaign lifecycle">
@@ -35,7 +36,7 @@ export function CampaignLifecycle({
               Plan the campaign again
             </s-button>
           )}
-          {(campaign.status === 'planned' || running) && (
+          {running && (
             <s-button tone="critical" loading={busy} onClick={() => submit('cancel')}>
               Cancel the campaign
             </s-button>

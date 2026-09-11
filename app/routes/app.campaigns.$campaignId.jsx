@@ -1012,14 +1012,18 @@ export default function CampaignDashboard() {
       )}
 
       {/* [START campaign-dashboard.status-render] */}
-      {/* Before a launch there are no totals to sit beside, and only one action to offer. */}
+      {/* Before a launch there are no totals to sit beside. Launch and Cancel are
+          the only actions, so they share the top of the page. */}
       {planned && (
         <s-section>
           <s-stack direction="block" gap="base">
             {statusLine}
-            <s-stack direction="inline">
+            <s-stack direction="inline" gap="base">
               <s-button variant="primary" loading={busy} onClick={() => submit('launch')}>
                 Launch the campaign
+              </s-button>
+              <s-button tone="critical" loading={busy} onClick={() => submit('cancel')}>
+                Cancel the campaign
               </s-button>
             </s-stack>
           </s-stack>
@@ -1080,6 +1084,19 @@ export default function CampaignDashboard() {
                 </s-select>
               </s-stack>
             </s-stack>
+
+            {/* [START campaign-dashboard.qr-setup-render] */}
+            {/* The QR codes are the merchant's to print. The panel only needs the UTMs. */}
+            <s-stack direction="block" gap="small-200">
+              <s-text type="strong">QR codes</s-text>
+              <s-text>
+                Point each printed code at a store URL that carries{' '}
+                <s-text>utm_medium=qr</s-text>, and put the code's name in{' '}
+                <s-text>utm_campaign</s-text>. Orders that start from a scan
+                appear in the QR code sales panel once the campaign is running.
+              </s-text>
+            </s-stack>
+            {/* [END campaign-dashboard.qr-setup-render] */}
           </s-section>
 
           {/* Each amount becomes a target at launch, and launch rejects a zero. */}
