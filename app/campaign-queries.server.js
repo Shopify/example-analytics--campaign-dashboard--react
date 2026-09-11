@@ -651,6 +651,28 @@ export const codeSalesQuery = (campaign, filter) => `
 `;
 // [END campaign-dashboard.creator-code-queries]
 
+// [START campaign-dashboard.qr-sales-queries]
+// The QR app stamps every scan with utm_medium=qr. The store's attribution
+// model does the rest, so the filter is the whole handshake.
+export const qrSalesQuery = (campaign) => `
+  query CampaignQRSales {
+    shopifyqlQuery(
+      query: "FROM campaign_sales SHOW utm_campaign, campaign_last_non_direct_click_total_sales, campaign_last_non_direct_click_order_count WHERE utm_medium = 'qr' GROUP BY utm_campaign ${campaignWindow(campaign)} ORDER BY campaign_last_non_direct_click_total_sales DESC"
+    ) {
+      tableData {
+        columns {
+          name
+          dataType
+          displayName
+        }
+        rows
+      }
+      parseErrors
+    }
+  }
+`;
+// [END campaign-dashboard.qr-sales-queries]
+
 // [START campaign-dashboard.audience-roster]
 export const CUSTOMER_NAMES = `
   query AudienceNames($ids: [ID!]!) {

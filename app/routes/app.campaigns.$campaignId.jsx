@@ -30,6 +30,7 @@ import {
   measureQuery,
   progressValue,
   promotedByQuery,
+  qrSalesQuery,
   runIfSupported,
   runOptional,
   salesQuery,
@@ -92,9 +93,11 @@ import {
   CreatorRevenue,
   OrderAttribution,
   PromotedProductSales,
+  QRCodeSales,
   SegmentSales,
   creatorShape,
   promotedShape,
+  qrShape,
   tierShape,
   touchShape,
 } from '../panels/dimensions';
@@ -136,6 +139,7 @@ export async function loader({request, params}) {
     tierSales,
     touchSales,
     codeSales,
+    qrSales,
   ] = await Promise.all([
     admin.graphql(salesQuery(campaign)).then((response) => response.json()),
     runIfSupported(admin, targetsQuery(campaign)),
@@ -159,6 +163,8 @@ export async function loader({request, params}) {
     codeFilter(campaign)
       ? runOptional(admin, codeSalesQuery(campaign, codeFilter(campaign)))
       : emptyTable(),
+    // utm_medium is built in. The QR app writes it, the store reports it.
+    runOptional(admin, qrSalesQuery(campaign)),
   ]);
 
   // [START campaign-dashboard.parse-errors]
@@ -201,6 +207,7 @@ export async function loader({request, params}) {
     tierSales,
     touchSales,
     codeSales,
+    qrSales,
   };
 }
 
@@ -776,6 +783,7 @@ export default function CampaignDashboard() {
     tierSales,
     touchSales,
     codeSales,
+    qrSales,
   } = data;
 
   // [START campaign-dashboard.read]
@@ -883,6 +891,13 @@ export default function CampaignDashboard() {
     campaign,
     touchRows,
     cell,
+  });
+
+  const {qrRows, qrTotal, qrShare} = qrShape({
+    qrSales,
+    totalSales,
+    cell,
+    rate,
   });
 
   const problems = fetcher.data?.problems ?? [];
@@ -1234,6 +1249,16 @@ export default function CampaignDashboard() {
           creatorRows={creatorRows}
           codeTotal={codeTotal}
           touchedTotal={touchedTotal}
+          currency={currency}
+        />
+
+        <Unavailable heading="QR code sales" reason={qrSales.unavailable} />
+
+        <QRCodeSales
+          qrRows={qrRows}
+          qrTotal={qrTotal}
+          qrShare={qrShare}
+          totalSales={totalSales}
           currency={currency}
         />
 

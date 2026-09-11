@@ -102,6 +102,20 @@ export function creatorShape({codeSales, campaign, touchRows, cell}) {
 }
 // [END campaign-dashboard.code-shape]
 
+// [START campaign-dashboard.qr-shape]
+export function qrShape({qrSales, totalSales, cell, rate}) {
+  const qrRows = (qrSales.tableData.rows ?? [])
+    .map((row) => ({
+      code: String(cell(row, 'utm_campaign') ?? ''),
+      sales: Number(cell(row, 'campaign_last_non_direct_click_total_sales') ?? 0),
+      orders: Number(cell(row, 'campaign_last_non_direct_click_order_count') ?? 0),
+    }))
+    .filter((row) => row.code);
+  const qrTotal = qrRows.reduce((running, row) => running + row.sales, 0);
+  return {qrRows, qrTotal, qrShare: rate(qrTotal, Number(totalSales))};
+}
+// [END campaign-dashboard.qr-shape]
+
 // [START campaign-dashboard.promoted-render]
 export function PromotedProductSales({
   promotedRows,
@@ -290,3 +304,52 @@ export function CreatorRevenue({creatorRows, codeTotal, touchedTotal, currency})
   );
 }
 // [END campaign-dashboard.code-render]
+
+// [START campaign-dashboard.qr-render]
+// The scans came from the QR app, the attribution from the store.
+export function QRCodeSales({qrRows, qrTotal, qrShare, totalSales, currency}) {
+  if (qrRows.length === 0) return null;
+
+  return (
+    <s-section id="qr-sales">
+      <PanelHeader
+        title="QR code sales"
+        uses={{
+          shopifyql:
+            'Filters attributed sales to orders that started from a QR code scan.',
+        }}
+      />
+      {/* Attribution can credit an order whose session predates the window, so the
+          QR total can outrun the store's daily dataset. No total, no share. */}
+      {Number(totalSales) > 0 ? (
+        <s-paragraph>
+          Orders attributed to a QR code scan bought {currency(qrTotal)} of the
+          store&rsquo;s {currency(totalSales)} over the same window, or{' '}
+          {qrShare.toFixed(0)}%.
+        </s-paragraph>
+      ) : (
+        <s-paragraph>
+          Orders attributed to a QR code scan bought {currency(qrTotal)}. The
+          store&rsquo;s sales dataset shows no total for this window yet.
+        </s-paragraph>
+      )}
+      <s-table variant="auto">
+        <s-table-header-row>
+          <s-table-header listSlot="primary">QR code</s-table-header>
+          <s-table-header listSlot="labeled">Orders</s-table-header>
+          <s-table-header listSlot="labeled">Attributed sales</s-table-header>
+        </s-table-header-row>
+        <s-table-body>
+          {qrRows.map((row) => (
+            <s-table-row key={row.code}>
+              <s-table-cell>{row.code}</s-table-cell>
+              <s-table-cell>{row.orders}</s-table-cell>
+              <s-table-cell>{currency(row.sales)}</s-table-cell>
+            </s-table-row>
+          ))}
+        </s-table-body>
+      </s-table>
+    </s-section>
+  );
+}
+// [END campaign-dashboard.qr-render]
