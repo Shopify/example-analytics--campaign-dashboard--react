@@ -139,6 +139,7 @@ export function SalesAndOrders({
   exploreHref,
   busy,
   submit,
+  rewrote,
   currency,
   percent,
 }) {
@@ -173,16 +174,20 @@ export function SalesAndOrders({
       </div>
 
       {/* [START campaign-dashboard.sales-card-render] */}
-      {cardReady ? (
-        <s-metrics-bar accessibilityLabel={`Sales during ${campaign.title}`}>
-          <s-shopifyql-metric-card
-            heading="Sales by day"
-            query={salesCardQuery(campaign)}
-          />
-        </s-metrics-bar>
-      ) : (
-        <s-metrics-bar loading accessibilityLabel="Loading the sales chart" />
-      )}
+      {/* The card sizes itself after its query returns. The wrapper reserves the
+          room up front so the chart never paints over the table below it. */}
+      <div style={{minHeight: '320px', marginBottom: '16px'}}>
+        {cardReady ? (
+          <s-metrics-bar accessibilityLabel={`Sales during ${campaign.title}`}>
+            <s-shopifyql-metric-card
+              heading="Sales by day"
+              query={salesCardQuery(campaign)}
+            />
+          </s-metrics-bar>
+        ) : (
+          <s-metrics-bar loading accessibilityLabel="Loading the sales chart" />
+        )}
+      </div>
       {/* [END campaign-dashboard.sales-card-render] */}
 
       {/* [START campaign-dashboard.sales-table-render] */}
@@ -217,7 +222,19 @@ export function SalesAndOrders({
             every version of the story. */}
         {running && (
           <Fragment>
+            {rewrote != null && (
+              <s-banner tone="success" heading="Annotations rewritten">
+                <s-paragraph>
+                  The app deleted its old annotations and wrote {rewrote} current
+                  ones. The chart above draws the fresh set.
+                </s-paragraph>
+              </s-banner>
+            )}
             {markNote && <s-text color="subdued">{markNote}</s-text>}
+            <s-text color="subdued">
+              Rewriting deletes the annotations this app wrote earlier and writes
+              the current {marks.length} in their place.
+            </s-text>
             <s-stack direction="inline">
               <s-button loading={busy} onClick={() => submit('rewrite-marks')}>
                 {ours.length > 0 ? 'Rewrite' : 'Write'} the {marks.length} annotations

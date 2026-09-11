@@ -138,10 +138,17 @@ export function PromotedProductSales({
           metafields: 'Stamps every promoted product with the campaign name at launch.',
         }}
       />
-      <s-paragraph>
-        Products this campaign promoted earned {currency(promotedSales)} of the store's{' '}
-        {currency(totalSales)}, or {promotedShare.toFixed(0)}%.
-      </s-paragraph>
+      {Number(totalSales) > 0 ? (
+        <s-paragraph>
+          Products this campaign promoted earned {currency(promotedSales)} of the store's{' '}
+          {currency(totalSales)}, or {promotedShare.toFixed(0)}%.
+        </s-paragraph>
+      ) : (
+        <s-paragraph>
+          Products this campaign promoted earned {currency(promotedSales)}. The
+          store&rsquo;s sales dataset shows no total for this window yet.
+        </s-paragraph>
+      )}
       <s-paragraph>
         The store grouped that split by{' '}
         <s-text type="strong">{dimensions.product.dimension}</s-text>, the dimension
@@ -192,10 +199,17 @@ export function SegmentSales({
             'Writes the tier onto each customer to make it queryable.',
         }}
       />
-      <s-paragraph>
-        The segment this campaign targeted bought {currency(tierTotal)} of the store's{' '}
-        {currency(totalSales)} over the same window, or {tierShare.toFixed(0)}%.
-      </s-paragraph>
+      {Number(totalSales) > 0 ? (
+        <s-paragraph>
+          The segment this campaign targeted bought {currency(tierTotal)} of the store's{' '}
+          {currency(totalSales)} over the same window, or {tierShare.toFixed(0)}%.
+        </s-paragraph>
+      ) : (
+        <s-paragraph>
+          The segment this campaign targeted bought {currency(tierTotal)}. The
+          store&rsquo;s sales dataset shows no total for this window yet.
+        </s-paragraph>
+      )}
       <s-table variant="auto">
         <s-table-header-row>
           <s-table-header listSlot="primary">Day</s-table-header>

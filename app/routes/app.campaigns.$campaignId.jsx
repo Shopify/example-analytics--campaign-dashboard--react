@@ -1174,6 +1174,7 @@ export default function CampaignDashboard() {
           ours={ours}
           running={running}
           markNote={markNote}
+          rewrote={fetcher.data?.rewrote}
           exploreHref={exploreHref}
           busy={busy}
           submit={submit}
