@@ -2,7 +2,7 @@
 
 An embedded Shopify app that reports whether a marketing campaign worked.
 
-The app sends a marketing funnel with [App Events](https://shopify.dev/docs/apps/build/app-events/analytics), queries that funnel and the store's sales with [ShopifyQL](https://shopify.dev/docs/api/shopifyql), and records the result as annotations and targets on the store's analytics timeline. It also creates QR codes, registers each one as a marketing activity, and tags every scan with the campaign's UTM parameters, and Shopify attribution reports the sales the scans drive.
+The app sends a marketing funnel with [App Events](https://shopify.dev/docs/apps/build/app-events/analytics), queries that funnel and the store's sales with [ShopifyQL](https://shopify.dev/docs/api/shopifyql), and records the result as annotations and targets on the store's analytics timeline. It also creates QR codes, registers each one as a marketing activity, and tags every scan with the campaign's UTM parameters, and Shopify attribution reports the orders shoppers place after scanning.
 
 This repository is the finished app. It starts from the app that [Build a Shopify app using React Router](https://shopify.dev/docs/apps/build/build) produces, and a three-part tutorial series builds the dashboard inside that app, one capability per part.
 
@@ -107,7 +107,7 @@ The first load seeds two campaigns, both planned, dated relative to your install
 
 Three more controls write to the same charts. **Close the campaign with its result** rewrites the annotation with what the campaign earned and stamps each order with the send it followed. **Cancel the campaign** takes the annotations and targets back off the store. **Plan the campaign again** returns it to planned for a second launch.
 
-To try the QR code flow, create a campaign of your own and check **Create a QR code for this campaign** on the creation form. The app saves a code that points at the first promoted product, registers it as a marketing activity, and renders it on the campaign page, ready to print. Every scan redirects to the product with the campaign's UTM parameters, and the **QR code sales** panel reports the orders those scans drive. **QR codes** in the app's navigation lists every code.
+To try the QR code flow, create a campaign of your own and check **Create a QR code for this campaign** on the creation form. The app saves a code that points at the first promoted product, registers it as a marketing activity, and renders it on the campaign page, ready to print. Every scan redirects to the product with the campaign's UTM parameters, and the **QR code sales** panel reports the orders shoppers place after scanning. **QR codes** in the app's navigation lists every code.
 
 Campaign records live in an app-data metafield on the store's app installation. Re-cloning doesn't reset them. The seed only runs against an empty metafield, and a fresh app installation gives you one.
 

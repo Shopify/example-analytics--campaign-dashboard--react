@@ -486,6 +486,10 @@ export default function CampaignsIndex() {
           {/* [START campaign-dashboard.qr-choice] */}
           <s-section heading="QR code">
             <div style={{height: '12px'}} />
+            <s-paragraph>
+              The code points at the first promoted product. A shopper scans
+              it, and Shopify attributes the order to the campaign.
+            </s-paragraph>
             <s-choice-list
               label="Attribution"
               name="qrCode"
@@ -497,17 +501,17 @@ export default function CampaignsIndex() {
               <s-choice value="yes">
                 Create a QR code for this campaign
                 <s-text slot="details">
-                  Points at the first promoted product. Scans carry the
-                  campaign's UTM parameters into Shopify attribution.
+                  Scans carry the campaign's UTM parameters into Shopify
+                  attribution.
                 </s-text>
               </s-choice>
             </s-choice-list>
             {wantsQr && (
               <s-paragraph>
-                The save stores the code on the campaign and registers it as a
-                marketing activity. The campaign's page renders the code, ready
-                to print, and the QR code sales panel reports the orders the
-                scans drive.
+                The save stores the code on the campaign and registers it as
+                a marketing activity. The campaign's page renders the code,
+                ready to print, and the QR code sales panel reports the orders
+                shoppers place after scanning.
               </s-paragraph>
             )}
           </s-section>
@@ -551,6 +555,7 @@ export default function CampaignsIndex() {
               Create campaign
             </s-button>
           </s-stack>
+          <div style={{height: '12px'}} />
         </form>
       )}
 

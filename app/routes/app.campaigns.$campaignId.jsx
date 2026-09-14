@@ -1106,9 +1106,9 @@ export default function CampaignDashboard() {
               <s-stack direction="block" gap="base">
                 <s-text>
                   Print the code, or scan it from the screen. Scans land on
-                  the promoted product with the campaign's UTM parameters,
-                  and the orders they start appear in the QR code sales
-                  panel.
+                  the promoted product with the campaign's UTM parameters, and
+                  the QR code sales panel reports the orders shoppers place
+                  after scanning.
                 </s-text>
                 {qrCodes.map((code) => (
                   <s-stack
@@ -1132,9 +1132,8 @@ export default function CampaignDashboard() {
               <s-text>
                 This campaign has no QR code. Create one on the{' '}
                 <s-link href="/app/qrcodes/new">QR codes page</s-link> with
-                the campaign's name, and orders that start from a scan
-                appear in the QR code sales panel once the campaign is
-                running.
+                the campaign's name, and while the campaign runs the QR code
+                sales panel reports the orders shoppers place after scanning.
               </s-text>
             )}
           </s-section>
