@@ -1115,17 +1115,7 @@ export default function CampaignDashboard() {
                   after scanning.
                 </s-text>
                 {qrCodes.map((code) => (
-                  <s-stack
-                    key={code.handle}
-                    direction="block"
-                    gap="small-200"
-                    inlineSize="200px"
-                  >
-                    <s-image
-                      aspectRatio="1/1"
-                      src={code.image}
-                      alt={`The QR code for ${campaign.title}`}
-                    />
+                  <s-stack key={code.handle} direction="block" gap="small-200">
                     {code.productTitle && (
                       <s-text>
                         This QR code opens the {code.productTitle} product
@@ -1133,9 +1123,20 @@ export default function CampaignDashboard() {
                         now.
                       </s-text>
                     )}
-                    <s-link href={`/app/qrcodes/${code.handle}`}>
-                      Manage this code
-                    </s-link>
+                    <s-stack
+                      direction="block"
+                      gap="small-200"
+                      inlineSize="200px"
+                    >
+                      <s-image
+                        aspectRatio="1/1"
+                        src={code.image}
+                        alt={`The QR code for ${campaign.title}`}
+                      />
+                      <s-link href={`/app/qrcodes/${code.handle}`}>
+                        Manage this code
+                      </s-link>
+                    </s-stack>
                   </s-stack>
                 ))}
               </s-stack>
