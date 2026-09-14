@@ -1,5 +1,7 @@
 # Campaign performance dashboard
 
+# WIP - Rework copy before moving to public
+
 An embedded Shopify app that reports whether a marketing campaign worked.
 
 The app sends a marketing funnel with [App Events](https://shopify.dev/docs/apps/build/app-events/analytics), queries that funnel and the store's sales with [ShopifyQL](https://shopify.dev/docs/api/shopifyql), and records the result as annotations and targets on the store's analytics timeline. It also creates QR codes, registers each one as a marketing activity, and tags every scan with the campaign's UTM parameters, and Shopify attribution reports the orders shoppers place after scanning.
