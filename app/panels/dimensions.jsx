@@ -356,6 +356,9 @@ export function QRCodeSales({
         uses={{
           shopifyql:
             'Filters attributed sales to orders that started from a QR code scan.',
+          annotations:
+            "ANNOTATE draws the campaign's marks from the store's timeline onto the chart.",
+          components: 'A Shopify metric card, running the query it displays.',
         }}
       />
       <div style={{height: '320px', marginBottom: '16px'}}>
