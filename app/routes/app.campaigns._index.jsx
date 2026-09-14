@@ -717,10 +717,10 @@ export default function CampaignsIndex() {
       <s-section heading="Dimensions this app owns">
         <div style={{height: '12px'}} />
         <s-paragraph>
-          One definition per dimension covers every campaign. The campaign is
-          the value in the column, and one dimension reports every campaign's
-          split. Create it here, and the store can group its sales by something
-          this app knows.
+          The app writes campaign values onto products, customers, and orders
+          as metafields. Create each metafield as a dimension, and the reports
+          on the campaign page group sales by the value. You create a dimension
+          once, and every campaign reuses it.
         </s-paragraph>
         <s-table variant="auto">
           <s-table-header-row>
