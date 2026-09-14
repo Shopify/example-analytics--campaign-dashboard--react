@@ -8,6 +8,7 @@ export function CampaignLifecycle({
   busy,
   submit,
   shortDate,
+  children,
 }) {
   // A closed campaign gates out every control below. A planned one offers
   // Cancel beside Launch at the top of the page instead of a section here.
@@ -24,6 +25,12 @@ export function CampaignLifecycle({
             rewrites the title with what the campaign earned, and stamps each
             order with the last send that reached the customer before it. Until
             then, Order attribution has nothing to group.
+          </s-paragraph>
+        )}
+        {campaign.status === 'canceled' && (
+          <s-paragraph>
+            You canceled <s-text>{campaign.title}</s-text>. Cancel took the
+            campaign's annotations and targets off the store.
           </s-paragraph>
         )}
         <s-stack direction="inline" gap="base">

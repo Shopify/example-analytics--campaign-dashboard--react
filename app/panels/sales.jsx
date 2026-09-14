@@ -79,7 +79,13 @@ export function annotationStatus({campaign, annotations, appId}) {
   return {
     marks,
     ours,
-    openCampaign: ours.find((annotation) => !annotation.endedAt) ?? null,
+    // Marker IDs on the record pick this campaign's span out of the app's annotations.
+    openCampaign:
+      ours.find(
+        (annotation) =>
+          !annotation.endedAt &&
+          Object.values(campaign.markers ?? {}).includes(annotation.id),
+      ) ?? null,
     // Read off the record. The annotations query is windowed and would miss a duplicate.
     incidentFlagged: Object.keys(campaign.markers ?? {}).some((key) =>
       key.startsWith('incident:'),

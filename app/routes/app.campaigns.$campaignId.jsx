@@ -9,6 +9,7 @@ import {
   sendCount,
 } from '../app-events.server';
 import {
+  deleteCampaign,
   findCampaign,
   readCampaigns,
   transportErrors,
@@ -735,6 +736,19 @@ export async function action({request, params}) {
       return {problems: userErrors.map((error) => error.message)};
     }
     return {ok: true};
+  }
+
+  if (intent === 'delete') {
+    // A canceled campaign holds nothing on the store. Deleting any other status
+    // would abandon its annotations and targets on the charts.
+    if (campaign.status !== 'canceled') {
+      return {problems: ['Only a canceled campaign can be deleted.']};
+    }
+    const {userErrors} = await deleteCampaign(admin, campaign.id);
+    if (userErrors.length) {
+      return {problems: userErrors.map((error) => error.message)};
+    }
+    return redirect('/app/campaigns');
   }
 
   return {problems: [`Unknown intent: ${intent}`]};

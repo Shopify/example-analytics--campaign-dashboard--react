@@ -136,6 +136,21 @@ export async function rememberMarkers(admin, campaignId, markers) {
 }
 // [END campaign-dashboard.campaign-write]
 
+// Dropping the record abandons anything still on the store's charts. The route
+// gates the delete to canceled campaigns, which hold nothing on the store.
+export async function deleteCampaign(admin, campaignId) {
+  const {installationId, campaigns, failed} = await readCampaigns(admin);
+  if (failed.length) return {userErrors: failed};
+
+  const remaining = campaigns.filter(
+    (campaign) => String(campaign.id) !== String(campaignId),
+  );
+  const userErrors = await writeState(admin, installationId, {
+    campaigns: remaining,
+  });
+  return {userErrors};
+}
+
 // The roster is the only customer data this app stores. Shopify deletes the tier
 // metafield with the customer. Clearing the roster is this app's job.
 export async function forgetCustomer(admin, customerId) {
