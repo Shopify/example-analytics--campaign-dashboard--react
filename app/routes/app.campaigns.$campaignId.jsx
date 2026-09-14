@@ -1127,7 +1127,11 @@ export default function CampaignDashboard() {
                       alt={`The QR code for ${campaign.title}`}
                     />
                     {code.productTitle && (
-                      <s-text>Points at {code.productTitle}.</s-text>
+                      <s-text>
+                        This QR code opens the {code.productTitle} product
+                        page where a customer can add it to their cart or buy
+                        now.
+                      </s-text>
                     )}
                     <s-link href={`/app/qrcodes/${code.handle}`}>
                       Manage this code
