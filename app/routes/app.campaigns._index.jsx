@@ -291,6 +291,7 @@ export default function CampaignsIndex() {
   const [products, setProducts] = useState([]);
   const [channels, setChannels] = useState(CHANNEL_KEYS);
   const [composing, setComposing] = useState(false);
+  const [wantsQr, setWantsQr] = useState(false);
   const problems = fetcher.data?.problems ?? [];
   const saving = fetcher.state !== 'idle';
   const integer = (value) => new Intl.NumberFormat(locale).format(value ?? 0);
@@ -376,10 +377,181 @@ export default function CampaignsIndex() {
         <s-button
           slot="primary-action"
           variant="primary"
-          onClick={() => setComposing(true)}
+          onClick={() => {
+            setComposing(true);
+            setWantsQr(false);
+          }}
         >
           New campaign
         </s-button>
+      )}
+
+      {composing && (
+        // The form is one box to the page layout, and the sections inside it
+        // lose their spacing. `display: contents` hands them back to the page.
+        <form onSubmit={submit} style={{display: 'contents'}}>
+          {/* [START campaign-dashboard.spawn-form] */}
+          <s-section heading="Create a campaign">
+            <div style={{height: '12px'}} />
+            {problems.length > 0 && (
+              <s-banner tone="critical" heading="Fix these first">
+                <s-unordered-list>
+                  {problems.map((problem) => (
+                    <s-list-item key={problem}>{problem}</s-list-item>
+                  ))}
+                </s-unordered-list>
+              </s-banner>
+            )}
+
+            <s-stack direction="block" gap="base">
+              <s-text-field
+                label="Campaign name"
+                name="title"
+                placeholder="Summer launch"
+                details="Used in the title of every annotation the campaign writes."
+              />
+              <s-stack direction="inline" gap="base">
+                <s-date-field label="Starts" name="startDate" />
+                <s-date-field label="Ends" name="endDate" />
+              </s-stack>
+
+              <s-select
+                label="Customer segment"
+                name="audience"
+                details="Written onto each customer at launch, and what the segment target is measured against."
+              >
+                {AUDIENCE_TIERS.map((tier) => (
+                  <s-option key={tier.value} value={tier.value}>
+                    {tier.label}
+                  </s-option>
+                ))}
+              </s-select>
+
+              {/* The codes exist in Discounts. This records who hands each code out. */}
+              <s-text-field
+                label="Creator codes"
+                name="creatorCodes"
+                placeholder="AVERY10:Avery, JUNO15:Juno"
+                details="Code and creator, comma separated. One creator can hold several codes."
+              />
+
+              {/* Each becomes a target at launch. */}
+              <s-money-field
+                label="Store-wide revenue target"
+                name="revenueTarget"
+                placeholder="5000.00"
+              />
+              <s-money-field
+                label="Promoted product target"
+                name="productTarget"
+                placeholder="5000.00"
+                details="Measured with a filter on the products below."
+              />
+              <s-money-field
+                label="Customer segment target"
+                name="audienceTarget"
+                placeholder="2500.00"
+                details="Measured with a filter on the segment above."
+              />
+
+            </s-stack>
+          </s-section>
+          {/* [END campaign-dashboard.spawn-form] */}
+
+          {/* The form is `display: contents`, so a spacer lands between the cards. */}
+          <div style={{height: '12px'}} />
+
+          {/* [START campaign-dashboard.picker-render] */}
+          <s-section heading="Promoted products">
+            <div style={{height: '12px'}} />
+            <s-paragraph>
+              The products this campaign pushes. Their IDs filter the promoted
+              product target, and their titles name the product launch annotation.
+            </s-paragraph>
+            {products.length > 0 && (
+              <s-unordered-list>
+                {products.map((product) => (
+                  <s-list-item key={product.id}>{product.title}</s-list-item>
+                ))}
+              </s-unordered-list>
+            )}
+            <s-button onClick={pickProducts}>
+              {products.length > 0 ? 'Change products' : 'Select products'}
+            </s-button>
+          </s-section>
+          {/* [END campaign-dashboard.picker-render] */}
+
+          <div style={{height: '12px'}} />
+
+          {/* [START campaign-dashboard.qr-choice] */}
+          <s-section heading="QR code">
+            <div style={{height: '12px'}} />
+            <s-choice-list
+              label="Attribution"
+              name="qrCode"
+              multiple
+              onChange={(event) =>
+                setWantsQr([...event.currentTarget.values].includes('yes'))
+              }
+            >
+              <s-choice value="yes">
+                Create a QR code for this campaign
+                <s-text slot="details">
+                  Points at the first promoted product. Scans carry the
+                  campaign's UTM parameters into Shopify attribution.
+                </s-text>
+              </s-choice>
+            </s-choice-list>
+            {wantsQr && (
+              <s-paragraph>
+                The save stores the code on the campaign and registers it as a
+                marketing activity. The campaign's page renders the code, ready
+                to print, and the QR code sales panel reports the orders the
+                scans drive.
+              </s-paragraph>
+            )}
+          </s-section>
+          {/* [END campaign-dashboard.qr-choice] */}
+
+          <div style={{height: '12px'}} />
+
+          {/* [START campaign-dashboard.channel-picker] */}
+          {/* Each channel reports a different set of stages, and a different funnel. */}
+          <s-section heading="Channels">
+            <div style={{height: '12px'}} />
+            <s-choice-list
+              label="Send on"
+              name="channels"
+              multiple
+              onChange={(event) => setChannels([...event.currentTarget.values])}
+            >
+              {CHANNEL_KEYS.map((key) => (
+                <s-choice
+                  key={key}
+                  value={key}
+                  defaultSelected={channels.includes(key) || undefined}
+                >
+                  {CHANNELS[key].label}
+                  <s-text slot="details">
+                    Reports{' '}
+                    {CHANNELS[key].stages
+                      .map((stage) => stage.label.toLowerCase())
+                      .join(', ')}
+                    .
+                  </s-text>
+                </s-choice>
+              ))}
+            </s-choice-list>
+          </s-section>
+          {/* [END campaign-dashboard.channel-picker] */}
+
+          <div style={{height: '12px'}} />
+          <s-stack direction="inline" gap="base">
+            <s-button variant="primary" type="submit" loading={saving}>
+              Create campaign
+            </s-button>
+          </s-stack>
+        </form>
       )}
 
       {/* [START campaign-dashboard.overview-card-render] */}
@@ -601,152 +773,6 @@ export default function CampaignsIndex() {
         </s-table>
       </s-section>
       {/* [END campaign-dashboard.metafield-dimension-render] */}
-
-      {composing && (
-        // The form is one box to the page layout, and the sections inside it
-        // lose their spacing. `display: contents` hands them back to the page.
-        <form onSubmit={submit} style={{display: 'contents'}}>
-          {/* [START campaign-dashboard.spawn-form] */}
-          <s-section heading="Create a campaign">
-            <div style={{height: '12px'}} />
-            {problems.length > 0 && (
-              <s-banner tone="critical" heading="Fix these first">
-                <s-unordered-list>
-                  {problems.map((problem) => (
-                    <s-list-item key={problem}>{problem}</s-list-item>
-                  ))}
-                </s-unordered-list>
-              </s-banner>
-            )}
-
-            <s-stack direction="block" gap="base">
-              <s-text-field
-                label="Campaign name"
-                name="title"
-                placeholder="Summer launch"
-                details="Used in the title of every annotation the campaign writes."
-              />
-              <s-stack direction="inline" gap="base">
-                <s-date-field label="Starts" name="startDate" />
-                <s-date-field label="Ends" name="endDate" />
-              </s-stack>
-
-              <s-select
-                label="Customer segment"
-                name="audience"
-                details="Written onto each customer at launch, and what the segment target is measured against."
-              >
-                {AUDIENCE_TIERS.map((tier) => (
-                  <s-option key={tier.value} value={tier.value}>
-                    {tier.label}
-                  </s-option>
-                ))}
-              </s-select>
-
-              {/* The codes exist in Discounts. This records who hands each code out. */}
-              <s-text-field
-                label="Creator codes"
-                name="creatorCodes"
-                placeholder="AVERY10:Avery, JUNO15:Juno"
-                details="Code and creator, comma separated. One creator can hold several codes."
-              />
-
-              <s-choice-list label="QR code" name="qrCode" multiple>
-                <s-choice value="yes">
-                  Create a QR code for this campaign
-                  <s-text slot="details">
-                    Points at the first promoted product. Scans carry the
-                    campaign's UTM parameters into Shopify attribution.
-                  </s-text>
-                </s-choice>
-              </s-choice-list>
-
-              {/* Each becomes a target at launch. */}
-              <s-money-field
-                label="Store-wide revenue target"
-                name="revenueTarget"
-                placeholder="5000.00"
-              />
-              <s-money-field
-                label="Promoted product target"
-                name="productTarget"
-                placeholder="5000.00"
-                details="Measured with a filter on the products below."
-              />
-              <s-money-field
-                label="Customer segment target"
-                name="audienceTarget"
-                placeholder="2500.00"
-                details="Measured with a filter on the segment above."
-              />
-
-            </s-stack>
-          </s-section>
-          {/* [END campaign-dashboard.spawn-form] */}
-
-          {/* The form is `display: contents`, so a spacer lands between the cards. */}
-          <div style={{height: '12px'}} />
-
-          {/* [START campaign-dashboard.picker-render] */}
-          <s-section heading="Promoted products">
-            <div style={{height: '12px'}} />
-            <s-paragraph>
-              The products this campaign pushes. Their IDs filter the promoted
-              product target, and their titles name the product launch annotation.
-            </s-paragraph>
-            {products.length > 0 && (
-              <s-unordered-list>
-                {products.map((product) => (
-                  <s-list-item key={product.id}>{product.title}</s-list-item>
-                ))}
-              </s-unordered-list>
-            )}
-            <s-button onClick={pickProducts}>
-              {products.length > 0 ? 'Change products' : 'Select products'}
-            </s-button>
-          </s-section>
-          {/* [END campaign-dashboard.picker-render] */}
-
-          <div style={{height: '12px'}} />
-
-          {/* [START campaign-dashboard.channel-picker] */}
-          {/* Each channel reports a different set of stages, and a different funnel. */}
-          <s-section heading="Channels">
-            <div style={{height: '12px'}} />
-            <s-choice-list
-              label="Send on"
-              name="channels"
-              multiple
-              onChange={(event) => setChannels([...event.currentTarget.values])}
-            >
-              {CHANNEL_KEYS.map((key) => (
-                <s-choice
-                  key={key}
-                  value={key}
-                  defaultSelected={channels.includes(key) || undefined}
-                >
-                  {CHANNELS[key].label}
-                  <s-text slot="details">
-                    Reports{' '}
-                    {CHANNELS[key].stages
-                      .map((stage) => stage.label.toLowerCase())
-                      .join(', ')}
-                    .
-                  </s-text>
-                </s-choice>
-              ))}
-            </s-choice-list>
-          </s-section>
-          {/* [END campaign-dashboard.channel-picker] */}
-
-          <div style={{height: '12px'}} />
-          <s-stack direction="inline" gap="base">
-            <s-button variant="primary" type="submit" loading={saving}>
-              Create campaign
-            </s-button>
-          </s-stack>
-        </form>
-      )}
     </s-page>
   );
 }

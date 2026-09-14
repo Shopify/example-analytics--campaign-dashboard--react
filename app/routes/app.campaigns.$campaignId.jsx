@@ -1097,48 +1097,48 @@ export default function CampaignDashboard() {
                 </s-select>
               </s-stack>
             </s-stack>
-
-            {/* [START campaign-dashboard.qr-setup-render] */}
-            <s-stack direction="block" gap="small-200">
-              <s-text type="strong">QR codes</s-text>
-              {(qrCodes ?? []).length > 0 ? (
-                <s-stack direction="block" gap="base">
-                  <s-text>
-                    Print the code, or scan it from the screen. Scans land on
-                    the promoted product with the campaign's UTM parameters,
-                    and the orders they start appear in the QR code sales
-                    panel.
-                  </s-text>
-                  {qrCodes.map((code) => (
-                    <s-stack
-                      key={code.handle}
-                      direction="block"
-                      gap="small-200"
-                      inlineSize="200px"
-                    >
-                      <s-image
-                        aspectRatio="1/1"
-                        src={code.image}
-                        alt={`The QR code for ${campaign.title}`}
-                      />
-                      <s-link href={`/app/qrcodes/${code.handle}`}>
-                        Manage this code
-                      </s-link>
-                    </s-stack>
-                  ))}
-                </s-stack>
-              ) : (
-                <s-text>
-                  This campaign has no QR code. Create one on the{' '}
-                  <s-link href="/app/qrcodes/new">QR codes page</s-link> with
-                  the campaign's name, and orders that start from a scan
-                  appear in the QR code sales panel once the campaign is
-                  running.
-                </s-text>
-              )}
-            </s-stack>
-            {/* [END campaign-dashboard.qr-setup-render] */}
           </s-section>
+
+          {/* [START campaign-dashboard.qr-setup-render] */}
+          <s-section heading="QR code">
+            <div style={{height: '12px'}} />
+            {(qrCodes ?? []).length > 0 ? (
+              <s-stack direction="block" gap="base">
+                <s-text>
+                  Print the code, or scan it from the screen. Scans land on
+                  the promoted product with the campaign's UTM parameters,
+                  and the orders they start appear in the QR code sales
+                  panel.
+                </s-text>
+                {qrCodes.map((code) => (
+                  <s-stack
+                    key={code.handle}
+                    direction="block"
+                    gap="small-200"
+                    inlineSize="200px"
+                  >
+                    <s-image
+                      aspectRatio="1/1"
+                      src={code.image}
+                      alt={`The QR code for ${campaign.title}`}
+                    />
+                    <s-link href={`/app/qrcodes/${code.handle}`}>
+                      Manage this code
+                    </s-link>
+                  </s-stack>
+                ))}
+              </s-stack>
+            ) : (
+              <s-text>
+                This campaign has no QR code. Create one on the{' '}
+                <s-link href="/app/qrcodes/new">QR codes page</s-link> with
+                the campaign's name, and orders that start from a scan
+                appear in the QR code sales panel once the campaign is
+                running.
+              </s-text>
+            )}
+          </s-section>
+          {/* [END campaign-dashboard.qr-setup-render] */}
 
           {/* Each amount becomes a target at launch, and launch rejects a zero. */}
           <form onSubmit={saveTargets}>
