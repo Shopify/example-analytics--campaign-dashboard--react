@@ -16,7 +16,12 @@ export const CAPABILITIES = {
 export function PanelHeader({title, uses}) {
   const slug = title.replaceAll(/[^a-z0-9]+/gi, '-').toLowerCase();
   return (
-    <s-stack direction="inline" gap="base" alignItems="center">
+    <s-stack
+      direction="inline"
+      gap="base"
+      alignItems="center"
+      style={{marginBottom: '12px'}}
+    >
       <s-heading>{title}</s-heading>
       {Object.entries(uses).map(([key, note]) => {
         const id = `uses-${slug}-${key}`;

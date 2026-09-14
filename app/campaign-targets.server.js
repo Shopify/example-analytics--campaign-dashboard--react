@@ -25,7 +25,7 @@ export async function measureTargets(admin, campaign, targetsBody) {
           : Math.round((actual / expected) * 100),
       queryError:
         index === -1
-          ? `Shopify didn't return a query for ${target.metric} on this read. Its progress can't be measured yet. The target itself is still valid. Reload to try again.`
+          ? `Shopify didn't return a query for ${target.metric} on this read. The target is valid, and the app can't measure progress without the query. Reload to try again.`
           : (progress[`t${index}`]?.parseErrors?.[0] ?? null),
     };
   });

@@ -2,9 +2,9 @@
 
 An embedded Shopify app that reports whether a marketing campaign worked.
 
-The app sends a marketing funnel with [App Events](https://shopify.dev/docs/apps/build/app-events/analytics), queries that funnel and the store's sales with [ShopifyQL](https://shopify.dev/docs/api/shopifyql), and records the result as annotations and targets on the store's analytics timeline.
+The app sends a marketing funnel with [App Events](https://shopify.dev/docs/apps/build/app-events/analytics), queries that funnel and the store's sales with [ShopifyQL](https://shopify.dev/docs/api/shopifyql), and records the result as annotations and targets on the store's analytics timeline. It also creates QR codes, registers each one as a marketing activity, and tags every scan with the campaign's UTM parameters, and Shopify attribution reports the sales the scans drive.
 
-This repository is the finished app. A three-part tutorial series builds it, one capability per part.
+This repository is the finished app. It starts from the app that [Build a Shopify app using React Router](https://shopify.dev/docs/apps/build/build) produces, and a three-part tutorial series builds the dashboard inside that app, one capability per part.
 
 1. [Configure an app and query a campaign's sales](https://shopify.dev/docs/apps/build/analytics/campaign-dashboard-sales) covers the scopes, the ShopifyQL sales queries, and the dimensions your app owns.
 2. [Set campaign targets and annotations](https://shopify.dev/docs/apps/build/analytics/campaign-dashboard-targets-and-annotations) sets a revenue target and marks the campaign on the store's analytics timeline.
@@ -38,10 +38,10 @@ You'll need Node 20.19+ or 22.12+, [app development permissions](https://shopify
 
    ```toml
    [access_scopes]
-   scopes = "read_reports,write_reports,read_analytics_annotations,write_analytics_annotations,write_products,write_customers,write_orders"
+   scopes = "read_reports,write_reports,read_analytics_annotations,write_analytics_annotations,write_products,write_customers,write_orders,write_metaobject_definitions,write_metaobjects,write_marketing_events"
    ```
 
-5. Create the local database, then deploy the app and the event declarations:
+5. Create the local database, then deploy the app, the QR code metaobject definition, and the event declarations:
 
    ```shell
    npm run setup
@@ -107,6 +107,8 @@ The first load seeds two campaigns, both planned, dated relative to your install
 
 Three more controls write to the same charts. **Close the campaign with its result** rewrites the annotation with what the campaign earned and stamps each order with the send it followed. **Cancel the campaign** takes the annotations and targets back off the store. **Plan the campaign again** returns it to planned for a second launch.
 
+To try the QR code flow, create a campaign of your own and check **Create a QR code for this campaign** on the creation form. The app saves a code that points at the first promoted product, registers it as a marketing activity, and renders it on the campaign page, ready to print. Every scan redirects to the product with the campaign's UTM parameters, and the **QR code sales** panel reports the orders those scans drive. **QR codes** in the app's navigation lists every code.
+
 Campaign records live in an app-data metafield on the store's app installation. Re-cloning doesn't reset them. The seed only runs against an empty metafield, and a fresh app installation gives you one.
 
 ## Get numbers on the charts
@@ -141,14 +143,16 @@ The [tutorial series](https://shopify.dev/docs/apps/build/analytics) walks throu
 
 ## How it's built
 
-The [Shopify React Router app template](https://github.com/Shopify/shopify-app-template-react-router), converted to JavaScript, with two routes added:
+The app that [Build a Shopify app using React Router](https://shopify.dev/docs/apps/build/build) produces, with the campaign routes added:
 
 | Path | File |
 |------|------|
 | `/app/campaigns` | `app/routes/app.campaigns._index.jsx` |
 | `/app/campaigns/:id` | `app/routes/app.campaigns.$campaignId.jsx` |
 
-GraphQL documents are in `app/campaign-queries.server.js`, campaign records in `app/campaigns.server.js`, and the App Events client and send plan in `app/app-events.server.js`. Each group of panels is a separate module under `app/panels/`. Event declarations are in `extensions/app-events/shopify.extension.toml`. `shopify.app.toml` holds none of them.
+The QR code routes come from that tutorial. `/app/qrcodes` lists the codes, `/app/qrcodes/:id` edits one, and the public `/qrcodes/:id` and `/qrcodes/:id/scan` routes serve the image and record each scan. `app/models/QRCode.server.js` holds their queries, and the codes live in an `$app:qrcode` metaobject that `shopify.app.toml` defines.
+
+GraphQL documents are in `app/campaign-queries.server.js`, campaign records in `app/campaigns.server.js`, and the App Events client and send plan in `app/app-events.server.js`. Each group of panels is a separate module under `app/panels/`. Event declarations are in `extensions/app-events/shopify.extension.toml`. `shopify.app.toml` holds no credentials.
 
 One app-data metafield holds every campaign record. A real app would use a database. `CAMPAIGN_FIELDS` documents the shape field by field.
 

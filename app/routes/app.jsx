@@ -24,6 +24,7 @@ export default function App() {
       {/* [START campaign-dashboard.app-nav] */}
       <s-app-nav>
         <s-link href="/app/campaigns">Campaigns</s-link>
+        <s-link href="/app/qrcodes">QR codes</s-link>
       </s-app-nav>
       {/* [END campaign-dashboard.app-nav] */}
       <Outlet />

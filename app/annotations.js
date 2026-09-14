@@ -30,13 +30,15 @@ export function exploreLink(query) {
   return `shopify://admin/analytics/reports/explore?ql=${encodeURIComponent(query)}`;
 }
 
-export function exploreQuery({window, types, metric = 'total_sales'}) {
+// The same query the sales chart draws, so the report opens on the chart the
+// merchant just saw.
+export function exploreQuery({window, types}) {
   return [
     'FROM sales',
-    `SHOW ${metric}`,
+    'SHOW total_sales, orders',
     'TIMESERIES day',
     window,
-    `VISUALIZE ${metric} TYPE line`,
+    'VISUALIZE total_sales TYPE bar, orders TYPE line',
     `ANNOTATE ${annotateClause(types)}`,
   ].join('\n');
 }

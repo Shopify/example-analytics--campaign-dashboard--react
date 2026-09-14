@@ -50,15 +50,17 @@ export function metricCardQuery(range) {
 // [END campaign-dashboard.metric-card]
 
 // [START campaign-dashboard.sales-card]
-// Shopify runs the query and draws the result. ANNOTATE ALL overlays every
-// annotation on the store, this app's included.
+// Shopify runs the query and draws the result. VISUALIZE sets a TYPE per
+// metric, ANNOTATE ALL overlays every annotation on the store, and COMPARE TO
+// TARGETS measures the results against the store's configured targets.
 export function salesCardQuery(campaign) {
   return [
     'FROM sales',
-    'SHOW total_sales',
+    'SHOW total_sales, orders',
     'TIMESERIES day',
     campaignWindow(campaign),
-    'VISUALIZE total_sales TYPE line ANNOTATE ALL',
+    'COMPARE TO TARGETS',
+    'VISUALIZE total_sales TYPE bar, orders TYPE line ANNOTATE ALL',
   ].join(' ');
 }
 // [END campaign-dashboard.sales-card]
@@ -99,7 +101,7 @@ export function StoreTotals({statusLine, cardReady, range, setRange, cardQuery})
             'The query behind every card, down to the VISUALIZE clause that draws it.',
         }}
       />
-      <div style={{marginTop: '12px', marginBottom: '20px'}}>{statusLine}</div>
+      <div style={{marginBottom: '20px'}}>{statusLine}</div>
       {cardReady ? (
         <s-metrics-bar accessibilityLabel="Store totals over the selected range">
           <s-metrics-bar-date-picker
@@ -158,7 +160,7 @@ export function SalesAndOrders({
         }}
       />
       {/* The percentage is Shopify's, from COMPARE TO previous_period. */}
-      <div style={{marginTop: '12px', marginBottom: '32px'}}>
+      <div style={{marginBottom: '32px'}}>
         <s-stack direction="inline" gap="base" alignItems="center">
           <s-text color="subdued">Total sales:</s-text>
           <s-heading>{currency(totalSales)}</s-heading>
@@ -174,18 +176,16 @@ export function SalesAndOrders({
       </div>
 
       {/* [START campaign-dashboard.sales-card-render] */}
-      {/* The card sizes itself after its query returns. The wrapper reserves the
-          room up front so the chart never paints over the table below it. */}
-      <div style={{minHeight: '320px', marginBottom: '16px'}}>
+      {/* The card fills its container's height. Without one, the chart collapses
+          to its minimum. */}
+      <div style={{height: '320px', marginBottom: '16px'}}>
         {cardReady ? (
-          <s-metrics-bar accessibilityLabel={`Sales during ${campaign.title}`}>
-            <s-shopifyql-metric-card
-              heading="Sales by day"
-              query={salesCardQuery(campaign)}
-            />
-          </s-metrics-bar>
+          <s-shopifyql-metric-card
+            heading="Sales and orders by day"
+            query={salesCardQuery(campaign)}
+          />
         ) : (
-          <s-metrics-bar loading accessibilityLabel="Loading the sales chart" />
+          <s-spinner accessibilityLabel="Loading the sales chart" />
         )}
       </div>
       {/* [END campaign-dashboard.sales-card-render] */}

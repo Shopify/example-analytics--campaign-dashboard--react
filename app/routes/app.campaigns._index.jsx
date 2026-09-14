@@ -18,6 +18,11 @@ import {
   parseProducts,
   safeLocale,
 } from '../campaigns';
+import {
+  generateHandle,
+  saveQRCode,
+  upsertMarketingActivity,
+} from '../models/QRCode.server';
 import {AUDIENCE_TIERS, isTargetedTier, tierLabel} from '../audiences';
 import {CHANNELS, CHANNEL_KEYS} from '../channels';
 
@@ -70,7 +75,7 @@ export const loader = async ({request}) => {
 
 // [START campaign-dashboard.spawn-action]
 export const action = async ({request}) => {
-  const {admin} = await authenticate.admin(request);
+  const {admin, session} = await authenticate.admin(request);
   const form = await request.formData();
 
   // Setup for every campaign, sharing this route's action with the create form.
@@ -86,6 +91,7 @@ export const action = async ({request}) => {
   }
 
   const products = parseProducts(form.get('products'));
+  const wantsQRCode = form.get('qrCode') === 'yes';
   const fields = {
     title: String(form.get('title') || '').trim(),
     startDate: String(form.get('startDate') || ''),
@@ -140,7 +146,57 @@ export const action = async ({request}) => {
       `The ${tierLabel(fields.audience)} segment target has to be more than zero.`,
     );
   }
+  if (wantsQRCode && fields.products.length === 0) {
+    problems.push('Pick a promoted product for the QR code to point at.');
+  }
   if (problems.length > 0) return {problems};
+
+  // The QR code comes first. A failed save returns before any campaign exists,
+  // so a resubmit can't create a duplicate.
+  if (wantsQRCode) {
+    const handle = generateHandle(fields.title);
+    const response = await admin.graphql(
+      `
+        query FirstVariant($id: ID!) {
+          product(id: $id) {
+            variants(first: 1) {
+              nodes {
+                id
+              }
+            }
+          }
+        }
+      `,
+      {variables: {id: fields.products[0].id}},
+    );
+    const variantId = (await response.json()).data?.product?.variants?.nodes?.[0]
+      ?.id;
+    if (!variantId) {
+      return {problems: ['The promoted product has no variant to point the QR code at.']};
+    }
+    try {
+      await saveQRCode(
+        handle,
+        {
+          title: fields.title,
+          productId: fields.products[0].id,
+          productVariantId: variantId,
+          destination: 'product',
+        },
+        admin.graphql,
+      );
+    } catch (error) {
+      return {problems: [`The QR code couldn't be saved: ${error.message}`]};
+    }
+    // Registers the code with Shopify attribution. The code works without it,
+    // and a save from the QR codes page retries it.
+    try {
+      await upsertMarketingActivity(handle, fields.title, session.shop, admin.graphql);
+    } catch (error) {
+      console.error('Marketing activity upsert failed', error);
+    }
+    fields.qrCodes = [handle];
+  }
 
   const {campaign, userErrors} = await createCampaign(admin, fields);
   if (userErrors.length > 0) {
@@ -322,13 +378,14 @@ export default function CampaignsIndex() {
           variant="primary"
           onClick={() => setComposing(true)}
         >
-          Create campaign
+          New campaign
         </s-button>
       )}
 
       {/* [START campaign-dashboard.overview-card-render] */}
       {since && (
         <s-section heading="The store while these campaigns run">
+          <div style={{height: '12px'}} />
           {cardReady ? (
             <s-metrics-bar accessibilityLabel="Store totals over the period the campaign list covers">
               <s-shopifyql-metric-card
@@ -440,6 +497,7 @@ export default function CampaignsIndex() {
       {/* [START campaign-dashboard.overview-chart-render] */}
       {anySends && (
         <s-section heading="Messages sent by campaign">
+          <div style={{height: '12px'}} />
           <s-paragraph>
             Every campaign this app sent for, over the last 29 days.
             Attributes on App Events reach back 30 days. A campaign that ran
@@ -469,6 +527,7 @@ export default function CampaignsIndex() {
 
       {/* [START campaign-dashboard.metafield-dimension-render] */}
       <s-section heading="Dimensions this app owns">
+        <div style={{height: '12px'}} />
         <s-paragraph>
           One definition per dimension covers every campaign. The campaign is
           the value in the column, and one dimension reports every campaign's
@@ -544,9 +603,12 @@ export default function CampaignsIndex() {
       {/* [END campaign-dashboard.metafield-dimension-render] */}
 
       {composing && (
-        <form onSubmit={submit}>
+        // The form is one box to the page layout, and the sections inside it
+        // lose their spacing. `display: contents` hands them back to the page.
+        <form onSubmit={submit} style={{display: 'contents'}}>
           {/* [START campaign-dashboard.spawn-form] */}
           <s-section heading="Create a campaign">
+            <div style={{height: '12px'}} />
             {problems.length > 0 && (
               <s-banner tone="critical" heading="Fix these first">
                 <s-unordered-list>
@@ -589,6 +651,16 @@ export default function CampaignsIndex() {
                 details="Code and creator, comma separated. One creator can hold several codes."
               />
 
+              <s-choice-list label="QR code" name="qrCode" multiple>
+                <s-choice value="yes">
+                  Create a QR code for this campaign
+                  <s-text slot="details">
+                    Points at the first promoted product. Scans carry the
+                    campaign's UTM parameters into Shopify attribution.
+                  </s-text>
+                </s-choice>
+              </s-choice-list>
+
               {/* Each becomes a target at launch. */}
               <s-money-field
                 label="Store-wide revenue target"
@@ -608,15 +680,16 @@ export default function CampaignsIndex() {
                 details="Measured with a filter on the segment above."
               />
 
-              <s-button variant="primary" type="submit" loading={saving}>
-                Create campaign
-              </s-button>
             </s-stack>
           </s-section>
           {/* [END campaign-dashboard.spawn-form] */}
 
+          {/* The form is `display: contents`, so a spacer lands between the cards. */}
+          <div style={{height: '12px'}} />
+
           {/* [START campaign-dashboard.picker-render] */}
           <s-section heading="Promoted products">
+            <div style={{height: '12px'}} />
             <s-paragraph>
               The products this campaign pushes. Their IDs filter the promoted
               product target, and their titles name the product launch annotation.
@@ -634,9 +707,12 @@ export default function CampaignsIndex() {
           </s-section>
           {/* [END campaign-dashboard.picker-render] */}
 
+          <div style={{height: '12px'}} />
+
           {/* [START campaign-dashboard.channel-picker] */}
           {/* Each channel reports a different set of stages, and a different funnel. */}
           <s-section heading="Channels">
+            <div style={{height: '12px'}} />
             <s-choice-list
               label="Send on"
               name="channels"
@@ -662,6 +738,13 @@ export default function CampaignsIndex() {
             </s-choice-list>
           </s-section>
           {/* [END campaign-dashboard.channel-picker] */}
+
+          <div style={{height: '12px'}} />
+          <s-stack direction="inline" gap="base">
+            <s-button variant="primary" type="submit" loading={saving}>
+              Create campaign
+            </s-button>
+          </s-stack>
         </form>
       )}
     </s-page>

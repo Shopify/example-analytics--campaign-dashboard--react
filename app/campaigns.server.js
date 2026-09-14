@@ -236,6 +236,7 @@ export async function createCampaign(admin, fields) {
     products: fields.products ?? [],
     audience: fields.audience ?? 'everyone',
     creatorCodes: fields.creatorCodes ?? [],
+    qrCodes: fields.qrCodes ?? [],
     revenueTarget: fields.revenueTarget,
     productTarget: fields.productTarget,
     audienceTarget: fields.audienceTarget,

@@ -89,6 +89,7 @@ export const emptyTable = () => ({
 });
 
 // An unreachable schema fails the whole request. A parse error nulls tableData.
+// Either way the panel gets its reason in `unavailable`.
 export async function runOptional(admin, query) {
   try {
     const body = await (await admin.graphql(query)).json();
@@ -100,6 +101,9 @@ export async function runOptional(admin, query) {
       ...emptyTable(),
       tableData: result?.tableData ?? emptyTable().tableData,
       parseErrors: result?.parseErrors ?? [],
+      unavailable: result?.parseErrors?.length
+        ? result.parseErrors.join(' ')
+        : null,
     };
   } catch (error) {
     return {...emptyTable(), unavailable: error.message};

@@ -1,4 +1,5 @@
-import {creatorCodes, creatorTouches, touchMarks} from '../campaigns';
+import {annotateClause, exploreLink} from '../annotations';
+import {campaignWindow, creatorCodes, creatorTouches, touchMarks} from '../campaigns';
 import {tierLabel} from '../audiences';
 
 import {PanelHeader} from './shared';
@@ -110,7 +111,7 @@ export function qrShape({qrSales, totalSales, cell, rate}) {
       sales: Number(cell(row, 'campaign_last_non_direct_click_total_sales') ?? 0),
       orders: Number(cell(row, 'campaign_last_non_direct_click_order_count') ?? 0),
     }))
-    .filter((row) => row.code);
+    .filter((row) => row.code && row.sales > 0);
   const qrTotal = qrRows.reduce((running, row) => running + row.sales, 0);
   return {qrRows, qrTotal, qrShare: rate(qrTotal, Number(totalSales))};
 }
@@ -319,9 +320,33 @@ export function CreatorRevenue({creatorRows, codeTotal, touchedTotal, currency})
 }
 // [END campaign-dashboard.code-render]
 
+// [START campaign-dashboard.qr-card]
+// The same query draws the in-app card and, through the explore link, the full
+// report in the store's analytics dashboard, annotations included.
+export function qrCardQuery(campaign) {
+  return [
+    'FROM campaign_sales',
+    'SHOW campaign_last_non_direct_click_total_sales',
+    'TIMESERIES day',
+    "WHERE utm_medium = 'qr'",
+    campaignWindow(campaign),
+    'VISUALIZE campaign_last_non_direct_click_total_sales TYPE bar',
+    `ANNOTATE ${annotateClause(['campaign'])}`,
+  ].join(' ');
+}
+// [END campaign-dashboard.qr-card]
+
 // [START campaign-dashboard.qr-render]
 // The scans came from the QR app, the attribution from the store.
-export function QRCodeSales({qrRows, qrTotal, qrShare, totalSales, currency}) {
+export function QRCodeSales({
+  campaign,
+  cardReady,
+  qrRows,
+  qrTotal,
+  qrShare,
+  totalSales,
+  currency,
+}) {
   if (qrRows.length === 0) return null;
 
   return (
@@ -333,6 +358,16 @@ export function QRCodeSales({qrRows, qrTotal, qrShare, totalSales, currency}) {
             'Filters attributed sales to orders that started from a QR code scan.',
         }}
       />
+      <div style={{height: '320px', marginBottom: '16px'}}>
+        {cardReady ? (
+          <s-shopifyql-metric-card
+            heading="QR sales by day"
+            query={qrCardQuery(campaign)}
+          />
+        ) : (
+          <s-spinner accessibilityLabel="Loading the QR sales chart" />
+        )}
+      </div>
       {/* Attribution can credit an order whose session predates the window, so the
           QR total can outrun the store's daily dataset. No total, no share. */}
       {Number(totalSales) > 0 ? (
@@ -363,6 +398,11 @@ export function QRCodeSales({qrRows, qrTotal, qrShare, totalSales, currency}) {
           ))}
         </s-table-body>
       </s-table>
+      <s-box paddingBlockStart="base">
+        <s-link href={exploreLink(qrCardQuery(campaign))} target="_blank">
+          Open this report in the store&rsquo;s analytics dashboard
+        </s-link>
+      </s-box>
     </s-section>
   );
 }

@@ -51,6 +51,7 @@ import {
   shopMorning,
 } from '../campaigns';
 import {CHANNELS} from '../channels';
+import {getQRCodeImage} from '../models/QRCode.server';
 import {
   ChannelMetrics,
   Deliverability,
@@ -112,7 +113,7 @@ export async function loader({request, params}) {
   // [START campaign-dashboard.campaign-load]
   // Redirect on a miss. A thrown response renders above this route's layout
   // and takes the app's navigation with it. The search params hold App Bridge's store and host.
-  const {admin} = await authenticate.admin(request);
+  const {admin, session} = await authenticate.admin(request);
   const {appId, campaigns} = await readCampaigns(admin);
   const campaign = findCampaign(campaigns, params.campaignId);
   if (!campaign) {
@@ -182,6 +183,15 @@ export async function loader({request, params}) {
 
   const targets = await measureTargets(admin, campaign, targetsBody);
 
+  // Each image encodes the code's scan URL. Render it where the merchant
+  // plans the campaign, ready to print.
+  const qrCodes = await Promise.all(
+    (campaign.qrCodes ?? []).map(async (handle) => ({
+      handle,
+      image: await getQRCodeImage(handle, session.shop),
+    })),
+  );
+
   const annotations = annotationsBody.data?.shop?.analyticsAnnotations?.nodes ?? [];
 
   return {
@@ -208,6 +218,7 @@ export async function loader({request, params}) {
     touchSales,
     codeSales,
     qrSales,
+    qrCodes,
   };
 }
 
@@ -784,6 +795,7 @@ export default function CampaignDashboard() {
     touchSales,
     codeSales,
     qrSales,
+    qrCodes,
   } = data;
 
   // [START campaign-dashboard.read]
@@ -1035,10 +1047,11 @@ export default function CampaignDashboard() {
         <Fragment>
           {/* Everything the launch will write, listed before it writes it. */}
           <s-section heading="Campaign setup">
+            <div style={{height: '12px'}} />
             <s-unordered-list>
               <s-list-item>
-                Write {marks.length} annotations to the store's analytics, one of them
-                an open span for the campaign itself.
+                Write {marks.length} annotations to the store's analytics. One
+                open span marks the campaign's run.
               </s-list-item>
               <s-list-item>
                 Create {plannedTargetCount} analytics{' '}
@@ -1086,15 +1099,43 @@ export default function CampaignDashboard() {
             </s-stack>
 
             {/* [START campaign-dashboard.qr-setup-render] */}
-            {/* The QR codes are the merchant's to print. The panel only needs the UTMs. */}
             <s-stack direction="block" gap="small-200">
               <s-text type="strong">QR codes</s-text>
-              <s-text>
-                Point each printed code at a store URL that carries{' '}
-                <s-text>utm_medium=qr</s-text>, and put the code's name in{' '}
-                <s-text>utm_campaign</s-text>. Orders that start from a scan
-                appear in the QR code sales panel once the campaign is running.
-              </s-text>
+              {(qrCodes ?? []).length > 0 ? (
+                <s-stack direction="block" gap="base">
+                  <s-text>
+                    Print the code, or scan it from the screen. Scans land on
+                    the promoted product with the campaign's UTM parameters,
+                    and the orders they start appear in the QR code sales
+                    panel.
+                  </s-text>
+                  {qrCodes.map((code) => (
+                    <s-stack
+                      key={code.handle}
+                      direction="block"
+                      gap="small-200"
+                      inlineSize="200px"
+                    >
+                      <s-image
+                        aspectRatio="1/1"
+                        src={code.image}
+                        alt={`The QR code for ${campaign.title}`}
+                      />
+                      <s-link href={`/app/qrcodes/${code.handle}`}>
+                        Manage this code
+                      </s-link>
+                    </s-stack>
+                  ))}
+                </s-stack>
+              ) : (
+                <s-text>
+                  This campaign has no QR code. Create one on the{' '}
+                  <s-link href="/app/qrcodes/new">QR codes page</s-link> with
+                  the campaign's name, and orders that start from a scan
+                  appear in the QR code sales panel once the campaign is
+                  running.
+                </s-text>
+              )}
             </s-stack>
             {/* [END campaign-dashboard.qr-setup-render] */}
           </s-section>
@@ -1102,6 +1143,7 @@ export default function CampaignDashboard() {
           {/* Each amount becomes a target at launch, and launch rejects a zero. */}
           <form onSubmit={saveTargets}>
             <s-section heading="Targets">
+              <div style={{height: '12px'}} />
               <s-stack direction="block" gap="base">
                 <s-money-field
                   label="Store-wide revenue target"
@@ -1273,6 +1315,8 @@ export default function CampaignDashboard() {
         <Unavailable heading="QR code sales" reason={qrSales.unavailable} />
 
         <QRCodeSales
+          campaign={campaign}
+          cardReady={cardReady}
           qrRows={qrRows}
           qrTotal={qrTotal}
           qrShare={qrShare}
