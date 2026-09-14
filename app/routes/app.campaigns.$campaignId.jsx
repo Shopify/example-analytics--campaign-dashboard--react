@@ -974,7 +974,14 @@ export default function CampaignDashboard() {
   const statusLine = (
     <s-stack direction="inline" gap="base" alignItems="center">
       <s-badge
-        tone={running ? 'success' : campaign.status === 'closed' ? 'info' : undefined}
+        tone={
+          {
+            planned: 'info',
+            running: 'caution',
+            closed: 'success',
+            canceled: 'critical',
+          }[campaign.status]
+        }
       >
         {campaign.status}
       </s-badge>

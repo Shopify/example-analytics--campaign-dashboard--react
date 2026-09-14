@@ -660,7 +660,18 @@ export default function CampaignsIndex() {
                     </s-table-cell>
                     <s-table-cell>{writtenBack(campaign)}</s-table-cell>
                     <s-table-cell>
-                      <s-badge>{campaign.status}</s-badge>
+                      <s-badge
+                        tone={
+                          {
+                            planned: 'info',
+                            running: 'caution',
+                            closed: 'success',
+                            canceled: 'critical',
+                          }[campaign.status]
+                        }
+                      >
+                        {campaign.status}
+                      </s-badge>
                     </s-table-cell>
                   </s-table-row>
                 );
