@@ -51,7 +51,7 @@ import {
   shopMorning,
 } from '../campaigns';
 import {CHANNELS} from '../channels';
-import {getQRCodeImage} from '../models/QRCode.server';
+import {getQRCode} from '../models/QRCode.server';
 import {
   ChannelMetrics,
   Deliverability,
@@ -185,12 +185,13 @@ export async function loader({request, params}) {
 
   // Each image encodes the code's scan URL. Render it where the merchant
   // plans the campaign, ready to print.
-  const qrCodes = await Promise.all(
-    (campaign.qrCodes ?? []).map(async (handle) => ({
-      handle,
-      image: await getQRCodeImage(handle, session.shop),
-    })),
-  );
+  const qrCodes = (
+    await Promise.all(
+      (campaign.qrCodes ?? []).map((handle) =>
+        getQRCode(handle, admin.graphql, session.shop),
+      ),
+    )
+  ).filter(Boolean);
 
   const annotations = annotationsBody.data?.shop?.analyticsAnnotations?.nodes ?? [];
 
@@ -1048,28 +1049,31 @@ export default function CampaignDashboard() {
           {/* Everything the launch will write, listed before it writes it. */}
           <s-section heading="Campaign setup">
             <div style={{height: '12px'}} />
+            <s-paragraph>Launch writes three things to the store:</s-paragraph>
             <s-unordered-list>
               <s-list-item>
-                Write {marks.length} annotations to the store's analytics. One
-                open span marks the campaign's run.
+                {marks.length} annotations to the store's analytics. One spans
+                the campaign's run.
               </s-list-item>
               <s-list-item>
-                Create {plannedTargetCount} analytics{' '}
-                {plannedTargetCount === 1 ? 'target' : 'targets'} over{' '}
+                {plannedTargetCount} analytics{' '}
+                {plannedTargetCount === 1 ? 'target' : 'targets'} for{' '}
                 {shortDate(campaign.startDate)} to {shortDate(campaign.endDate)}.
               </s-list-item>
               <s-list-item>
+                A <s-text>promoted_by</s-text> stamp on{' '}
                 {campaign.products.length === 0
-                  ? 'Stamp the products you select with '
-                  : `Stamp ${campaign.products.length} ${
+                  ? 'the products you select'
+                  : `${campaign.products.length} ${
                       campaign.products.length === 1 ? 'product' : 'products'
-                    } with `}
-                <s-text>promoted_by</s-text>
+                    }`}
                 {isTargetedTier(campaign.audience)
-                  ? ` and tag the ${tierLabel(campaign.audience).toLowerCase()} segment.`
-                  : '. No customer is tagged. This segment is the whole store.'}
+                  ? ` and a tier tag on each ${tierLabel(campaign.audience)} customer.`
+                  : '. The segment is the whole store.'}
               </s-list-item>
             </s-unordered-list>
+
+            <div style={{height: '12px'}} />
 
             <s-stack direction="block" gap="small-200">
               <s-text>
@@ -1106,7 +1110,7 @@ export default function CampaignDashboard() {
               <s-stack direction="block" gap="base">
                 <s-text>
                   Print the code, or scan it from the screen. Scans land on
-                  the promoted product with the campaign's UTM parameters, and
+                  the code's product with the campaign's UTM parameters, and
                   the QR code sales panel reports the orders shoppers place
                   after scanning.
                 </s-text>
@@ -1122,6 +1126,9 @@ export default function CampaignDashboard() {
                       src={code.image}
                       alt={`The QR code for ${campaign.title}`}
                     />
+                    {code.productTitle && (
+                      <s-text>Points at {code.productTitle}.</s-text>
+                    )}
                     <s-link href={`/app/qrcodes/${code.handle}`}>
                       Manage this code
                     </s-link>
@@ -1164,7 +1171,7 @@ export default function CampaignDashboard() {
                     name="audienceTarget"
                     value={campaign.audienceTarget}
                     min={0}
-                    details={`Sales to ${tierLabel(campaign.audience).toLowerCase()}`}
+                    details={`Sales to the ${tierLabel(campaign.audience)} segment`}
                   />
                 )}
                 <s-button variant="primary" type="submit" loading={busy}>
