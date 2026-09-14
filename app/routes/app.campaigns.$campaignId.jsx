@@ -1367,7 +1367,13 @@ export default function CampaignDashboard() {
         busy={busy}
         submit={submit}
         shortDate={shortDate}
-      />
+      >
+        {campaign.status === 'canceled' && (
+          <s-button tone="critical" loading={busy} onClick={() => submit('delete')}>
+            Delete the campaign
+          </s-button>
+        )}
+      </CampaignLifecycle>
     </s-page>
   );
 }

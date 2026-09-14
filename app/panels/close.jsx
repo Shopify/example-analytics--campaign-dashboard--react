@@ -49,6 +49,7 @@ export function CampaignLifecycle({
               Cancel the campaign
             </s-button>
           )}
+          {children}
         </s-stack>
       </s-stack>
     </s-section>
