@@ -604,11 +604,14 @@ export const tierSalesQuery = (campaign, dimension, tier) => `
 // [END campaign-dashboard.tier-queries]
 
 // [START campaign-dashboard.order-touch-queries]
-// `order_id` comes back numeric.
-export const orderDaysQuery = (campaign) => `
+// `order_id` comes back numeric. Paging with `LIMIT` and `OFFSET` keeps a long
+// campaign's close from loading every order row at once.
+export const ORDER_PAGE_SIZE = 250;
+
+export const orderDaysQuery = (campaign, offset) => `
   query CampaignOrders {
     shopifyqlQuery(
-      query: "FROM sales SHOW total_sales GROUP BY order_id, day ${campaignWindow(campaign)} ORDER BY day ASC"
+      query: "FROM sales SHOW total_sales GROUP BY order_id, day ${campaignWindow(campaign)} ORDER BY day ASC, order_id ASC LIMIT ${ORDER_PAGE_SIZE} OFFSET ${offset}"
     ) {
       tableData {
         rows

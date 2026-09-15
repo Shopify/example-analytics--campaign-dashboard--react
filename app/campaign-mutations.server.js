@@ -5,6 +5,7 @@ import {
   BUNDLE_QUERY,
   CUSTOMER_NAMES,
   METAFIELDS_SET,
+  ORDER_PAGE_SIZE,
   TARGET_CREATE,
   TARGET_UPDATE,
   annotationsQuery,
@@ -326,35 +327,41 @@ export async function stampTier(admin, campaign) {
 
 // [START campaign-dashboard.stamp-orders]
 export async function stampOrders(admin, campaign) {
-  const body = await (await admin.graphql(orderDaysQuery(campaign))).json();
-  const unread = transportErrors(body);
-  if (unread.length) return unread;
-
   const touches = touchMarks(campaign);
-  const metafields = (body.data?.shopifyqlQuery?.tableData?.rows ?? [])
-    .map((row) => ({id: row.order_id, touch: lastTouch(touches, row.day)}))
-    .filter((order) => order.id && order.touch)
-    .map((order) => ({
-      ownerId: `gid://shopify/Order/${order.id}`,
-      namespace: DIMENSION_NAMESPACE,
-      key: 'campaign_touch',
-      type: 'single_line_text_field',
-      value: order.touch,
-    }));
-
   const userErrors = [];
-  for (let start = 0; start < metafields.length; start += 25) {
-    const batch = await (
-      await admin.graphql(METAFIELDS_SET, {
-        variables: {metafields: metafields.slice(start, start + 25)},
-      })
+  for (let offset = 0; ; offset += ORDER_PAGE_SIZE) {
+    const body = await (
+      await admin.graphql(orderDaysQuery(campaign, offset))
     ).json();
-    userErrors.push(
-      ...transportErrors(batch),
-      ...(batch.data?.metafieldsSet?.userErrors ?? []),
-    );
+    const unread = transportErrors(body);
+    if (unread.length) return [...userErrors, ...unread];
+
+    const rows = body.data?.shopifyqlQuery?.tableData?.rows ?? [];
+    const metafields = rows
+      .map((row) => ({id: row.order_id, touch: lastTouch(touches, row.day)}))
+      .filter((order) => order.id && order.touch)
+      .map((order) => ({
+        ownerId: `gid://shopify/Order/${order.id}`,
+        namespace: DIMENSION_NAMESPACE,
+        key: 'campaign_touch',
+        type: 'single_line_text_field',
+        value: order.touch,
+      }));
+
+    for (let start = 0; start < metafields.length; start += 25) {
+      const batch = await (
+        await admin.graphql(METAFIELDS_SET, {
+          variables: {metafields: metafields.slice(start, start + 25)},
+        })
+      ).json();
+      userErrors.push(
+        ...transportErrors(batch),
+        ...(batch.data?.metafieldsSet?.userErrors ?? []),
+      );
+    }
+    // A page shorter than the limit is the last one.
+    if (rows.length < ORDER_PAGE_SIZE) return userErrors;
   }
-  return userErrors;
 }
 // [END campaign-dashboard.stamp-orders]
 
