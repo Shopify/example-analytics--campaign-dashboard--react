@@ -11,9 +11,10 @@ scopes = "read_reports,write_reports,read_analytics_annotations,write_analytics_
 
 # [START campaign-dashboard.direct-api]
 # The metric cards query from the browser, which needs direct access.
-# `offline` runs those queries as the app.
+# `online` runs those queries as the staff member who opened the app, and
+# the browser holds that person's permissions and no more.
 [access.admin]
-direct_api_mode = "offline"
+direct_api_mode = "online"
 embedded_app_direct_api_access = true
 # [END campaign-dashboard.direct-api]
 
