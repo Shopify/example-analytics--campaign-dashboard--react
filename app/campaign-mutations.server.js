@@ -435,10 +435,10 @@ export const recordMark = (admin, campaign, key, id) =>
 
 // [START campaign-dashboard.flag-incident]
 // No bounce type in the vocabulary. The reason goes in the text.
-export async function flagIncident(admin, campaign, markedAt) {
+export async function flagIncident(admin, campaign, appName, markedAt) {
   const [funnel, bounces] = await Promise.all([
-    runOptional(admin, appEventsQuery(campaign)),
-    runOptional(admin, bounceQuery(campaign)),
+    runOptional(admin, appEventsQuery(campaign, appName)),
+    runOptional(admin, bounceQuery(campaign, appName)),
   ]);
 
   const incident = detectIncident(campaign, funnel, bounces);

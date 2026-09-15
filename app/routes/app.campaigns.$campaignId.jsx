@@ -566,7 +566,7 @@ export async function action({request, params}) {
       return {problems: ['That day already has an incident flagged.']};
     }
 
-    const result = await flagIncident(admin, campaign, markedAt(day));
+    const result = await flagIncident(admin, campaign, appName, markedAt(day));
     if (result.userErrors?.length) {
       return {problems: result.userErrors.map((error) => error.message)};
     }
