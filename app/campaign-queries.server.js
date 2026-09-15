@@ -357,11 +357,12 @@ export const annotationsQuery = (campaign, after = null) => `
 
 // [START campaign-dashboard.app-events-query]
 // Campaign IDs repeat across apps. Matching `app_name` keeps another app's
-// sends out of this funnel.
+// sends out of this funnel. App titles can hold an apostrophe, and a doubled
+// quote keeps the ShopifyQL string valid.
 export const appEventsQuery = (campaign, appName) => `
   query CampaignFunnel {
     shopifyqlQuery(
-      query: "FROM app_events SHOW ${FUNNEL_METRICS.join(', ')} WHERE campaign_id = ${campaign.id} AND app_name = '${appName}' TIMESERIES day ${recentWindow(campaign)} ORDER BY day ASC"
+      query: "FROM app_events SHOW ${FUNNEL_METRICS.join(', ')} WHERE campaign_id = ${campaign.id} AND app_name = '${appName.replaceAll("'", "''")}' TIMESERIES day ${recentWindow(campaign)} ORDER BY day ASC"
     ) {
       tableData {
         columns {
@@ -400,7 +401,7 @@ export const sliceQuery = () => `
 export const sequenceQuery = (campaign, appName) => `
   query CampaignSequence {
     shopifyqlQuery(
-      query: "FROM app_events SHOW ${SEQUENCE_METRICS.join(', ')} WHERE campaign_id = ${campaign.id} AND app_name = '${appName}' GROUP BY template_id SINCE -29d UNTIL today ORDER BY template_id ASC"
+      query: "FROM app_events SHOW ${SEQUENCE_METRICS.join(', ')} WHERE campaign_id = ${campaign.id} AND app_name = '${appName.replaceAll("'", "''")}' GROUP BY template_id SINCE -29d UNTIL today ORDER BY template_id ASC"
     ) {
       tableData {
         columns {
@@ -420,7 +421,7 @@ export const sequenceQuery = (campaign, appName) => `
 export const bounceQuery = (campaign, appName) => `
   query CampaignBounces {
     shopifyqlQuery(
-      query: "FROM app_events SHOW emails_bounced WHERE campaign_id = ${campaign.id} AND app_name = '${appName}' GROUP BY recipient_status SINCE -29d UNTIL today ORDER BY emails_bounced DESC"
+      query: "FROM app_events SHOW emails_bounced WHERE campaign_id = ${campaign.id} AND app_name = '${appName.replaceAll("'", "''")}' GROUP BY recipient_status SINCE -29d UNTIL today ORDER BY emails_bounced DESC"
     ) {
       tableData {
         columns {
