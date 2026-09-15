@@ -115,7 +115,7 @@ export async function loader({request, params}) {
   // Redirect on a miss. A thrown response renders above this route's layout
   // and takes the app's navigation with it. The search params hold App Bridge's store and host.
   const {admin, session} = await authenticate.admin(request);
-  const {appId, campaigns} = await readCampaigns(admin);
+  const {appId, appName, campaigns} = await readCampaigns(admin);
   const campaign = findCampaign(campaigns, params.campaignId);
   if (!campaign) {
     return redirect(`/app/campaigns${new URL(request.url).search}`);
@@ -146,9 +146,9 @@ export async function loader({request, params}) {
     admin.graphql(salesQuery(campaign)).then((response) => response.json()),
     runIfSupported(admin, targetsQuery(campaign)),
     runIfSupported(admin, annotationsQuery(campaign)),
-    runOptional(admin, appEventsQuery(campaign)),
-    runOptional(admin, sequenceQuery(campaign)),
-    runOptional(admin, bounceQuery(campaign)),
+    runOptional(admin, appEventsQuery(campaign, appName)),
+    runOptional(admin, sequenceQuery(campaign, appName)),
+    runOptional(admin, bounceQuery(campaign, appName)),
     dimensions.product.enabled
       ? runOptional(admin, promotedByQuery(campaign, dimensions.product.dimension))
       : emptyTable(),
@@ -232,7 +232,7 @@ export async function action({request, params}) {
   const form = await request.formData();
   const intent = String(form.get('intent'));
 
-  const [{appId, campaigns, failed}, shopBody] = await Promise.all([
+  const [{appId, appName, campaigns, failed}, shopBody] = await Promise.all([
     readCampaigns(admin),
     admin.graphql(SHOP_QUERY).then((response) => response.json()),
   ]);
@@ -331,8 +331,8 @@ export async function action({request, params}) {
     if (campaign.status !== 'running') {
       return {problems: ['Only a running campaign can send its events.']};
     }
-    // Shopify never deletes an accepted event, and every funnel query filters on
-    // `campaign_id` alone. A second replay would sum both runs into one funnel and
+    // Shopify never deletes an accepted event, and the funnel queries sum every
+    // event this app sent for the campaign. A second replay would sum both runs into one funnel and
     // measure every rate against a doubled denominator. The record is the gate,
     // because the funnel read behind the panel lags ingestion by minutes.
     if (campaign.sentEvents) {
@@ -364,12 +364,17 @@ export async function action({request, params}) {
       timeZone,
       channels: campaign.channels,
     });
-    if (failures.length > 0) return {problems: failures};
     const sent = Object.values(accepted).reduce((total, n) => total + n, 0);
-    const {userErrors} = await updateCampaign(admin, campaign.id, {sentEvents: sent});
-    if (userErrors.length) {
-      return {problems: userErrors.map((error) => error.message)};
+    // Record what landed before reporting failures. Idempotency keys replay for
+    // only 24 hours, and an unrecorded partial send would leave this gate open to
+    // a duplicate run after they expire.
+    if (sent > 0) {
+      const {userErrors} = await updateCampaign(admin, campaign.id, {sentEvents: sent});
+      if (userErrors.length) {
+        return {problems: [...failures, ...userErrors.map((error) => error.message)]};
+      }
     }
+    if (failures.length > 0) return {problems: failures};
     return {ok: true, sentEvents: sent};
   }
   // [END campaign-dashboard.send-events-action]
@@ -601,8 +606,8 @@ export async function action({request, params}) {
     }
 
     const [funnel, sequenceTable, targetsBody] = await Promise.all([
-      runOptional(admin, appEventsQuery(closing)),
-      runOptional(admin, sequenceQuery(closing)),
+      runOptional(admin, appEventsQuery(closing, appName)),
+      runOptional(admin, sequenceQuery(closing, appName)),
       admin.graphql(targetsQuery(closing)).then((response) => response.json()),
     ]);
 
@@ -922,6 +927,7 @@ export default function CampaignDashboard() {
 
   const {qrRows, qrTotal, qrShare} = qrShape({
     qrSales,
+    campaign,
     totalSales,
     cell,
     rate,

@@ -104,14 +104,16 @@ export function creatorShape({codeSales, campaign, touchRows, cell}) {
 // [END campaign-dashboard.code-shape]
 
 // [START campaign-dashboard.qr-shape]
-export function qrShape({qrSales, totalSales, cell, rate}) {
+export function qrShape({qrSales, campaign, totalSales, cell, rate}) {
+  // An overlapping campaign's scans land in the same window. `utm_campaign`
+  // holds each code's handle, and the filter keeps the codes this campaign registered.
   const qrRows = (qrSales.tableData.rows ?? [])
     .map((row) => ({
       code: String(cell(row, 'utm_campaign') ?? ''),
       sales: Number(cell(row, 'campaign_last_non_direct_click_total_sales') ?? 0),
       orders: Number(cell(row, 'campaign_last_non_direct_click_order_count') ?? 0),
     }))
-    .filter((row) => row.code && row.sales > 0);
+    .filter((row) => (campaign.qrCodes ?? []).includes(row.code) && row.sales > 0);
   const qrTotal = qrRows.reduce((running, row) => running + row.sales, 0);
   return {qrRows, qrTotal, qrShare: rate(qrTotal, Number(totalSales))};
 }

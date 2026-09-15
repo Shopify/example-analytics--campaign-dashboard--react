@@ -356,10 +356,12 @@ export const annotationsQuery = (campaign, after = null) => `
 // [END campaign-dashboard.annotation-read]
 
 // [START campaign-dashboard.app-events-query]
-export const appEventsQuery = (campaign) => `
+// Campaign IDs repeat across apps. Matching `app_name` keeps another app's
+// sends out of this funnel.
+export const appEventsQuery = (campaign, appName) => `
   query CampaignFunnel {
     shopifyqlQuery(
-      query: "FROM app_events SHOW ${FUNNEL_METRICS.join(', ')} WHERE campaign_id = ${campaign.id} TIMESERIES day ${recentWindow(campaign)} ORDER BY day ASC"
+      query: "FROM app_events SHOW ${FUNNEL_METRICS.join(', ')} WHERE campaign_id = ${campaign.id} AND app_name = '${appName}' TIMESERIES day ${recentWindow(campaign)} ORDER BY day ASC"
     ) {
       tableData {
         columns {
@@ -395,10 +397,10 @@ export const sliceQuery = () => `
 // [END campaign-dashboard.slice-queries]
 
 // [START campaign-dashboard.sequence-query]
-export const sequenceQuery = (campaign) => `
+export const sequenceQuery = (campaign, appName) => `
   query CampaignSequence {
     shopifyqlQuery(
-      query: "FROM app_events SHOW ${SEQUENCE_METRICS.join(', ')} WHERE campaign_id = ${campaign.id} GROUP BY template_id SINCE -29d UNTIL today ORDER BY template_id ASC"
+      query: "FROM app_events SHOW ${SEQUENCE_METRICS.join(', ')} WHERE campaign_id = ${campaign.id} AND app_name = '${appName}' GROUP BY template_id SINCE -29d UNTIL today ORDER BY template_id ASC"
     ) {
       tableData {
         columns {
@@ -415,10 +417,10 @@ export const sequenceQuery = (campaign) => `
 // [END campaign-dashboard.sequence-query]
 
 // [START campaign-dashboard.bounce-query]
-export const bounceQuery = (campaign) => `
+export const bounceQuery = (campaign, appName) => `
   query CampaignBounces {
     shopifyqlQuery(
-      query: "FROM app_events SHOW emails_bounced WHERE campaign_id = ${campaign.id} GROUP BY recipient_status SINCE -29d UNTIL today ORDER BY emails_bounced DESC"
+      query: "FROM app_events SHOW emails_bounced WHERE campaign_id = ${campaign.id} AND app_name = '${appName}' GROUP BY recipient_status SINCE -29d UNTIL today ORDER BY emails_bounced DESC"
     ) {
       tableData {
         columns {
