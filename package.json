@@ -14,6 +14,7 @@
     "docker-start": "npm run setup && npm run start",
     "setup": "prisma generate && prisma db push",
     "check:markers": "node scripts/check-markers.mjs",
+    "test": "vitest run",
     "shopify": "shopify",
     "prisma": "prisma",
     "vite": "vite"
@@ -39,7 +40,8 @@
   },
   "devDependencies": {
     "@react-router/dev": "^7.12.0",
-    "vite": "^7.3.1"
+    "vite": "^7.3.1",
+    "vitest": "^3.2.7"
   },
   "trustedDependencies": [
     "@shopify/plugin-cloudflare"

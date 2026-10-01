@@ -1,0 +1,125 @@
+import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
+import {
+  createProductTarget,
+  createQrTargets,
+  createStoreTarget,
+  stampProducts,
+  writeMarks,
+} from '../app/campaign-mutations.server';
+import {mockAdmin} from './helpers/admin';
+
+const campaign = (overrides = {}) => ({
+  gid: 'gid://shopify/Metaobject/1',
+  id: 4210,
+  title: 'Summer launch',
+  startDate: '2026-09-10',
+  endDate: '2026-10-07',
+  channels: ['email'],
+  products: [],
+  qrCodes: [],
+  audience: 'everyone',
+  creatorCodes: [],
+  markers: {},
+  targets: {},
+  ...overrides,
+});
+
+const codes = (...handles) => handles.map((handle, index) => ({id: `q${index}`, handle}));
+
+beforeEach(() => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date('2026-09-30T12:00:00Z'));
+});
+afterEach(() => vi.useRealTimers());
+
+describe('targets', () => {
+  const created = (id) => () => ({
+    data: {analyticsTargetCreate: {analyticsTarget: {id}, userErrors: []}},
+  });
+
+  it('skips the store and product targets without an amount', async () => {
+    const {admin, calls} = mockAdmin({});
+    expect(await createStoreTarget(admin, campaign({revenueTarget: ''}))).toEqual({id: null, userErrors: []});
+    expect(
+      await createProductTarget(admin, campaign({products: [{id: 'gid://shopify/Product/1', title: 'Hat'}], productTarget: ''})),
+    ).toEqual({id: null, userErrors: []});
+    expect(calls).toEqual([]);
+  });
+
+  it('creates one attribution target per QR code, keyed by handle', async () => {
+    const {admin, calls} = mockAdmin({CreateCampaignTarget: created('t1')});
+    const {targets, userErrors} = await createQrTargets(
+      admin,
+      campaign({qrCodes: codes('a', 'b'), qrTarget: '500'}),
+    );
+    expect(userErrors).toEqual([]);
+    expect(Object.keys(targets)).toEqual(['qr:a', 'qr:b']);
+    expect(calls.map((call) => call.variables.input)).toEqual([
+      expect.objectContaining({metric: 'campaign_last_non_direct_click_total_sales', filters: "utm_campaign = 'a'", expectedValue: '500'}),
+      expect.objectContaining({filters: "utm_campaign = 'b'"}),
+    ]);
+  });
+
+  it('creates no QR code target without an amount', async () => {
+    const {admin, calls} = mockAdmin({});
+    expect(await createQrTargets(admin, campaign({qrCodes: codes('a'), qrTarget: ''}))).toEqual({targets: {}, userErrors: []});
+    expect(calls).toEqual([]);
+  });
+
+  it('reports a rejected QR code target and keeps the rest', async () => {
+    const {admin} = mockAdmin({
+      CreateCampaignTarget: ({input}) =>
+        input.filters.includes("'a'")
+          ? {data: {analyticsTargetCreate: {analyticsTarget: null, userErrors: [{message: 'Duplicate'}]}}}
+          : {data: {analyticsTargetCreate: {analyticsTarget: {id: 't2'}, userErrors: []}}},
+    });
+    const result = await createQrTargets(admin, campaign({qrCodes: codes('a', 'b'), qrTarget: '5'}));
+    expect(result).toEqual({targets: {'qr:b': 't2'}, userErrors: [{message: 'Duplicate'}]});
+  });
+});
+
+describe('writeMarks', () => {
+  it('clears the mark of a code that moved to another campaign', async () => {
+    const appId = 'gid://shopify/App/7';
+    const {admin, calls} = mockAdmin({
+      CampaignAnnotations: () => ({
+        data: {
+          shop: {
+            analyticsAnnotations: {
+              nodes: [
+                {id: 'old-qr', createdByApp: {id: appId}},
+                {id: 'other-app', createdByApp: {id: 'gid://shopify/App/8'}},
+              ],
+              pageInfo: {hasNextPage: false},
+            },
+          },
+        },
+      }),
+      DeleteCampaignAnnotation: () => ({data: {analyticsAnnotationDelete: {userErrors: []}}}),
+      CreateCampaignAnnotation: () => ({
+        data: {analyticsAnnotationCreate: {analyticsAnnotation: {id: `a${calls.length}`}, userErrors: []}},
+      }),
+      CampaignById: () => ({data: {metaobject: null}}),
+      UpdateCampaign: () => ({data: {metaobjectUpdate: {metaobject: null, userErrors: []}}}),
+    });
+    const moved = campaign({qrCodes: codes('kept'), markers: {'qr:moved': 'old-qr', milestone: 'm1'}});
+    const {markers, problems} = await writeMarks(admin, moved, appId, (date) => `${date}T09:00:00Z`);
+    expect(problems).toEqual([]);
+    expect(calls.filter((call) => call.op === 'DeleteCampaignAnnotation').map((call) => call.variables.id)).toEqual(['old-qr']);
+    expect(markers).not.toHaveProperty('qr:moved');
+    expect(markers).toHaveProperty('qr:kept');
+    expect(markers.milestone).toBe('m1');
+  });
+});
+
+describe('stampProducts', () => {
+  it('writes a campaign reference onto each promoted product', async () => {
+    const {admin, calls} = mockAdmin({
+      SetCampaignMetafields: () => ({data: {metafieldsSet: {userErrors: []}}}),
+    });
+    await stampProducts(admin, campaign({products: [{id: 'p1', title: 'Hat'}]}));
+    expect(calls[0].variables.metafields).toEqual([
+      {ownerId: 'p1', namespace: '$app:campaign_dashboard', key: 'campaign', type: 'metaobject_reference', value: 'gid://shopify/Metaobject/1'},
+    ]);
+  });
+});

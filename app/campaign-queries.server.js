@@ -15,28 +15,87 @@ export const SHOP_QUERY = `
 // [END campaign-dashboard.shop-query]
 
 // [START campaign-dashboard.metafield-state]
-// One app-data metafield holds every campaign, isolated by its AppInstallation owner.
-export const STATE_NAMESPACE = 'campaign_dashboard';
-export const STATE_KEY = 'campaigns';
+// Analytics joins only non-reserved types, and only once the merchant turns it on for
+// the type. The prefix keeps it clear of a type the merchant made.
+export const CAMPAIGN_TYPE = 'campaign_dashboard_campaign';
+
+// A campaign stores its QR code IDs as text. Each code's handle is its utm_campaign,
+// and its title names it on the chart.
+export const QR_CODE_HANDLES = `
+  query QRCodeHandles($ids: [ID!]!) {
+    nodes(ids: $ids) {
+      ... on Metaobject {
+        id
+        handle
+        title: field(key: "title") {
+          value
+        }
+        liveOn: field(key: "live_on") {
+          value
+        }
+      }
+    }
+  }
+`;
+
+// The highest ID ever handed out, on the app installation. A deleted campaign's ID stays spent.
+export const ID_NAMESPACE = 'campaign_dashboard';
+export const ID_KEY = 'last_campaign_id';
+
+// `jsonValue` returns each field typed. Reference lists also resolve what they point at.
+const CAMPAIGN_NODE = `
+  id
+  handle
+  fields {
+    key
+    jsonValue
+  }
+  products: field(key: "products") {
+    references(first: 5) {
+      nodes {
+        ... on Product {
+          id
+          title
+        }
+      }
+    }
+  }
+`;
 
 // Returns this app's ID. `createdByApp` matches on it to find this app's annotations.
-export const STATE_QUERY = `
-  query CampaignState {
+export const CAMPAIGNS_QUERY = `
+  query CampaignList($type: String!, $after: String) {
     currentAppInstallation {
       id
       app {
         id
         title
       }
-      metafield(namespace: "${STATE_NAMESPACE}", key: "${STATE_KEY}") {
-        id
+      metafield(namespace: "${ID_NAMESPACE}", key: "${ID_KEY}") {
         value
+      }
+    }
+    metaobjects(type: $type, first: 250, after: $after) {
+      nodes {
+        ${CAMPAIGN_NODE}
+      }
+      pageInfo {
+        hasNextPage
+        endCursor
       }
     }
   }
 `;
 
-// One mutation for the campaign list, product stamps, and audience tags.
+export const CAMPAIGN_BY_ID = `
+  query CampaignById($id: ID!) {
+    metaobject(id: $id) {
+      ${CAMPAIGN_NODE}
+    }
+  }
+`;
+
+// One mutation for the ID high-water mark, product stamps, and audience tags.
 export const METAFIELDS_SET = `
   mutation SetCampaignMetafields($metafields: [MetafieldsSetInput!]!) {
     metafieldsSet(metafields: $metafields) {
@@ -176,10 +235,11 @@ export const TARGETS_DELETE = `
 // [END campaign-dashboard.target]
 
 // [START campaign-dashboard.target-read]
-export const targetsQuery = (campaign) => `
-  query CampaignTargets {
-    analyticsTargets(first: 250, query: "start_date:${campaign.startDate}") {
-      nodes {
+// By ID, because a QR code's target starts on the day the code goes live.
+const CAMPAIGN_TARGETS = `
+  query CampaignTargets($ids: [ID!]!) {
+    targets: nodes(ids: $ids) {
+      ... on AnalyticsTarget {
         id
         name
         metric
@@ -193,6 +253,16 @@ export const targetsQuery = (campaign) => `
     }
   }
 `;
+
+export async function readTargets(admin, campaign) {
+  const ids = Object.values(campaign.targets ?? {}).filter(
+    (id) => typeof id === 'string' && id.startsWith('gid://shopify/AnalyticsTarget/'),
+  );
+  return (await admin.graphql(CAMPAIGN_TARGETS, {variables: {ids}})).json();
+}
+
+// A deleted target comes back as null.
+export const targetNodes = (body) => (body.data?.targets ?? []).filter(Boolean);
 
 // [END campaign-dashboard.target-read]
 
@@ -443,7 +513,7 @@ export const DEFINITION_QUERY = `
       first: 1
       ownerType: PRODUCT
       namespace: $namespace
-      key: "promoted_by"
+      key: "campaign"
     ) {
       nodes {
         id
@@ -549,6 +619,19 @@ export const DEFINITION_UPDATE = `
 // ShopifyQL needs the double-hyphen namespace quoted, and those quotes have to survive
 // being written inside a GraphQL string.
 const inGraphQLString = (dimension) => dimension.replaceAll('"', '\\"');
+
+// A reference dimension parses once the merchant turns on analytics for the
+// Campaign type. Until then, naming it fails with `Metafield Column Not Found`.
+// The probe reads one day and needs no stamped product to succeed.
+export const dimensionProbeQuery = (dimension) => `
+  query CampaignDimensionProbe {
+    shopifyqlQuery(
+      query: "FROM sales SHOW total_sales GROUP BY ${inGraphQLString(dimension)} SINCE -1d UNTIL today LIMIT 1"
+    ) {
+      parseErrors
+    }
+  }
+`;
 
 // `AS` names the column. Without it the column is the whole dotted expression. A day
 // bucket splits the window into the campaign's products and everything else.
@@ -662,12 +745,12 @@ export const codeSalesQuery = (campaign, filter) => `
 // [END campaign-dashboard.creator-code-queries]
 
 // [START campaign-dashboard.qr-sales-queries]
-// The QR app stamps every scan with utm_medium=qr. The store's attribution
-// model does the rest, so the filter is the whole handshake.
-export const qrSalesQuery = (campaign) => `
+// The QR app stamps every scan with utm_medium=qr and the code's handle as
+// utm_campaign. The store's attribution model does the rest.
+export const qrSalesQuery = (campaign, filter) => `
   query CampaignQRSales {
     shopifyqlQuery(
-      query: "FROM campaign_sales SHOW utm_campaign, campaign_last_non_direct_click_total_sales, campaign_last_non_direct_click_order_count WHERE utm_medium = 'qr' GROUP BY utm_campaign ${campaignWindow(campaign)} ORDER BY campaign_last_non_direct_click_total_sales DESC"
+      query: "FROM campaign_sales SHOW utm_campaign, campaign_last_non_direct_click_total_sales, campaign_last_non_direct_click_order_count WHERE utm_medium = 'qr' AND ${filter} GROUP BY utm_campaign ${campaignWindow(campaign)} ORDER BY campaign_last_non_direct_click_total_sales DESC"
     ) {
       tableData {
         columns {
@@ -683,15 +766,105 @@ export const qrSalesQuery = (campaign) => `
 `;
 // [END campaign-dashboard.qr-sales-queries]
 
-// [START campaign-dashboard.audience-roster]
-export const CUSTOMER_NAMES = `
-  query AudienceNames($ids: [ID!]!) {
-    nodes(ids: $ids) {
-      ... on Customer {
-        id
-        displayName
+// [START campaign-dashboard.campaign-documents]
+export const CAMPAIGN_DEFINITION_QUERY = `
+  query CampaignDefinition($type: String!) {
+    campaign: metaobjectDefinitionByType(type: $type) {
+      id
+      fieldDefinitions {
+        key
       }
     }
   }
 `;
-// [END campaign-dashboard.audience-roster]
+
+export const CAMPAIGN_FIELDS_ADD = `
+  mutation AddCampaignFields($id: ID!, $definition: MetaobjectDefinitionUpdateInput!) {
+    metaobjectDefinitionUpdate(id: $id, definition: $definition) {
+      metaobjectDefinition {
+        id
+      }
+      userErrors {
+        field
+        message
+        code
+      }
+    }
+  }
+`;
+
+export const CAMPAIGN_DEFINITION_CREATE = `
+  mutation CreateCampaignDefinition($definition: MetaobjectDefinitionCreateInput!) {
+    metaobjectDefinitionCreate(definition: $definition) {
+      metaobjectDefinition {
+        id
+      }
+      userErrors {
+        field
+        message
+        code
+      }
+    }
+  }
+`;
+
+export const CAMPAIGN_CREATE = `
+  mutation CreateCampaign($metaobject: MetaobjectCreateInput!) {
+    metaobjectCreate(metaobject: $metaobject) {
+      metaobject {
+        ${CAMPAIGN_NODE}
+      }
+      userErrors {
+        field
+        message
+        code
+      }
+    }
+  }
+`;
+
+// Creates the entry when the handle is new. Seeds rely on it to stay single.
+export const CAMPAIGN_UPSERT = `
+  mutation UpsertCampaign($handle: MetaobjectHandleInput!, $metaobject: MetaobjectUpsertInput!) {
+    metaobjectUpsert(handle: $handle, metaobject: $metaobject) {
+      metaobject {
+        ${CAMPAIGN_NODE}
+      }
+      userErrors {
+        field
+        message
+        code
+      }
+    }
+  }
+`;
+
+// Writes only the fields it receives. The rest keep their values.
+export const CAMPAIGN_UPDATE = `
+  mutation UpdateCampaign($id: ID!, $metaobject: MetaobjectUpdateInput!) {
+    metaobjectUpdate(id: $id, metaobject: $metaobject) {
+      metaobject {
+        ${CAMPAIGN_NODE}
+      }
+      userErrors {
+        field
+        message
+        code
+      }
+    }
+  }
+`;
+
+export const CAMPAIGN_DELETE = `
+  mutation DeleteCampaign($id: ID!) {
+    metaobjectDelete(id: $id) {
+      deletedId
+      userErrors {
+        field
+        message
+        code
+      }
+    }
+  }
+`;
+// [END campaign-dashboard.campaign-documents]

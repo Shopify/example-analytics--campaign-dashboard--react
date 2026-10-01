@@ -75,3 +75,10 @@ type = "single_line_text_field"
 name = "Scans"
 type = "number_integer"
 # [END metaobject-definition]
+
+# [START campaign-dashboard.qr-live-on-field]
+# Blank goes live with its campaign.
+[metaobjects.app.qrcode.fields.live_on]
+name = "Live on"
+type = "date"
+# [END campaign-dashboard.qr-live-on-field]

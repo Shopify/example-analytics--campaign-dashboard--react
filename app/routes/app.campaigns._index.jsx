@@ -17,13 +17,9 @@ import {
   parseCreatorCodes,
   parseProducts,
   safeLocale,
+  statusLabel,
 } from '../campaigns';
-import {
-  generateHandle,
-  saveQRCode,
-  upsertMarketingActivity,
-} from '../models/QRCode.server';
-import {AUDIENCE_TIERS, isTargetedTier, tierLabel} from '../audiences';
+import {AUDIENCE_TIERS, tierLabel} from '../audiences';
 import {CHANNELS, CHANNEL_KEYS} from '../channels';
 
 // [START campaign-dashboard.overview-read]
@@ -75,7 +71,7 @@ export const loader = async ({request}) => {
 
 // [START campaign-dashboard.spawn-action]
 export const action = async ({request}) => {
-  const {admin, session} = await authenticate.admin(request);
+  const {admin} = await authenticate.admin(request);
   const form = await request.formData();
 
   // Setup for every campaign, sharing this route's action with the create form.
@@ -91,7 +87,6 @@ export const action = async ({request}) => {
   }
 
   const products = parseProducts(form.get('products'));
-  const wantsQRCode = form.get('qrCode') === 'yes';
   const fields = {
     title: String(form.get('title') || '').trim(),
     startDate: String(form.get('startDate') || ''),
@@ -103,100 +98,52 @@ export const action = async ({request}) => {
     audience: String(form.get('audience') || 'everyone'),
     // Sanitize on the way in. A code that can't be queried shouldn't reach the record.
     creatorCodes: parseCreatorCodes(form.get('creatorCodes')),
-    revenueTarget: String(form.get('revenueTarget') || '0'),
-    productTarget: String(form.get('productTarget') || '0'),
-    audienceTarget: String(form.get('audienceTarget') || '0'),
+    // Blank means no target. Activation skips it.
+    revenueTarget: String(form.get('revenueTarget') || '').trim(),
+    productTarget: String(form.get('productTarget') || '').trim(),
+    audienceTarget: String(form.get('audienceTarget') || '').trim(),
+    qrTarget: String(form.get('qrTarget') || '').trim(),
   };
 
   const problems = [];
-  if (!fields.title) problems.push('Give the campaign a name.');
+  if (!fields.title) problems.push('Enter a campaign name.');
   if (!fields.startDate || !fields.endDate) {
-    problems.push('Set both a start and an end date.');
+    problems.push('Enter a start date and an end date.');
   } else if (
     !isCalendarDate(fields.startDate) ||
     !isCalendarDate(fields.endDate)
   ) {
-    problems.push('Set both dates as a calendar day, such as 2026-09-10.');
+    problems.push('Enter valid dates, such as 2026-09-10.');
   } else if (fields.endDate < fields.startDate) {
-    problems.push('The campaign ends before it starts.');
+    problems.push("End date can't be before the start date.");
   }
   if (fields.channels.length === 0) {
-    problems.push('Pick at least one channel to send on.');
+    problems.push('Select at least one channel.');
   } else if (fields.channels.some((key) => !CHANNEL_KEYS.includes(key))) {
-    problems.push('Pick channels from the list this app can send on.');
+    problems.push('Select channels from the list.');
   }
   if (products === null) {
-    problems.push('Could not read the product selection.');
+    problems.push("Couldn't read the selected products. Select them again.");
   }
   // The tier becomes a ShopifyQL comparison and a target filter, both built as strings.
   // Only a value this app defines can reach them.
   if (!AUDIENCE_TIERS.some((tier) => tier.value === fields.audience)) {
-    problems.push('Pick a customer segment from the list.');
+    problems.push('Select a customer segment.');
   }
   // Expected values have to be above zero, and the mutation rejects a zero outright.
-  // Check each amount the launch turns into a target.
-  if (!isPositiveAmount(fields.revenueTarget)) {
-    problems.push('The store-wide revenue target has to be more than zero.');
-  }
-  if (fields.products.length > 0 && !isPositiveAmount(fields.productTarget)) {
-    problems.push('The promoted product target has to be more than zero.');
-  }
-  if (isTargetedTier(fields.audience) && !isPositiveAmount(fields.audienceTarget)) {
-    problems.push(
-      `The ${tierLabel(fields.audience)} segment target has to be more than zero.`,
-    );
-  }
-  if (wantsQRCode && fields.products.length === 0) {
-    problems.push('Pick a promoted product for the QR code to point at.');
+  // A blank amount is no target. A filled one has to be one activation can create.
+  const amounts = [
+    [fields.revenueTarget, 'Store sales target'],
+    [fields.productTarget, 'Promoted product target'],
+    [fields.audienceTarget, 'Customer segment target'],
+    [fields.qrTarget, 'QR code target'],
+  ];
+  for (const [amount, name] of amounts) {
+    if (amount && !isPositiveAmount(amount)) {
+      problems.push(`${name} must be greater than 0. Leave it blank for no target.`);
+    }
   }
   if (problems.length > 0) return {problems};
-
-  // The QR code comes first. A failed save returns before any campaign exists,
-  // so a resubmit can't create a duplicate.
-  if (wantsQRCode) {
-    const handle = generateHandle(fields.title);
-    const response = await admin.graphql(
-      `
-        query FirstVariant($id: ID!) {
-          product(id: $id) {
-            variants(first: 1) {
-              nodes {
-                id
-              }
-            }
-          }
-        }
-      `,
-      {variables: {id: fields.products[0].id}},
-    );
-    const variantId = (await response.json()).data?.product?.variants?.nodes?.[0]
-      ?.id;
-    if (!variantId) {
-      return {problems: ['The promoted product has no variant to point the QR code at.']};
-    }
-    try {
-      await saveQRCode(
-        handle,
-        {
-          title: fields.title,
-          productId: fields.products[0].id,
-          productVariantId: variantId,
-          destination: 'product',
-        },
-        admin.graphql,
-      );
-    } catch (error) {
-      return {problems: [`The QR code couldn't be saved: ${error.message}`]};
-    }
-    // Registers the code with Shopify attribution. The code works without it,
-    // and a save from the QR codes page retries it.
-    try {
-      await upsertMarketingActivity(handle, fields.title, session.shop, admin.graphql);
-    } catch (error) {
-      console.error('Marketing activity upsert failed', error);
-    }
-    fields.qrCodes = [handle];
-  }
 
   const {campaign, userErrors} = await createCampaign(admin, fields);
   if (userErrors.length > 0) {
@@ -211,7 +158,7 @@ export const action = async ({request}) => {
 function writtenBack(campaign) {
   const markers = Object.keys(campaign.markers ?? {}).length;
   const count = Object.keys(campaign.targets ?? {}).length;
-  if (markers + count === 0) return 'Nothing yet';
+  if (markers + count === 0) return 'None';
   const plural = (count, noun) => `${count} ${noun}${count === 1 ? '' : 's'}`;
   return `${plural(markers, 'annotation')}, ${plural(count, 'target')}`;
 }
@@ -291,7 +238,6 @@ export default function CampaignsIndex() {
   const [products, setProducts] = useState([]);
   const [channels, setChannels] = useState(CHANNEL_KEYS);
   const [composing, setComposing] = useState(false);
-  const [wantsQr, setWantsQr] = useState(false);
   const problems = fetcher.data?.problems ?? [];
   const saving = fetcher.state !== 'idle';
   const integer = (value) => new Intl.NumberFormat(locale).format(value ?? 0);
@@ -333,7 +279,7 @@ export default function CampaignsIndex() {
   const anySends = mix.some((row) => row.email + row.sms + row.push > 0);
   // [END campaign-dashboard.overview-graphics]
 
-  // The link needs a campaign to point at. Prefer one that launched.
+  // The link needs a campaign to point at. Prefer an active one.
   const reported =
     campaigns.find((campaign) => campaign.status !== 'planned') ?? campaigns[0];
 
@@ -377,10 +323,7 @@ export default function CampaignsIndex() {
         <s-button
           slot="primary-action"
           variant="primary"
-          onClick={() => {
-            setComposing(true);
-            setWantsQr(false);
-          }}
+          onClick={() => setComposing(true)}
         >
           New campaign
         </s-button>
@@ -391,10 +334,10 @@ export default function CampaignsIndex() {
         // lose their spacing. `display: contents` hands them back to the page.
         <form onSubmit={submit} style={{display: 'contents'}}>
           {/* [START campaign-dashboard.spawn-form] */}
-          <s-section heading="Create a campaign">
+          <s-section heading="Campaign details">
             <div style={{height: '12px'}} />
             {problems.length > 0 && (
-              <s-banner tone="critical" heading="Fix these first">
+              <s-banner tone="critical" heading="Campaign not created">
                 <s-unordered-list>
                   {problems.map((problem) => (
                     <s-list-item key={problem}>{problem}</s-list-item>
@@ -408,17 +351,17 @@ export default function CampaignsIndex() {
                 label="Campaign name"
                 name="title"
                 placeholder="Summer launch"
-                details="Used in the title of every annotation the campaign writes."
+                details="Appears in each annotation title."
               />
               <s-stack direction="inline" gap="base">
-                <s-date-field label="Starts" name="startDate" />
-                <s-date-field label="Ends" name="endDate" />
+                <s-date-field label="Start date" name="startDate" />
+                <s-date-field label="End date" name="endDate" />
               </s-stack>
 
               <s-select
                 label="Customer segment"
                 name="audience"
-                details="Written onto each customer at launch, and what the segment target is measured against."
+                details="Activation writes the segment to a metafield on each customer in the segment. The customer segment target measures sales to the segment."
               >
                 {AUDIENCE_TIERS.map((tier) => (
                   <s-option key={tier.value} value={tier.value}>
@@ -432,26 +375,33 @@ export default function CampaignsIndex() {
                 label="Creator codes"
                 name="creatorCodes"
                 placeholder="AVERY10:Avery, JUNO15:Juno"
-                details="Code and creator, comma separated. One creator can hold several codes."
+                details="Enter CODE:Creator pairs. Separate the pairs with commas. A creator can have more than one code."
               />
 
-              {/* Each becomes a target at launch. */}
+              {/* Each amount becomes a target at activation. Leave one blank for no target. */}
               <s-money-field
-                label="Store-wide revenue target"
+                label="Store sales target"
                 name="revenueTarget"
                 placeholder="5000.00"
+                details="Leave blank for no target."
               />
               <s-money-field
                 label="Promoted product target"
                 name="productTarget"
                 placeholder="5000.00"
-                details="Measured with a filter on the products below."
+                details="Sales of the promoted products."
               />
               <s-money-field
                 label="Customer segment target"
                 name="audienceTarget"
                 placeholder="2500.00"
-                details="Measured with a filter on the segment above."
+                details="Sales to the customer segment."
+              />
+              <s-money-field
+                label="QR code target"
+                name="qrTarget"
+                placeholder="1000.00"
+                details="One target for each QR code assigned to this campaign."
               />
 
             </s-stack>
@@ -465,8 +415,8 @@ export default function CampaignsIndex() {
           <s-section heading="Promoted products">
             <div style={{height: '12px'}} />
             <s-paragraph>
-              The products this campaign pushes. Their IDs filter the promoted
-              product target, and their titles name the product launch annotation.
+              Select up to 5 products. The promoted product target measures
+              sales of these products.
             </s-paragraph>
             {products.length > 0 && (
               <s-unordered-list>
@@ -480,42 +430,6 @@ export default function CampaignsIndex() {
             </s-button>
           </s-section>
           {/* [END campaign-dashboard.picker-render] */}
-
-          <div style={{height: '12px'}} />
-
-          {/* [START campaign-dashboard.qr-choice] */}
-          <s-section heading="QR code">
-            <div style={{height: '12px'}} />
-            <s-paragraph>
-              The code points at the first promoted product. A shopper scans
-              it, and Shopify attributes the order to the campaign.
-            </s-paragraph>
-            <s-choice-list
-              label="Attribution"
-              name="qrCode"
-              multiple
-              onChange={(event) =>
-                setWantsQr([...event.currentTarget.values].includes('yes'))
-              }
-            >
-              <s-choice value="yes">
-                Create a QR code for this campaign
-                <s-text slot="details">
-                  Scans carry the campaign's UTM parameters into Shopify
-                  attribution.
-                </s-text>
-              </s-choice>
-            </s-choice-list>
-            {wantsQr && (
-              <s-paragraph>
-                The save stores the code on the campaign and registers it as
-                a marketing activity. The campaign's page renders the code,
-                ready to print, and the QR code sales panel reports the orders
-                shoppers place after scanning.
-              </s-paragraph>
-            )}
-          </s-section>
-          {/* [END campaign-dashboard.qr-choice] */}
 
           <div style={{height: '12px'}} />
 
@@ -561,10 +475,10 @@ export default function CampaignsIndex() {
 
       {/* [START campaign-dashboard.overview-card-render] */}
       {since && (
-        <s-section heading="The store while these campaigns run">
+        <s-section heading="Store sales overview">
           <div style={{height: '12px'}} />
           {cardReady ? (
-            <s-metrics-bar accessibilityLabel="Store totals over the period the campaign list covers">
+            <s-metrics-bar accessibilityLabel="Store sales over the campaign period">
               <s-shopifyql-metric-card
                 heading="Total sales"
                 query={cardQuery('total_sales')}
@@ -579,7 +493,7 @@ export default function CampaignsIndex() {
               />
             </s-metrics-bar>
           ) : (
-            <s-metrics-bar loading accessibilityLabel="Loading store totals" />
+            <s-metrics-bar loading accessibilityLabel="Loading store sales" />
           )}
         </s-section>
       )}
@@ -589,7 +503,7 @@ export default function CampaignsIndex() {
         {seedErrors.length > 0 && (
           <s-banner
             tone="critical"
-            heading="The first campaign couldn't be saved"
+            heading="Campaign setup failed"
           >
             <s-unordered-list>
               {seedErrors.map((problem) => (
@@ -606,10 +520,10 @@ export default function CampaignsIndex() {
             <s-table-header-row>
               <s-table-header listSlot="primary">Campaign</s-table-header>
               <s-table-header listSlot="labeled">Dates</s-table-header>
-              <s-table-header listSlot="labeled">Customer segment</s-table-header>
-              <s-table-header listSlot="labeled">Sent</s-table-header>
-              <s-table-header listSlot="labeled">Targets</s-table-header>
-              <s-table-header listSlot="labeled">On the store</s-table-header>
+              <s-table-header listSlot="labeled">Segment and channels</s-table-header>
+              <s-table-header listSlot="labeled">Messages sent</s-table-header>
+              <s-table-header listSlot="labeled">Target progress</s-table-header>
+              <s-table-header listSlot="labeled">Annotations and targets</s-table-header>
               <s-table-header listSlot="inline">Status</s-table-header>
             </s-table-header-row>
             <s-table-body>
@@ -638,7 +552,7 @@ export default function CampaignsIndex() {
                         <Fragment>
                           {integer(reach.sent)} messages
                           {reach.openRate !== null &&
-                            `, ${reach.openRate}% opened`}
+                            `, ${reach.openRate}% email open rate`}
                         </Fragment>
                       ) : (
                         <s-text color="subdued">Nothing sent</s-text>
@@ -646,16 +560,12 @@ export default function CampaignsIndex() {
                     </s-table-cell>
                     <s-table-cell>
                       {target ? (
-                        <s-text
-                          progress={
-                            target.percent >= 100 ? 'complete' : 'partiallyComplete'
-                          }
-                          tone={target.percent >= 100 ? 'success' : 'info'}
-                        >
-                          {target.percent}% of {target.count}
+                        <s-text tone={target.percent >= 100 ? 'success' : 'info'}>
+                          {target.percent}% across {target.count}{' '}
+                          {target.count === 1 ? 'target' : 'targets'}
                         </s-text>
                       ) : (
-                        <s-text color="subdued">Not set yet</s-text>
+                        <s-text color="subdued">None</s-text>
                       )}
                     </s-table-cell>
                     <s-table-cell>{writtenBack(campaign)}</s-table-cell>
@@ -670,7 +580,7 @@ export default function CampaignsIndex() {
                           }[campaign.status]
                         }
                       >
-                        {campaign.status}
+                        {statusLabel(campaign.status)}
                       </s-badge>
                     </s-table-cell>
                   </s-table-row>
@@ -687,9 +597,8 @@ export default function CampaignsIndex() {
         <s-section heading="Messages sent by campaign">
           <div style={{height: '12px'}} />
           <s-paragraph>
-            Every campaign this app sent for, over the last 29 days.
-            Attributes on App Events reach back 30 days. A campaign that ran
-            before then reports nothing here.
+            Messages sent in the last 29 days. App Events keeps 30 days of
+            data. Older campaigns don't appear.
           </s-paragraph>
           <s-table variant="auto">
             <s-table-header-row>
@@ -714,18 +623,19 @@ export default function CampaignsIndex() {
       {/* [END campaign-dashboard.overview-chart-render] */}
 
       {/* [START campaign-dashboard.metafield-dimension-render] */}
-      <s-section heading="Dimensions this app owns">
+      <s-section heading="Analytics dimensions">
         <div style={{height: '12px'}} />
         <s-paragraph>
-          The app writes campaign values onto products, customers, and orders
-          as metafields. Create each metafield as a dimension, and the reports
-          on the campaign page group sales by the value. You create a dimension
-          once, and every campaign reuses it.
+          The app writes campaign values to products, customers, and orders as
+          metafields. Create a dimension from each metafield. Campaign reports
+          group sales by each dimension. Each dimension works for every
+          campaign. Turn on analytics for the Campaign metaobject to use the
+          product dimension.
         </s-paragraph>
         <s-table variant="auto">
           <s-table-header-row>
             <s-table-header listSlot="primary">Dimension</s-table-header>
-            <s-table-header listSlot="labeled">State</s-table-header>
+            <s-table-header listSlot="labeled">Status</s-table-header>
             <s-table-header listSlot="labeled">Report</s-table-header>
             <s-table-header listSlot="inline" />
           </s-table-header-row>
@@ -741,10 +651,12 @@ export default function CampaignsIndex() {
                     {definition.enabled
                       ? 'Queryable'
                       : !definition.defined
-                        ? 'Not created yet'
-                        : definition.eligible
-                          ? 'Created, not yet queryable'
-                          : 'Not eligible. Check the field type and owner type.'}
+                        ? 'Not created'
+                        : definition.reference
+                          ? 'Analytics off for Campaign'
+                          : definition.eligible
+                            ? 'Created, not queryable'
+                            : 'Not eligible. Check the field type and owner type.'}
                   </s-table-cell>
                   <s-table-cell>
                     {reported && definition.enabled ? (
@@ -760,7 +672,8 @@ export default function CampaignsIndex() {
                   <s-table-cell>
                     <s-stack direction="inline" gap="base" alignItems="center">
                       {!definition.enabled &&
-                        (!definition.defined || definition.eligible) && (
+                        (!definition.defined ||
+                          (definition.eligible && !definition.reference)) && (
                           <s-button
                             loading={saving}
                             onClick={() =>
@@ -771,13 +684,15 @@ export default function CampaignsIndex() {
                             }
                           >
                             {definition.defined
-                              ? 'Make it queryable'
-                              : 'Create it as a dimension'}
+                              ? 'Enable as dimension'
+                              : 'Create dimension'}
                           </s-button>
                         )}
                       {definition.href && (
                         <s-link href={definition.href} target="_blank">
-                          View definition
+                          {definition.reference && definition.defined && !definition.enabled
+                            ? 'Turn on analytics'
+                            : 'View definition'}
                         </s-link>
                       )}
                     </s-stack>
@@ -801,7 +716,7 @@ export function ErrorBoundary() {
   return (
     <s-page heading="Campaigns">
       <s-section>
-        <s-banner tone="critical" heading="The campaign list didn't load">
+        <s-banner tone="critical" heading="Couldn't load campaigns">
           <s-paragraph>{String(detail)}</s-paragraph>
         </s-banner>
       </s-section>

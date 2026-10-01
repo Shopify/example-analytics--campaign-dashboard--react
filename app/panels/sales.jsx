@@ -104,7 +104,7 @@ export function StoreTotals({statusLine, cardReady, range, setRange, cardQuery})
           components:
             'Shopify metric cards, each running the query it displays.',
           shopifyql:
-            'The query behind every card, down to the VISUALIZE clause that draws it.',
+            "Each card's query, including the VISUALIZE clause.",
         }}
       />
       <div style={{marginBottom: '20px'}}>{statusLine}</div>
@@ -162,7 +162,7 @@ export function SalesAndOrders({
           shopifyql:
             'One row per day for sales and orders, with the previous period beside it.',
           annotations:
-            "Every annotation on the store, drawn onto the chart by ANNOTATE ALL.",
+            'ANNOTATE ALL draws every store annotation on the chart.',
         }}
       />
       {/* The percentage is Shopify's, from COMPARE TO previous_period. */}
@@ -231,27 +231,26 @@ export function SalesAndOrders({
             {rewrote != null && (
               <s-banner tone="success" heading="Annotations rewritten">
                 <s-paragraph>
-                  The app deleted its old annotations and wrote {rewrote} current
-                  ones. The chart above draws the fresh set.
+                  The app replaced earlier annotations with {rewrote} current
+                  ones.
                 </s-paragraph>
               </s-banner>
             )}
             {markNote && <s-text color="subdued">{markNote}</s-text>}
             <s-text color="subdued">
-              Rewriting deletes the annotations this app wrote earlier and writes
-              the current {marks.length} in their place.
+              Rewriting replaces this app's earlier annotations with the current{' '}
+              {marks.length}.
             </s-text>
             <s-stack direction="inline">
               <s-button loading={busy} onClick={() => submit('rewrite-marks')}>
-                {ours.length > 0 ? 'Rewrite' : 'Write'} the {marks.length} annotations
-                for this campaign
+                {ours.length > 0 ? 'Rewrite annotations' : 'Write annotations'}
               </s-button>
             </s-stack>
           </Fragment>
         )}
 
         <s-link href={exploreHref} target="_blank">
-          Open this report in the store&rsquo;s analytics dashboard
+          Open in Analytics
         </s-link>
         {/* [END campaign-dashboard.rewrite-render] */}
       </s-stack>

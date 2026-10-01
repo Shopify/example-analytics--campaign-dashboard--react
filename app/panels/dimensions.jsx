@@ -1,5 +1,11 @@
 import {annotateClause, exploreLink} from '../annotations';
-import {campaignWindow, creatorCodes, creatorTouches, touchMarks} from '../campaigns';
+import {
+  campaignWindow,
+  creatorCodes,
+  creatorTouches,
+  qrHandleFilter,
+  touchMarks,
+} from '../campaigns';
 import {tierLabel} from '../audiences';
 
 import {PanelHeader} from './shared';
@@ -10,8 +16,9 @@ export function promotedShape({promoted, campaign, totalSales, cell, rate}) {
   const otherByDay = new Map();
   for (const row of promoted.tableData.rows ?? []) {
     const day = String(cell(row, 'day'));
+    // The reference resolves to the entry's campaign_id, as a string. Titles repeat.
     const bucket =
-      String(cell(row, 'promoted_by') ?? '') === campaign.title
+      String(cell(row, 'promoted_by') ?? '') === String(campaign.id)
         ? promotedByDay
         : otherByDay;
     bucket.set(day, (bucket.get(day) ?? 0) + Number(cell(row, 'total_sales') ?? 0));
@@ -104,16 +111,14 @@ export function creatorShape({codeSales, campaign, touchRows, cell}) {
 // [END campaign-dashboard.code-shape]
 
 // [START campaign-dashboard.qr-shape]
-export function qrShape({qrSales, campaign, totalSales, cell, rate}) {
-  // An overlapping campaign's scans land in the same window. `utm_campaign`
-  // holds each code's handle, and the filter keeps the codes this campaign registered.
+export function qrShape({qrSales, totalSales, cell, rate}) {
   const qrRows = (qrSales.tableData.rows ?? [])
     .map((row) => ({
       code: String(cell(row, 'utm_campaign') ?? ''),
       sales: Number(cell(row, 'campaign_last_non_direct_click_total_sales') ?? 0),
       orders: Number(cell(row, 'campaign_last_non_direct_click_order_count') ?? 0),
     }))
-    .filter((row) => (campaign.qrCodes ?? []).includes(row.code) && row.sales > 0);
+    .filter((row) => row.sales > 0);
   const qrTotal = qrRows.reduce((running, row) => running + row.sales, 0);
   return {qrRows, qrTotal, qrShare: rate(qrTotal, Number(totalSales))};
 }
@@ -138,30 +143,28 @@ export function PromotedProductSales({
         uses={{
           shopifyql:
             "Groups the store's daily sales by the campaign that promoted each product.",
-          metafields: 'Stamps every promoted product with the campaign name at launch.',
+          metafields: 'Links each promoted product to the campaign at activation.',
         }}
       />
       {Number(totalSales) > 0 ? (
         <s-paragraph>
-          Products this campaign promoted earned {currency(promotedSales)} of the store's{' '}
-          {currency(totalSales)}, or {promotedShare.toFixed(0)}%.
+          Promoted products earned {currency(promotedSales)},{' '}
+          {promotedShare.toFixed(0)}% of {currency(totalSales)} in store sales.
         </s-paragraph>
       ) : (
         <s-paragraph>
-          Products this campaign promoted earned {currency(promotedSales)}. The
-          store&rsquo;s sales dataset shows no total for this window yet.
+          Promoted products earned {currency(promotedSales)}. Store sales totals
+          aren&rsquo;t available for this period yet.
         </s-paragraph>
       )}
       <s-paragraph>
-        The store grouped that split by{' '}
-        <s-text type="strong">{dimensions.product.dimension}</s-text>, the dimension
-        this app created.
+        Grouped by <s-text type="strong">{dimensions.product.dimension}</s-text>.
       </s-paragraph>
       <s-table variant="auto">
         <s-table-header-row>
           <s-table-header listSlot="primary">Day</s-table-header>
           <s-table-header listSlot="labeled">Promoted products</s-table-header>
-          <s-table-header listSlot="labeled">The rest of the store</s-table-header>
+          <s-table-header listSlot="labeled">Other products</s-table-header>
         </s-table-header-row>
         <s-table-body>
           {promotedRows.map((row) => (
@@ -204,13 +207,13 @@ export function SegmentSales({
       />
       {Number(totalSales) > 0 ? (
         <s-paragraph>
-          The segment this campaign targeted bought {currency(tierTotal)} of the store's{' '}
-          {currency(totalSales)} over the same window, or {tierShare.toFixed(0)}%.
+          {tierLabel(campaign.audience)} customers spent {currency(tierTotal)},{' '}
+          {tierShare.toFixed(0)}% of {currency(totalSales)} in store sales.
         </s-paragraph>
       ) : (
         <s-paragraph>
-          The segment this campaign targeted bought {currency(tierTotal)}. The
-          store&rsquo;s sales dataset shows no total for this window yet.
+          {tierLabel(campaign.audience)} customers spent {currency(tierTotal)}. Store
+          sales totals aren&rsquo;t available for this period yet.
         </s-paragraph>
       )}
       <s-table variant="auto">
@@ -246,13 +249,13 @@ export function OrderAttribution({touchRows, dimensions, currency}) {
         }}
       />
       <s-paragraph>
-        Each order stores the last campaign touch before it, written to{' '}
-        <s-text type="strong">{dimensions.order.dimension}</s-text> when the campaign
-        closed. The store groups its sales by that column.
+        The app writes each order&rsquo;s last campaign touch to{' '}
+        <s-text type="strong">{dimensions.order.dimension}</s-text> at close. This
+        report groups sales by the last touch.
       </s-paragraph>
       <s-table variant="auto">
         <s-table-header-row>
-          <s-table-header listSlot="primary">Campaign touch</s-table-header>
+          <s-table-header listSlot="primary">Last touch</s-table-header>
           <s-table-header listSlot="labeled">Orders</s-table-header>
           <s-table-header listSlot="labeled">Sales</s-table-header>
         </s-table-header-row>
@@ -286,8 +289,8 @@ export function CreatorRevenue({creatorRows, codeTotal, touchedTotal, currency})
         }}
       />
       <s-paragraph>
-        The store already records <s-text type="strong">discount_code</s-text>. Grouping several codes under one creator is the part only
-        this app can do, because only it knows who hands out which code.
+        This report groups <s-text type="strong">discount_code</s-text> sales by the
+        creator who shares each code.
       </s-paragraph>
       <s-table variant="auto">
         <s-table-header-row>
@@ -311,10 +314,9 @@ export function CreatorRevenue({creatorRows, codeTotal, touchedTotal, currency})
       </s-table>
       {touchedTotal > 0 && (
         <s-paragraph>
-          Codes were entered on {currency(codeTotal)}. Orders that followed a creator
-          post without one bring the creators&rsquo; total to{' '}
-          <s-text type="strong">{currency(touchedTotal)}</s-text>. The difference is
-          what the codes couldn&rsquo;t prove.
+          Sales with a creator code: {currency(codeTotal)}. Sales from orders whose
+          last campaign touch was a creator post:{' '}
+          <s-text type="strong">{currency(touchedTotal)}</s-text>.
         </s-paragraph>
       )}
     </s-section>
@@ -330,7 +332,7 @@ export function qrCardQuery(campaign) {
     'FROM campaign_sales',
     'SHOW campaign_last_non_direct_click_total_sales',
     'TIMESERIES day',
-    "WHERE utm_medium = 'qr'",
+    `WHERE utm_medium = 'qr' AND ${qrHandleFilter(campaign)}`,
     campaignWindow(campaign),
     'VISUALIZE campaign_last_non_direct_click_total_sales TYPE bar',
     `ANNOTATE ${annotateClause(['campaign'])}`,
@@ -357,7 +359,7 @@ export function QRCodeSales({
         title="QR code sales"
         uses={{
           shopifyql:
-            'Filters attributed sales to orders that started from a QR code scan.',
+            "Filters attributed sales to orders that started from a scan of this campaign's QR codes.",
           annotations:
             "ANNOTATE draws the campaign's marks from the store's timeline onto the chart.",
           components: 'A Shopify metric card, running the query it displays.',
@@ -366,7 +368,7 @@ export function QRCodeSales({
       <div style={{height: '320px', marginBottom: '16px'}}>
         {cardReady ? (
           <s-shopifyql-metric-card
-            heading="QR sales by day"
+            heading="QR code sales by day"
             query={qrCardQuery(campaign)}
           />
         ) : (
@@ -377,14 +379,13 @@ export function QRCodeSales({
           QR total can outrun the store's daily dataset. No total, no share. */}
       {Number(totalSales) > 0 ? (
         <s-paragraph>
-          Orders attributed to a QR code scan bought {currency(qrTotal)} of the
-          store&rsquo;s {currency(totalSales)} over the same window, or{' '}
-          {qrShare.toFixed(0)}%.
+          QR code orders earned {currency(qrTotal)}, {qrShare.toFixed(0)}% of{' '}
+          {currency(totalSales)} in store sales.
         </s-paragraph>
       ) : (
         <s-paragraph>
-          Orders attributed to a QR code scan bought {currency(qrTotal)}. The
-          store&rsquo;s sales dataset shows no total for this window yet.
+          QR code orders earned {currency(qrTotal)}. Store sales totals
+          aren&rsquo;t available for this period yet.
         </s-paragraph>
       )}
       <s-table variant="auto">
@@ -405,7 +406,7 @@ export function QRCodeSales({
       </s-table>
       <s-box paddingBlockStart="base">
         <s-link href={exploreLink(qrCardQuery(campaign))} target="_blank">
-          Open this report in the store&rsquo;s analytics dashboard
+          Open in Analytics
         </s-link>
       </s-box>
     </s-section>

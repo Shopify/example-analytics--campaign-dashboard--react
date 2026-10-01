@@ -13,12 +13,51 @@ import {
   validateQRCode,
   saveQRCode,
   upsertMarketingActivity,
-  createCampaignTarget,
-  createLaunchAnnotation,
   deleteQRCode,
   endMarketingActivity,
   generateHandle,
 } from "../models/QRCode.server";
+import {
+  assignQRCode,
+  campaignOf,
+  readCampaigns,
+} from "../campaigns.server";
+import { isCalendarDate } from "../campaigns";
+
+// [START campaign-dashboard.qr-campaign-picker]
+// Activation writes a mark for each code, and a target when the campaign sets a QR
+// target. Codes join and leave a campaign before activation.
+const assignable = (campaign) => campaign.status === "planned";
+
+async function campaignChoices(admin, qrCodeId) {
+  const { campaigns, failed } = await readCampaigns(admin);
+  const current = qrCodeId ? campaignOf(campaigns, qrCodeId) : null;
+  return {
+    failed,
+    current,
+    locked: Boolean(current && !assignable(current)),
+    campaigns: campaigns
+      .filter((campaign) => assignable(campaign) || campaign === current)
+      .map((campaign) => ({
+        gid: campaign.gid,
+        title: campaign.title,
+        startDate: campaign.startDate,
+        endDate: campaign.endDate,
+      })),
+  };
+}
+
+// The code's annotation and target start on this day. Blank goes live with the campaign.
+function liveOnError(liveOn, choice) {
+  if (!liveOn) return null;
+  if (!choice) return "Select a campaign to set a live date.";
+  return !isCalendarDate(liveOn) || liveOn < choice.startDate || liveOn > choice.endDate
+    ? `Select a day from ${choice.startDate} to ${choice.endDate}.`
+    : null;
+}
+
+const CAMPAIGNS_FAILED = "Couldn't load campaigns. Reload to try again.";
+// [END campaign-dashboard.qr-campaign-picker]
 
 export async function loader({ request, params }) {
   // [START authenticate]
@@ -27,15 +66,41 @@ export async function loader({ request, params }) {
 
   // [START data]
   if (params.id === "new") {
+    const { campaigns, failed } = await campaignChoices(admin, null);
+    // A campaign page links here with its campaign picked.
+    const picked = new URL(request.url).searchParams.get("campaign");
     return {
       destination: "product",
       title: "",
+      campaign: campaigns.some((option) => option.gid === picked) ? picked : "",
+      liveOn: "",
+      campaigns,
+      campaignsFailed: failed.length > 0,
+      campaignError: failed.length ? CAMPAIGNS_FAILED : null,
       shop: session.shop,
     };
   }
 
   const qrCode = await getQRCode(params.id, admin.graphql, session.shop);
-  return { ...qrCode, shop: session.shop };
+  const { campaigns, current, failed, locked } = await campaignChoices(
+    admin,
+    qrCode?.id,
+  );
+  const unsaved = new URL(request.url).searchParams.get("campaign") === "unsaved";
+  return {
+    ...qrCode,
+    campaign: current?.gid ?? "",
+    liveOn: (current && qrCode?.liveOn) || "",
+    campaigns,
+    campaignLocked: locked,
+    campaignsFailed: failed.length > 0,
+    campaignError: failed.length
+      ? CAMPAIGNS_FAILED
+      : unsaved
+        ? "The code saved, but the campaign didn't. Select it again and save."
+        : null,
+    shop: session.shop,
+  };
   // [END data]
 }
 
@@ -48,6 +113,11 @@ export async function action({ request, params }) {
   const data = Object.fromEntries(await request.formData());
 
   if (data.action === "delete") {
+    // Drop the code from its campaign first. The campaign keeps reporting its other codes.
+    const unassigned = await assignQRCode(admin, data.metaobjectId, null);
+    if (unassigned.length) {
+      console.error("Could not unassign the QR code", unassigned);
+    }
     try {
       // On this page params.id is the code's handle, the activity's remoteId.
       await endMarketingActivity(params.id, session.shop, admin.graphql);
@@ -69,10 +139,56 @@ export async function action({ request, params }) {
     });
   }
 
+  // [START campaign-dashboard.qr-campaign-save]
+  // The form posts the campaign and live date it loaded with. Unchanged fields stay
+  // as stored. The form can post any GID or day, so the server checks both.
+  const campaign = data.campaign || null;
+  const liveOn = campaign ? data.liveOn || "" : "";
+  const reassigned = campaign !== (data.initialCampaign || null);
+  const moved = reassigned || liveOn !== (data.initialLiveOn || "");
+  const choices = moved
+    ? await campaignChoices(admin, data.metaobjectId || null)
+    : null;
+  const choice = choices?.campaigns.find((option) => option.gid === campaign);
+  const campaignError = !choices
+    ? null
+    : choices.failed.length
+      ? "Couldn't load campaigns. Try again."
+      : choices.locked
+        ? "QR codes move only between planned campaigns."
+        : campaign && !choice
+          ? "Select a planned campaign."
+          : null;
+  const dateError = choices && !campaignError ? liveOnError(liveOn, choice) : null;
+  if (campaignError || dateError) {
+    return new Response(
+      JSON.stringify({
+        errors: campaignError ? { campaign: campaignError } : { liveOn: dateError },
+      }),
+      { status: 422, headers: { "Content-Type": "application/json" } },
+    );
+  }
+  // [END campaign-dashboard.qr-campaign-save]
+
   const handle =
     params.id === "new" ? generateHandle(data.title) : params.id;
 
-  const metaobject = await saveQRCode(handle, data, admin.graphql);
+  const metaobject = await saveQRCode(
+    handle,
+    { ...data, liveOn: moved ? liveOn : undefined },
+    admin.graphql,
+  );
+
+  // [START campaign-dashboard.qr-campaign-assign]
+  // The campaign entry holds the link. Assigning drops the code from any other campaign.
+  // The code saved already. A failure lands on its page, where a resave can't duplicate it.
+  const unassigned = reassigned
+    ? await assignQRCode(admin, metaobject.id, campaign)
+    : [];
+  if (unassigned.length) {
+    console.error("Could not assign the QR code", unassigned);
+  }
+  // [END campaign-dashboard.qr-campaign-assign]
 
   // [START qr-marketing.save-activity]
   try {
@@ -88,19 +204,9 @@ export async function action({ request, params }) {
   }
   // [END qr-marketing.save-activity]
 
-  // [START qr-marketing.launch-analytics]
-  if (params.id === "new") {
-    try {
-      await createCampaignTarget(metaobject.handle, data.title, admin.graphql);
-      await createLaunchAnnotation(data.title, admin.graphql);
-    } catch (error) {
-      // Analytics decoration. The code and its activity are already saved.
-      console.error("Could not create the target and annotation", error);
-    }
-  }
-  // [END qr-marketing.launch-analytics]
-
-  return redirect(`/app/qrcodes/${metaobject.handle}`);
+  return redirect(
+    `/app/qrcodes/${metaobject.handle}${unassigned.length ? "?campaign=unsaved" : ""}`,
+  );
 }
 // [END action]
 
@@ -113,6 +219,9 @@ export default function QRCodeForm() {
   const [initialFormState, setInitialFormState] = useState(qrCode);
   const [formState, setFormState] = useState(qrCode);
   const errors = useActionData()?.errors || {};
+  const chosenCampaign = (loaderData.campaigns ?? []).find(
+    (option) => option.gid === formState.campaign,
+  );
   const isDirty =
     JSON.stringify(formState) !== JSON.stringify(initialFormState);
   // [END state]
@@ -153,6 +262,8 @@ export default function QRCodeForm() {
     setFormState({
       title: formState.title,
       destination: formState.destination,
+      campaign: formState.campaign,
+      liveOn: formState.liveOn,
     });
   }
 
@@ -172,6 +283,12 @@ export default function QRCodeForm() {
       productId: formState.productId || "",
       productVariantId: formState.productVariantId || "",
       destination: formState.destination,
+      campaign: formState.campaign || "",
+      // A new code starts on no campaign, even one picked from a campaign page.
+      initialCampaign: initialFormState.id ? initialFormState.campaign || "" : "",
+      liveOn: formState.campaign ? formState.liveOn || "" : "",
+      initialLiveOn: initialFormState.liveOn || "",
+      metaobjectId: initialFormState.id || "",
     };
 
     submit(data, { method: "post" });
@@ -279,6 +396,48 @@ export default function QRCodeForm() {
                 ) : null}
               </s-stack>
               {/* [END destination] */}
+              {/* [START campaign-dashboard.qr-campaign-field] */}
+              <s-select
+                name="campaign"
+                label="Campaign"
+                details={
+                  loaderData.campaignLocked
+                    ? "QR codes move only between planned campaigns."
+                    : "The campaign page reports this code's attributed sales."
+                }
+                disabled={loaderData.campaignLocked || loaderData.campaignsFailed}
+                error={errors.campaign ?? loaderData.campaignError}
+                value={formState.campaign || ""}
+                onChange={(e) =>
+                  setFormState({ ...formState, campaign: e.currentTarget.value, liveOn: "" })
+                }
+              >
+                <s-option value="">No campaign</s-option>
+                {(loaderData.campaigns ?? []).map((campaign) => (
+                  <s-option key={campaign.gid} value={campaign.gid}>
+                    {campaign.title}
+                  </s-option>
+                ))}
+              </s-select>
+              {formState.campaign ? (
+                <s-date-field
+                  name="liveOn"
+                  label="Live on"
+                  details={
+                    chosenCampaign
+                      ? `${chosenCampaign.startDate} to ${chosenCampaign.endDate}. Leave blank to go live with the campaign. The code's annotation and target start on this day.`
+                      : "Leave blank to go live with the campaign."
+                  }
+                  disabled={loaderData.campaignLocked || loaderData.campaignsFailed}
+                  error={errors.liveOn}
+                  allow={chosenCampaign ? `${chosenCampaign.startDate}--${chosenCampaign.endDate}` : undefined}
+                  value={formState.liveOn || ""}
+                  onChange={(e) =>
+                    setFormState({ ...formState, liveOn: e.currentTarget.value })
+                  }
+                />
+              ) : null}
+              {/* [END campaign-dashboard.qr-campaign-field] */}
               {/* [START product] */}
               <s-stack gap="small-400">
                 <s-stack direction="inline" gap="small-100" justifyContent="space-between">

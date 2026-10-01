@@ -58,9 +58,9 @@ export function outcomeText({campaign, revenue, target, sequence, money}) {
   );
   if (best && sequence.length > 1) {
     sentences.push(
-      `Best of ${sequence.length} sends was ${best.name} on ${
+      `Top send: ${best.name} on ${
         CHANNELS[best.channel].label
-      } at ${Math.round(best.rate)}%`,
+      }, ${Math.round(best.rate)}% engagement`,
     );
   }
 
@@ -96,10 +96,10 @@ export function detectIncident(campaign, funnel, bounces) {
 
   return {
     rate,
-    title: clamp(`Email bounces on the ${campaign.title} send`, 75),
+    title: clamp(`${campaign.title} email bounces`, 75),
     description: clamp(
-      `${bounced} of ${sent} emails bounced at ${rate.toFixed(1)}%.${
-        reasons ? ` Recorded as ${reasons}.` : ''
+      `${bounced} of ${sent} emails bounced, ${rate.toFixed(1)}%.${
+        reasons ? ` Reasons: ${reasons}.` : ''
       }`,
       150,
     ),

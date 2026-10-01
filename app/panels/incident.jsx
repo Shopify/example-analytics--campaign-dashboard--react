@@ -16,25 +16,24 @@ export function IncidentBanner({
     <s-section>
       <s-banner
         tone="info"
-        heading={`${health.bounceRate.toFixed(1)}% of this campaign's emails bounced`}
+        heading={`${health.bounceRate.toFixed(1)}% email bounce rate`}
       >
         <s-paragraph>
-          {integer(bounced)} of {integer(total('emails_sent'))} emails didn't arrive
-          {bounceReasons.length > 0 ? `, mostly ${bounceReasons[0].reason}` : ''}.
+          {integer(bounced)} of {integer(total('emails_sent'))} emails bounced
+          {bounceReasons.length > 0 ? `. Top reason: ${bounceReasons[0].reason}` : ''}.
         </s-paragraph>
         <s-paragraph>
-          Marking it dates the failed send on the store's sales charts. Whoever reviews
-          this week's numbers reads it without opening this app.
+          Flag the incident to annotate the store's sales charts.
         </s-paragraph>
         <s-box paddingBlockStart="base">
           {incidentFlagged ? (
-            <s-text color="subdued">Already marked on the store's charts.</s-text>
+            <s-text color="subdued">Incident flagged.</s-text>
           ) : (
             <s-button
               loading={busy}
               onClick={() => submit('flag-incident', {day: today})}
             >
-              Mark the bounce on the store's charts
+              Flag incident
             </s-button>
           )}
         </s-box>

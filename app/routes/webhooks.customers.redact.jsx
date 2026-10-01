@@ -1,14 +1,15 @@
 import {authenticate} from '../shopify.server';
 import {forgetCustomer} from '../campaigns.server';
 
-// Launching a campaign saves a customer ID and display name per tier member onto the
-// record. Redaction has to reach that too.
+// Activating a campaign saves a reference to each tier member on the campaign entry.
+// Redaction has to reach that too.
 export const action = async ({request}) => {
   const {admin, shop, topic, payload} = await authenticate.webhook(request);
 
   console.log(`Received ${topic} for ${shop}`);
 
-  // Without a session there's no installation, and the record went with it.
+  // Without a session the app can't reach the store. The merchant can still delete
+  // the campaign entries in the admin.
   if (!admin) return new Response();
 
   const id = payload.customer?.id;

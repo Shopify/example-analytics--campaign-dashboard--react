@@ -16,29 +16,28 @@ export const CAPABILITIES = {
 export function PanelHeader({title, uses}) {
   const slug = title.replaceAll(/[^a-z0-9]+/gi, '-').toLowerCase();
   return (
-    <s-stack
-      direction="inline"
-      gap="base"
-      alignItems="center"
-      style={{marginBottom: '12px'}}
-    >
-      <s-heading>{title}</s-heading>
-      {Object.entries(uses).map(([key, note]) => {
-        const id = `uses-${slug}-${key}`;
-        return (
-          <Fragment key={key}>
-            <s-tooltip id={id}>{note}</s-tooltip>
-            <s-clickable-chip
-              color="subdued"
-              interestFor={id}
-              accessibilityLabel={`Built on ${CAPABILITIES[key].label}`}
-            >
-              <s-icon slot="graphic" type={CAPABILITIES[key].icon} size="small" />
-              {CAPABILITIES[key].label}
-            </s-clickable-chip>
-          </Fragment>
-        );
-      })}
-    </s-stack>
+    <Fragment>
+      <s-stack direction="inline" gap="base" alignItems="center">
+        <s-heading>{title}</s-heading>
+        {Object.entries(uses).map(([key, note]) => {
+          const id = `uses-${slug}-${key}`;
+          return (
+            <Fragment key={key}>
+              <s-tooltip id={id}>{note}</s-tooltip>
+              <s-clickable-chip
+                color="subdued"
+                interestFor={id}
+                accessibilityLabel={`Built on ${CAPABILITIES[key].label}`}
+              >
+                <s-icon slot="graphic" type={CAPABILITIES[key].icon} size="small" />
+                {CAPABILITIES[key].label}
+              </s-clickable-chip>
+            </Fragment>
+          );
+        })}
+      </s-stack>
+      {/* The stack drops a style prop. The spacer holds the gap under the header. */}
+      <div style={{height: '16px'}} />
+    </Fragment>
   );
 }

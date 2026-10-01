@@ -3,7 +3,6 @@ import {
   ANNOTATION_DELETE,
   ANNOTATION_UPDATE,
   BUNDLE_QUERY,
-  CUSTOMER_NAMES,
   METAFIELDS_SET,
   ORDER_PAGE_SIZE,
   TARGET_CREATE,
@@ -14,7 +13,9 @@ import {
   measureQuery,
   orderDaysQuery,
   progressValue,
+  readTargets,
   runOptional,
+  targetNodes,
   tierRankQuery,
 } from './campaign-queries.server';
 import {
@@ -25,9 +26,15 @@ import {
 import {detectIncident} from './campaign-report.server';
 import {
   DIMENSION_NAMESPACE,
+  QR_MARK_PREFIX,
   campaignMarks,
+  clamp,
+  isPositiveAmount,
   lastTouch,
   promotedFilter,
+  qrHandles,
+  qrLiveOn,
+  qrTitle,
   touchMarks,
 } from './campaigns';
 import {AUDIENCE_TIERS, TIER_METAFIELD, isTargetedTier, tierLabel} from './audiences';
@@ -48,20 +55,23 @@ async function createTarget(admin, input) {
   };
 }
 
+// A blank amount is no target. Activation skips it.
 export const createStoreTarget = (admin, campaign) =>
-  createTarget(admin, {
-    name: `${campaign.title}: store-wide sales`,
-    metric: 'total_sales',
-    expectedValue: campaign.revenueTarget,
-    startDate: campaign.startDate,
-    endDate: campaign.endDate,
-  });
+  isPositiveAmount(campaign.revenueTarget)
+    ? createTarget(admin, {
+        name: `${campaign.title}: store-wide sales`,
+        metric: 'total_sales',
+        expectedValue: campaign.revenueTarget,
+        startDate: campaign.startDate,
+        endDate: campaign.endDate,
+      })
+    : NO_TARGET;
 // [END campaign-dashboard.store-target]
 
 // [START campaign-dashboard.product-target]
 export async function createProductTarget(admin, campaign) {
   const filters = promotedFilter(campaign);
-  if (!filters) return NO_TARGET;
+  if (!filters || !isPositiveAmount(campaign.productTarget)) return NO_TARGET;
 
   return createTarget(admin, {
     name: `${campaign.title}: promoted products`,
@@ -79,9 +89,10 @@ export async function createProductTarget(admin, campaign) {
 export async function createAudienceTarget(admin, campaign, definition) {
   if (!isTargetedTier(campaign.audience)) return NO_TARGET;
   if (!definition.enabled) return NO_TARGET;
+  if (!isPositiveAmount(campaign.audienceTarget)) return NO_TARGET;
 
   return createTarget(admin, {
-    name: `${campaign.title}: ${tierLabel(campaign.audience)}`,
+    name: `${campaign.title}: ${tierLabel(campaign.audience)} segment`,
     metric: 'total_sales',
     expectedValue: campaign.audienceTarget,
     startDate: campaign.startDate,
@@ -90,6 +101,31 @@ export async function createAudienceTarget(admin, campaign, definition) {
   });
 }
 // [END campaign-dashboard.audience-target]
+
+// [START campaign-dashboard.qr-target]
+// One target per code, from the day it goes live. The attribution metric credits the
+// order to the code's utm_campaign, and the filter takes the handle the QR app wrote
+// into the scan URL.
+export async function createQrTargets(admin, campaign) {
+  const targets = {};
+  const userErrors = [];
+  if (!isPositiveAmount(campaign.qrTarget)) return {targets, userErrors};
+
+  for (const handle of qrHandles(campaign)) {
+    const result = await createTarget(admin, {
+      name: `${campaign.title}: ${qrTitle(campaign, handle)} QR code`,
+      metric: 'campaign_last_non_direct_click_total_sales',
+      expectedValue: campaign.qrTarget,
+      startDate: qrLiveOn(campaign, handle),
+      endDate: campaign.endDate,
+      filters: `utm_campaign = '${handle}'`,
+    });
+    if (result.id) targets[`${QR_MARK_PREFIX}${handle}`] = result.id;
+    userErrors.push(...result.userErrors);
+  }
+  return {targets, userErrors};
+}
+// [END campaign-dashboard.qr-target]
 
 // [START campaign-dashboard.raise-target]
 export async function raiseTarget(admin, target) {
@@ -112,12 +148,16 @@ export async function raiseTarget(admin, target) {
 
 // A campaign that closes early stops counting on the day it closed. Move the end date
 // on every target the campaign created, and Shopify rebuilds each measuring query.
+// A QR code that wasn't live yet keeps a one-day target, because a target can't end
+// before it starts.
 export async function endTargetsOn(admin, campaign, day) {
-  const problems = [];
-  for (const id of Object.values(campaign.targets ?? {})) {
+  const read = await readTargets(admin, campaign);
+  const problems = [...transportErrors(read)];
+  for (const target of problems.length ? [] : targetNodes(read)) {
+    const endDate = target.startDate > day ? target.startDate : day;
     const body = await (
       await admin.graphql(TARGET_UPDATE, {
-        variables: {id, input: {endDate: day}},
+        variables: {id: target.id, input: {endDate}},
       })
     ).json();
     problems.push(
@@ -128,11 +168,10 @@ export async function endTargetsOn(admin, campaign, day) {
   return problems;
 }
 
-// The start-date query returns the targets the user set alongside this app's. A form can
-// name any ID it returned. Match against the recorded ones before writing.
+// A form can name any target ID. Match against the recorded ones before writing.
 export function recordedTarget(campaign, body, id) {
   const recorded = new Set(Object.values(campaign.targets ?? {}));
-  return (body.data?.analyticsTargets?.nodes ?? []).find(
+  return targetNodes(body).find(
     (node) => node.id === String(id) && recorded.has(node.id),
   );
 }
@@ -200,13 +239,19 @@ async function clearOwnMarks(admin, campaign, appId, keys) {
 // [END campaign-dashboard.clear-marks]
 
 // [START campaign-dashboard.write-marks]
-// Clear before writing. Launching and rewriting become the same operation.
+// Clear before writing. Activating and rewriting become the same operation.
 // Each ID persists as it lands. A retry or a cancel can then finish a partial write.
 export async function writeMarks(admin, campaign, appId, markedAt) {
   // Separate keys hold milestones and incidents, and each marks a day that happened.
   // A rewrite of the base marks keeps them.
   const marks = campaignMarks(campaign);
-  const keys = new Set(marks.map((mark) => mark.key));
+  // A code reassigned since the last write leaves a mark under its old key. Clear it too.
+  const keys = new Set([
+    ...marks.map((mark) => mark.key),
+    ...Object.keys(campaign.markers ?? {}).filter((key) =>
+      key.startsWith(QR_MARK_PREFIX),
+    ),
+  ]);
   const stale = await clearOwnMarks(admin, campaign, appId, keys);
   if (stale.length) {
     return {markers: {}, problems: stale.map((error) => error.message)};
@@ -241,7 +286,7 @@ export async function writeMarks(admin, campaign, appId, markedAt) {
     }
     if (created?.analyticsAnnotation?.id) {
       markers[mark.key] = created.analyticsAnnotation.id;
-      await rememberMarkers(admin, campaign.id, {
+      await rememberMarkers(admin, campaign, {
         [mark.key]: created.analyticsAnnotation.id,
       });
     }
@@ -252,12 +297,13 @@ export async function writeMarks(admin, campaign, appId, markedAt) {
 
 // [START campaign-dashboard.product-metafield]
 export async function stampProducts(admin, campaign) {
+  // The entry's GID. Analytics reads any field on the entry through the reference.
   const metafields = campaign.products.map((product) => ({
     ownerId: product.id,
     namespace: DIMENSION_NAMESPACE,
-    key: 'promoted_by',
-    type: 'single_line_text_field',
-    value: campaign.title,
+    key: 'campaign',
+    type: 'metaobject_reference',
+    value: campaign.gid,
   }));
 
   const userErrors = [];
@@ -308,20 +354,12 @@ export async function stampTier(admin, campaign) {
     })
   ).json();
 
-  const names = await (
-    await admin.graphql(CUSTOMER_NAMES, {variables: {ids}})
-  ).json();
-  return {
-    members: (names.data?.nodes ?? []).filter(Boolean).map((node) => ({
-      id: node.id,
-      displayName: node.displayName,
-    })),
-    userErrors: [
-      ...transportErrors(stamped),
-      ...transportErrors(names),
-      ...(stamped.data?.metafieldsSet?.userErrors ?? []),
-    ],
-  };
+  // The members field holds customer references. The admin shows each name.
+  const userErrors = [
+    ...transportErrors(stamped),
+    ...(stamped.data?.metafieldsSet?.userErrors ?? []),
+  ];
+  return {members: userErrors.length ? [] : ids, userErrors};
 }
 // [END campaign-dashboard.stamp-tier]
 
@@ -365,19 +403,18 @@ export async function stampOrders(admin, campaign) {
 }
 // [END campaign-dashboard.stamp-orders]
 
-// Editable until launch. The target filters on these IDs and the annotation uses the
+// Editable until activation. The target filters on these IDs and the annotation uses the
 // titles.
 export const setProducts = (admin, campaign, products) =>
-  updateCampaign(admin, campaign.id, {products});
+  updateCampaign(admin, campaign, {products});
 
-// Launch turns an amount into a target, and it rejects a zero. Editable
-// until then, or adding products locks a campaign out of launching.
+// Activation turns an amount into a target. A blank amount is no target.
 export const setTargetAmounts = (admin, campaign, amounts) =>
-  updateCampaign(admin, campaign.id, amounts);
+  updateCampaign(admin, campaign, amounts);
 
 // [START campaign-dashboard.audience-edit]
 export const setAudience = (admin, campaign, audience) =>
-  updateCampaign(admin, campaign.id, {audience});
+  updateCampaign(admin, campaign, {audience});
 // [END campaign-dashboard.audience-edit]
 
 // [START campaign-dashboard.close-with-outcome]
@@ -385,7 +422,7 @@ export async function closeCampaign(admin, campaign, text, endedAt) {
   const id = campaign.markers?.campaign;
   // No span means nothing to close. Returning no errors would read as success.
   if (!id) {
-    return [{message: "This campaign has no annotation to close."}];
+    return [{message: 'No campaign annotation to close. Rewrite annotations, then close.'}];
   }
 
   const body = await (
@@ -408,7 +445,7 @@ export async function markMilestone(admin, target, markedAt, money) {
   ).json();
   const actual = progressValue(body.data?.shopifyqlQuery);
   if (actual === null || actual < Number(target.expectedValue)) {
-    return {userErrors: [{message: 'That target has not been reached yet.'}]};
+    return {userErrors: [{message: 'Target not reached yet.'}]};
   }
 
   const created = await (
@@ -417,10 +454,10 @@ export async function markMilestone(admin, target, markedAt, money) {
         input: {
           startedAt: markedAt,
           type: 'revenue_milestone',
-          title: `${target.name} reached`,
-          description: `${target.name} passed its target of ${money(
+          title: clamp(`${target.name} reached`, 75),
+          description: `Reached ${money(actual)} against a ${money(
             Number(target.expectedValue),
-          )} on this day, at ${money(actual)}.`,
+          )} target.`,
         },
       },
     })
@@ -437,7 +474,7 @@ export async function markMilestone(admin, target, markedAt, money) {
 // [START campaign-dashboard.record-mark]
 // Milestones and incidents repeat. Their keys hold what makes them distinct.
 export const recordMark = (admin, campaign, key, id) =>
-  id ? rememberMarkers(admin, campaign.id, {[key]: id}) : null;
+  id ? rememberMarkers(admin, campaign, {[key]: id}) : null;
 // [END campaign-dashboard.record-mark]
 
 // [START campaign-dashboard.flag-incident]
@@ -450,7 +487,7 @@ export async function flagIncident(admin, campaign, appName, markedAt) {
 
   const incident = detectIncident(campaign, funnel, bounces);
   if (!incident) {
-    return {userErrors: [{message: 'Bounces are within the alert threshold.'}]};
+    return {userErrors: [{message: 'No email bounces to flag.'}]};
   }
 
   const body = await (

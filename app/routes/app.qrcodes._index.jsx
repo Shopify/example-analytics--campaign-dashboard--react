@@ -3,15 +3,28 @@ import { boundary } from "@shopify/shopify-app-react-router/server";
 
 import { authenticate } from "../shopify.server";
 import { getQRCodes } from "../models/QRCode.server";
+import { campaignOf, readCampaigns } from "../campaigns.server";
 
 // [START loader]
 export async function loader({ request }) {
   const { admin, session } = await authenticate.admin(request);
-  const qrCodes = await getQRCodes(admin.graphql, session.shop);
+  const [qrCodes, { campaigns }] = await Promise.all([
+    getQRCodes(admin.graphql, session.shop),
+    readCampaigns(admin),
+  ]);
 
+  // [START campaign-dashboard.qr-list-campaign]
+  // The campaign entry holds the link. A failed read lists every code without one.
   return {
-    qrCodes,
+    qrCodes: qrCodes.map((qrCode) => {
+      const campaign = campaignOf(campaigns, qrCode.id);
+      return {
+        ...qrCode,
+        campaign: campaign && { id: campaign.id, title: campaign.title },
+      };
+    }),
   };
+  // [END campaign-dashboard.qr-list-campaign]
 }
 // [END loader]
 
@@ -63,6 +76,7 @@ const QRTable = ({ qrCodes }) => (
       <s-table-header-row>
         <s-table-header listSlot="primary">Title</s-table-header>
         <s-table-header>Product</s-table-header>
+        <s-table-header>Campaign</s-table-header>
         <s-table-header>Date created</s-table-header>
         <s-table-header>Scans</s-table-header>
       </s-table-header-row>
@@ -111,6 +125,15 @@ const QRTableRow = ({ qrCode }) => (
         truncate(qrCode.productTitle)
       )}
       {/* [END deleted] */}
+    </s-table-cell>
+    <s-table-cell>
+      {qrCode.campaign ? (
+        <s-link href={`/app/campaigns/${qrCode.campaign.id}`}>
+          {truncate(qrCode.campaign.title)}
+        </s-link>
+      ) : (
+        "None"
+      )}
     </s-table-cell>
     <s-table-cell>{new Date(qrCode.createdAt).toDateString()}</s-table-cell>
     <s-table-cell>{qrCode.scans}</s-table-cell>

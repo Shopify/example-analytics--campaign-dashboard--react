@@ -1,4 +1,4 @@
-import {tierLabel} from './audiences';
+import {isTargetedTier, tierLabel} from './audiences';
 import {CHANNELS} from './channels';
 
 // Annotation text is merchant-facing. It takes the registry's label.
@@ -19,6 +19,48 @@ export function promotedFilter(campaign) {
 export const promotedNames = (campaign) =>
   (campaign.products ?? []).map((product) => product.title).join(', ');
 // [END campaign-dashboard.promoted-products]
+
+// [START campaign-dashboard.qr-handles]
+// Each code's handle is its utm_campaign. The filter interpolates it, and a merchant
+// can rename a handle in the admin. Only slug characters get through.
+export const qrHandles = (campaign) =>
+  (campaign.qrCodes ?? [])
+    .map((qrCode) => qrCode.handle)
+    .filter((handle) => typeof handle === 'string' && /^[a-z0-9_-]+$/.test(handle));
+
+export const qrHandleFilter = (campaign) => {
+  const handles = qrHandles(campaign).map((handle) => `'${handle}'`);
+  return handles.length ? `utm_campaign IN (${handles.join(', ')})` : null;
+};
+
+// The key holds the handle. A rewrite finds the mark of a code that moved away.
+export const QR_MARK_PREFIX = 'qr:';
+
+const qrCodeOf = (campaign, handle) =>
+  (campaign.qrCodes ?? []).find((qrCode) => qrCode.handle === handle);
+
+export const qrTitle = (campaign, handle) => qrCodeOf(campaign, handle)?.title || handle;
+
+// [START campaign-dashboard.qr-live-on]
+// A code can go live after the campaign starts. A day outside the window falls back
+// to the campaign's first day.
+export function qrLiveOn(campaign, handle) {
+  const day = qrCodeOf(campaign, handle)?.liveOn;
+  return isCalendarDate(day) && day >= campaign.startDate && day <= campaign.endDate
+    ? day
+    : campaign.startDate;
+}
+// [END campaign-dashboard.qr-live-on]
+// [END campaign-dashboard.qr-handles]
+
+export const STATUS_LABELS = {
+  planned: 'Planned',
+  running: 'Active',
+  closed: 'Closed',
+  canceled: 'Canceled',
+};
+
+export const statusLabel = (status) => STATUS_LABELS[status] ?? status;
 
 // `Number('abc')` is NaN, and a bare `<= 0` waves it through.
 export const isPositiveAmount = (value) =>
@@ -138,7 +180,7 @@ export function campaignMarks(campaign) {
       key: 'campaign',
       type: 'campaign',
       title: campaign.title,
-      description: `Ran on ${channels.map(channelLabel).join(', ') || 'no channels'}.`,
+      description: `Runs on ${channels.map(channelLabel).join(', ') || 'no channels'}.`,
       date: campaign.startDate,
       // The only span. Everything else happened at an instant.
       ranged: true,
@@ -147,16 +189,20 @@ export function campaignMarks(campaign) {
       key: 'launch',
       // Defaults to a plain product. `resolveLaunchMark` upgrades it for a bundle.
       type: 'product_launch',
-      title: `${campaign.title} collection on sale`,
-      description: 'The collection went on sale.',
+      title: `${campaign.title} products on sale`,
+      description: 'Promoted products go on sale.',
       date: campaign.startDate,
     },
     {
       key: 'vip',
       // The closest documented type. The text names the tier.
       type: 'loyalty_program_offer',
-      title: `Early access for ${tier}`,
-      description: `${tier} shopped it first.`,
+      title: isTargetedTier(campaign.audience)
+        ? `Early access for ${tier}`
+        : `Early access for ${campaign.title}`,
+      description: isTargetedTier(campaign.audience)
+        ? `${tier} customers get early access.`
+        : 'All customers get early access.',
       date: withinWindow(campaign, 1),
     },
     ...(creators.length
@@ -170,8 +216,8 @@ export function campaignMarks(campaign) {
             title: `Influencer drop for ${campaign.title}`,
             description:
               creators.length === 1
-                ? `${creators[0]} posted with a discount code of their own.`
-                : `${nameList(creators)} posted, each with a discount code of their own.`,
+                ? `${creators[0]} posted a personal discount code.`
+                : `${nameList(creators)} each posted a personal discount code.`,
             date: withinWindow(campaign, 11),
           },
         ]
@@ -184,17 +230,26 @@ export function campaignMarks(campaign) {
       description: 'Buy two, get one free.',
       date: withinWindow(campaign, 8),
     },
+    // One per assigned code, on the day it goes live.
+    ...qrHandles(campaign).map((handle) => ({
+      key: `${QR_MARK_PREFIX}${handle}`,
+      type: 'campaign',
+      label: 'QR code live',
+      title: `${qrTitle(campaign, handle)} QR code for ${campaign.title}`,
+      description: `Sales from this code's scans count toward ${campaign.title}.`,
+      date: qrLiveOn(campaign, handle),
+    })),
   ];
 
   // The events report `SEQUENCE`. Both the day and the name come from it.
   // A mark named for a send that never went out reads as that send on the chart.
   const sends = {
-    email: {offset: 0, title: 'Announcement', did: 'Opened the campaign for'},
-    push: {offset: 5, title: 'App exclusive', did: 'Went to the app for'},
-    sms: {offset: 13, title: 'Final hours', did: 'Closed the campaign for'},
+    email: {offset: 0, title: 'Announcement', did: 'Email announcement to'},
+    push: {offset: 5, title: 'App exclusive', did: 'Push to'},
+    sms: {offset: 13, title: 'Final hours', did: 'Final SMS to'},
   };
   for (const channel of channels) {
-    const send = sends[channel] ?? {offset: 0, title: channelLabel(channel), did: 'Went to'};
+    const send = sends[channel] ?? {offset: 0, title: channelLabel(channel), did: 'Sent to'};
     marks.push({
       key: channel,
       type: 'campaign',

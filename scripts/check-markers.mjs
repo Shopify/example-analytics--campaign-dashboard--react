@@ -3,7 +3,8 @@ import {join} from 'node:path';
 
 // Each start/end pair below names an excerpt the tutorial pulls out of this repo. Moving
 // one half out of its pair breaks that excerpt on shopify.dev, with nothing there to
-// catch it. Skip this file, because the pattern matches itself.
+// catch it. A tag can repeat in a file, and the excerpt joins the pairs. Skip this
+// file, because the pattern matches itself.
 const SKIP = new Set([
   'node_modules',
   '.git',
@@ -24,6 +25,7 @@ function walk(dir) {
 }
 
 const counts = new Map();
+const tags = new Set();
 for (const path of walk('.')) {
   let text;
   try {
@@ -32,19 +34,21 @@ for (const path of walk('.')) {
     continue;
   }
   for (const [, kind, tag] of text.matchAll(TAG)) {
-    const seen = counts.get(tag) ?? {START: 0, END: 0};
+    const key = `${path}: ${tag}`;
+    const seen = counts.get(key) ?? {START: 0, END: 0};
     seen[kind] += 1;
-    counts.set(tag, seen);
+    counts.set(key, seen);
+    tags.add(tag);
   }
 }
 
 const broken = [...counts.entries()].filter(
-  ([, seen]) => seen.START !== 1 || seen.END !== 1,
+  ([, seen]) => seen.START !== seen.END,
 );
 
-for (const [tag, seen] of broken) {
-  console.error(`${tag}: ${seen.START} START, ${seen.END} END`);
+for (const [key, seen] of broken) {
+  console.error(`${key}: ${seen.START} START, ${seen.END} END`);
 }
 
-console.log(`${counts.size} tags, ${broken.length} broken`);
+console.log(`${tags.size} tags, ${broken.length} broken`);
 process.exit(broken.length ? 1 : 0);

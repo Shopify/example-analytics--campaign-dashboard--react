@@ -31,13 +31,14 @@ export function exploreLink(query) {
 }
 
 // The same query the sales chart draws, so the report opens on the chart the
-// merchant just saw.
+// merchant just saw, targets included.
 export function exploreQuery({window, types}) {
   return [
     'FROM sales',
     'SHOW total_sales, orders',
     'TIMESERIES day',
     window,
+    'COMPARE TO TARGETS',
     'VISUALIZE total_sales TYPE bar, orders TYPE line',
     `ANNOTATE ${annotateClause(types)}`,
   ].join('\n');

@@ -36,7 +36,8 @@ import {
   runOptional,
   salesQuery,
   sequenceQuery,
-  targetsQuery,
+  readTargets,
+  targetNodes,
   tierSalesQuery,
   touchSalesQuery,
 } from '../campaign-queries.server';
@@ -48,8 +49,11 @@ import {
   productId,
   promotedFilter,
   promotedNames,
+  qrHandleFilter,
+  qrHandles,
   safeLocale,
   shopMorning,
+  statusLabel,
 } from '../campaigns';
 import {CHANNELS} from '../channels';
 import {getQRCode} from '../models/QRCode.server';
@@ -68,6 +72,7 @@ import {
   closeCampaign,
   createAudienceTarget,
   createProductTarget,
+  createQrTargets,
   createStoreTarget,
   endTargetsOn,
   flagIncident,
@@ -144,7 +149,7 @@ export async function loader({request, params}) {
     qrSales,
   ] = await Promise.all([
     admin.graphql(salesQuery(campaign)).then((response) => response.json()),
-    runIfSupported(admin, targetsQuery(campaign)),
+    readTargets(admin, campaign).catch(() => ({data: null})),
     runIfSupported(admin, annotationsQuery(campaign)),
     runOptional(admin, appEventsQuery(campaign, appName)),
     runOptional(admin, sequenceQuery(campaign, appName)),
@@ -165,8 +170,10 @@ export async function loader({request, params}) {
     codeFilter(campaign)
       ? runOptional(admin, codeSalesQuery(campaign, codeFilter(campaign)))
       : emptyTable(),
-    // utm_medium is built in. The QR app writes it, the store reports it.
-    runOptional(admin, qrSalesQuery(campaign)),
+    // utm_campaign is built in. Each assigned code's handle is its value.
+    qrHandleFilter(campaign)
+      ? runOptional(admin, qrSalesQuery(campaign, qrHandleFilter(campaign)))
+      : emptyTable(),
   ]);
 
   // [START campaign-dashboard.parse-errors]
@@ -175,7 +182,7 @@ export async function loader({request, params}) {
   const sales = salesBody.data?.shopifyqlQuery;
   const fatal = !sales
     ? (salesBody.errors?.[0]?.message ??
-      'shopifyqlQuery returned no data. Check the read_reports scope and Level 2 protected customer data access.')
+      'The sales query returned no data. Check the read_reports scope and Level 2 protected customer data access.')
     : sales.parseErrors?.length
       ? sales.parseErrors.join(' ')
       : null;
@@ -188,9 +195,9 @@ export async function loader({request, params}) {
   // plans the campaign, ready to print.
   const qrCodes = (
     await Promise.all(
-      (campaign.qrCodes ?? []).map((handle) =>
-        getQRCode(handle, admin.graphql, session.shop),
-      ),
+      campaign.qrCodes
+        .filter((qrCode) => qrCode.handle)
+        .map((qrCode) => getQRCode(qrCode.handle, admin.graphql, session.shop)),
     )
   ).filter(Boolean);
 
@@ -268,18 +275,18 @@ export async function action({request, params}) {
     day: '2-digit',
   }).format(new Date());
 
-  // Both edits move what a launched target filters on. Gate on the record's status,
+  // Both edits move what an active campaign's target filters on. Gate on the record's status,
   // the same field the panel reads before it offers the control.
   if (intent === 'set-products' || intent === 'set-audience') {
     if (campaign.status !== 'planned') {
-      return {problems: ['Only a planned campaign can change this.']};
+      return {problems: ['Only planned campaigns can change products or segment.']};
     }
   }
 
   if (intent === 'set-products') {
     const products = parseProducts(form.get('products'));
     if (products === null) {
-      return {problems: ['Could not read the product selection.']};
+      return {problems: ["Couldn't read the selected products. Select them again."]};
     }
     const {userErrors} = await setProducts(admin, campaign, products);
     if (userErrors.length) {
@@ -293,7 +300,7 @@ export async function action({request, params}) {
     // The tier becomes a ShopifyQL comparison and a target filter, both built as
     // strings. Only a value this app defines can reach them.
     if (!AUDIENCE_TIERS.some((tier) => tier.value === audience)) {
-      return {problems: ['Pick a customer segment from the list.']};
+      return {problems: ['Select a customer segment.']};
     }
     const {userErrors} = await setAudience(admin, campaign, audience);
     if (userErrors.length) {
@@ -304,19 +311,18 @@ export async function action({request, params}) {
 
   if (intent === 'set-targets') {
     const amounts = {};
-    // The form renders a field only for a target this campaign can launch, and a
+    // The form renders a field only for a target this campaign can activate, and a
     // segment of everyone has no segment target. Validate what came in, and leave
-    // an absent amount at its saved value.
-    for (const key of ['revenueTarget', 'productTarget', 'audienceTarget']) {
+    // an absent amount at its saved value. A blank amount clears the target.
+    for (const key of ['revenueTarget', 'productTarget', 'audienceTarget', 'qrTarget']) {
       if (!form.has(key)) continue;
       const value = String(form.get(key)).trim();
-      if (!/^\d+(\.\d{1,2})?$/.test(value)) {
-        return {problems: ['Enter each target amount as a number, such as 5000.']};
+      if (value && !(/^\d+(\.\d{1,2})?$/.test(value) && isPositiveAmount(value))) {
+        return {
+          problems: ['Enter a target above zero, or leave it blank.'],
+        };
       }
       amounts[key] = value;
-    }
-    if (!Object.keys(amounts).length) {
-      return {problems: ['Enter a target amount.']};
     }
     const {userErrors} = await setTargetAmounts(admin, campaign, amounts);
     if (userErrors.length) {
@@ -329,7 +335,7 @@ export async function action({request, params}) {
   if (intent === 'send-events') {
     // A planned campaign would date its sends in the future.
     if (campaign.status !== 'running') {
-      return {problems: ['Only a running campaign can send its events.']};
+      return {problems: ['Only active campaigns can send events.']};
     }
     // Shopify never deletes an accepted event, and the funnel queries sum every
     // event this app sent for the campaign. A second replay would sum both runs into one funnel and
@@ -338,14 +344,14 @@ export async function action({request, params}) {
     if (campaign.sentEvents) {
       return {
         problems: [
-          'This campaign already sent its events. Create a new campaign to send another run.',
+          'Events already sent. Create a new campaign to send them again.',
         ],
       };
     }
     if (!funnelFitsWindow(campaign.startDate, campaign.endDate, timeZone)) {
       return {
         problems: [
-          'This campaign ends before the two-week send schedule does. Extend the end date to at least 14 days after the start.',
+          'The send schedule runs 14 days. Set the end date at least 14 days after the start date.',
         ],
       };
     }
@@ -354,9 +360,9 @@ export async function action({request, params}) {
     const lastSend = funnelWindowEnd(campaign.startDate, timeZone);
     if (lastSend > Date.now()) {
       const day = new Date(lastSend).toISOString().slice(0, 10);
-      return {problems: [`Wait until ${day}, when this campaign's last send lands.`]};
+      return {problems: [`Send events on or after ${day}.`]};
     }
-    if (!shopId) return {problems: ['Could not read the store ID.']};
+    if (!shopId) return {problems: ["Couldn't read the store ID. Reload and try again."]};
     const {accepted, failures} = await sendCampaignFunnel({
       shopId,
       campaignId: campaign.id,
@@ -369,7 +375,7 @@ export async function action({request, params}) {
     // only 24 hours, and an unrecorded partial send would leave this gate open to
     // a duplicate run after they expire.
     if (sent > 0) {
-      const {userErrors} = await updateCampaign(admin, campaign.id, {sentEvents: sent});
+      const {userErrors} = await updateCampaign(admin, campaign, {sentEvents: sent});
       if (userErrors.length) {
         return {problems: [...failures, ...userErrors.map((error) => error.message)]};
       }
@@ -379,35 +385,14 @@ export async function action({request, params}) {
   }
   // [END campaign-dashboard.send-events-action]
 
-  // Read by the launch and close branches below.
+  // Read by the activate and close branches below.
   const dimensions = await readDimensions(admin, appId);
 
-  if (intent === 'launch') {
+  if (intent === 'activate') {
     // Gate on the record's status. A target the user set on the same date isn't
-    // evidence that this campaign launched.
+    // evidence that this campaign is active.
     if (campaign.status !== 'planned') {
-      return {problems: ['This campaign has already been launched.']};
-    }
-
-    // Checked against the condition that creates each target.
-    const unset = [];
-    if (!isPositiveAmount(campaign.revenueTarget)) unset.push('store-wide revenue');
-    if (promotedFilter(campaign) && !isPositiveAmount(campaign.productTarget)) {
-      unset.push('promoted product');
-    }
-    if (
-      isTargetedTier(campaign.audience) &&
-      dimensions.customer?.enabled &&
-      !isPositiveAmount(campaign.audienceTarget)
-    ) {
-      unset.push(`${tierLabel(campaign.audience)} segment`);
-    }
-    if (unset.length) {
-      return {
-        problems: unset.map(
-          (goal) => `Set the ${goal} target above zero before launching.`,
-        ),
-      };
+      return {problems: ['This campaign is already active.']};
     }
 
     const {markers, problems: unmarked} = await writeMarks(
@@ -418,7 +403,7 @@ export async function action({request, params}) {
     );
     if (unmarked.length) return {problems: unmarked};
 
-    // A launch that failed past this point left its IDs on the record. Reuse them,
+    // An activation that failed past this point left its IDs on the record. Reuse them,
     // or the retry creates a second set the app can never reach.
     const targets = {...(campaign.targets ?? {})};
     const rejected = [];
@@ -436,12 +421,15 @@ export async function action({request, params}) {
         if (result.id) targets[key] = result.id;
         rejected.push(...result.userErrors);
       }
+      const qr = await createQrTargets(admin, campaign);
+      Object.assign(targets, qr.targets);
+      rejected.push(...qr.userErrors);
 
       // Save the IDs before the stamps run, and delete what was created if that
       // write fails.
       const created = Object.values(targets);
       if (created.length) {
-        const {userErrors: unsaved} = await updateCampaign(admin, campaign.id, {
+        const {userErrors: unsaved} = await updateCampaign(admin, campaign, {
           targets,
         });
         if (unsaved.length) {
@@ -453,7 +441,7 @@ export async function action({request, params}) {
 
     const unstamped = await stampProducts(admin, campaign);
     const {members, userErrors: untiered} = await stampTier(admin, campaign);
-    const {userErrors} = await updateCampaign(admin, campaign.id, {
+    const {userErrors} = await updateCampaign(admin, campaign, {
       status: 'running',
       markers,
       targets,
@@ -463,7 +451,7 @@ export async function action({request, params}) {
       return {problems: userErrors.map((error) => error.message)};
     }
 
-    // A rejected target or stamp is a warning beside a launch that went through.
+    // A rejected target or stamp is a warning beside an activation that went through.
     const problems = [...rejected, ...unstamped, ...untiered].map(
       (error) => error.message,
     );
@@ -477,7 +465,7 @@ export async function action({request, params}) {
     // Closing moved the span's `endedAt` off null and put the outcome in the title.
     // Rewriting reopens that span. Offered while the campaign runs.
     if (campaign.status !== 'running') {
-      return {problems: ['Only a running campaign can be rewritten.']};
+      return {problems: ['Only active campaigns can rewrite annotations.']};
     }
     const {markers, problems} = await writeMarks(
       admin,
@@ -487,7 +475,7 @@ export async function action({request, params}) {
     );
     if (problems.length) return {problems};
 
-    const {userErrors} = await updateCampaign(admin, campaign.id, {markers});
+    const {userErrors} = await updateCampaign(admin, campaign, {markers});
     return userErrors.length
       ? {problems: userErrors.map((error) => error.message)}
       : {ok: true, rewrote: Object.keys(markers).length};
@@ -495,16 +483,14 @@ export async function action({request, params}) {
   // [END campaign-dashboard.rewrite-marks]
 
   if (intent === 'raise-target') {
-    // Targets exist from launch to close. Raising one after the outcome measured it
+    // Targets exist from activation to close. Raising one after the outcome measured it
     // would leave the recorded result and the target disagreeing.
     if (campaign.status !== 'running') {
-      return {problems: ['Only a running campaign can raise a target.']};
+      return {problems: ['Only active campaigns can raise targets.']};
     }
-    const targetsBody = await (
-      await admin.graphql(targetsQuery(campaign))
-    ).json();
+    const targetsBody = await readTargets(admin, campaign);
     const target = recordedTarget(campaign, targetsBody, form.get('targetId'));
-    if (!target?.shopifyqlQuery) return {problems: ['That target cannot be measured.']};
+    if (!target?.shopifyqlQuery) return {problems: ["Couldn't measure this target."]};
 
     const measured = await (
       await admin.graphql(measureQuery(target.shopifyqlQuery))
@@ -512,7 +498,7 @@ export async function action({request, params}) {
     const actual = progressValue(measured.data?.shopifyqlQuery);
     // A raise is permanent. An unmeasured target would move the goal to the floor.
     if (actual === null) {
-      return {problems: ['This target came back unmeasured. Reload and raise it again.']};
+      return {problems: ["Couldn't measure this target. Reload and try again."]};
     }
     const userErrors = await raiseTarget(admin, {...target, actual});
     if (userErrors.length) {
@@ -523,12 +509,10 @@ export async function action({request, params}) {
 
   if (intent === 'milestone') {
     if (campaign.status !== 'running') {
-      return {problems: ['Only a running campaign can mark a milestone.']};
+      return {problems: ['Only active campaigns can mark milestones.']};
     }
     const day = String(form.get('day'));
-    const targetsBody = await (
-      await admin.graphql(targetsQuery(campaign))
-    ).json();
+    const targetsBody = await readTargets(admin, campaign);
     const target = recordedTarget(campaign, targetsBody, form.get('targetId'));
     if (!target) return {problems: ['That target no longer exists.']};
 
@@ -536,7 +520,7 @@ export async function action({request, params}) {
     // on the timeline with nothing pointing at it.
     const key = `milestone:${productId(target.id)}:${day}`;
     if (campaign.markers?.[key]) {
-      return {problems: ['That day is already marked for this target.']};
+      return {problems: ['This target already has a milestone for this day.']};
     }
 
     const result = await markMilestone(admin, target, markedAt(day), money);
@@ -559,11 +543,11 @@ export async function action({request, params}) {
 
   if (intent === 'flag-incident') {
     if (campaign.status !== 'running') {
-      return {problems: ['Only a running campaign can flag an incident.']};
+      return {problems: ['Only active campaigns can flag incidents.']};
     }
     const day = String(form.get('day'));
     if (campaign.markers?.[`incident:${day}`]) {
-      return {problems: ['That day already has an incident flagged.']};
+      return {problems: ['An incident is already flagged for this day.']};
     }
 
     const result = await flagIncident(admin, campaign, appName, markedAt(day));
@@ -587,7 +571,10 @@ export async function action({request, params}) {
     // again would rewrite it. The status write lands last, and a failed attempt
     // stays retryable.
     if (campaign.status !== 'running') {
-      return {problems: ['Only a running campaign can be closed.']};
+      return {problems: ['You can close only active campaigns.']};
+    }
+    if (shopToday < campaign.startDate) {
+      return {problems: ["This campaign hasn't started. Cancel it instead."]};
     }
     // A campaign can close before its window runs out. Everything below reads the
     // window that ran.
@@ -608,30 +595,34 @@ export async function action({request, params}) {
     const [funnel, sequenceTable, targetsBody] = await Promise.all([
       runOptional(admin, appEventsQuery(closing, appName)),
       runOptional(admin, sequenceQuery(closing, appName)),
-      admin.graphql(targetsQuery(closing)).then((response) => response.json()),
+      readTargets(admin, closing),
     ]);
 
     // A failed read returns no nodes, the same shape as a deleted target. Closing
     // is permanent. Only the deleted case is allowed through.
     if (targetsBody.errors?.length) {
-      return {problems: ['The targets read failed. Reload and close it again.']};
+      return {problems: ["Couldn't read targets. Reload and close the campaign again."]};
     }
 
-    // The ID the launch recorded. A target the user made on the same date
+    // The ID activation recorded. A target the user made on the same date
     // measures the same days without being this campaign's.
-    const store = (targetsBody.data?.analyticsTargets?.nodes ?? []).find(
+    const store = targetNodes(targetsBody).find(
       (node) => node.id === campaign.targets?.store,
     );
-    const measured = store?.shopifyqlQuery
-      ? await (await admin.graphql(measureQuery(store.shopifyqlQuery))).json()
-      : null;
-    const measurement = progressValue(measured?.data?.shopifyqlQuery);
-    // Closing is permanent, and a failed read would record the campaign at zero. A
-    // target that no longer exists never measures. Closing stays available.
-    if (measured && measurement === null) {
-      return {problems: ['This target came back unmeasured. Reload and close it again.']};
+    // Targets are optional. Without one, measure the window's sales directly.
+    const measured = await (
+      await admin.graphql(
+        measureQuery(
+          store?.shopifyqlQuery ??
+            `FROM sales SHOW total_sales SINCE ${closing.startDate} UNTIL ${closedOn}`,
+        ),
+      )
+    ).json();
+    const revenue = progressValue(measured.data?.shopifyqlQuery);
+    // Closing is permanent, and a failed read would record the campaign at zero.
+    if (revenue === null) {
+      return {problems: ["Couldn't measure sales. Reload and close the campaign again."]};
     }
-    const revenue = measurement ?? 0;
 
     const text = outcomeText({
       campaign: closing,
@@ -658,7 +649,7 @@ export async function action({request, params}) {
       return {problems: unattributed.map((error) => error.message)};
     }
 
-    const {userErrors} = await updateCampaign(admin, campaign.id, {
+    const {userErrors} = await updateCampaign(admin, campaign, {
       status: 'closed',
       endDate: closedOn,
     });
@@ -672,7 +663,7 @@ export async function action({request, params}) {
     // A closed campaign keeps its outcome on the store's charts. A cancel only takes
     // down a planned or running one.
     if (campaign.status !== 'planned' && campaign.status !== 'running') {
-      return {problems: ['Only a planned or running campaign can be canceled.']};
+      return {problems: ['You can cancel only planned or active campaigns.']};
     }
     // Only the IDs on the record. `analyticsTargetsDelete` deletes any target on the
     // shop, including the targets the user set. Each ID drops off the record as its delete lands.
@@ -709,7 +700,7 @@ export async function action({request, params}) {
     // Clearing the record on a failed delete abandons what's still on the timeline. The
     // IDs are the only handle the app has on it.
     if (undone.length) {
-      const {userErrors} = await updateCampaign(admin, campaign.id, {
+      const {userErrors} = await updateCampaign(admin, campaign, {
         markers,
         targets,
       });
@@ -717,7 +708,7 @@ export async function action({request, params}) {
     }
 
     // Canceling undoes the annotations and the targets, and nothing else.
-    const {userErrors} = await updateCampaign(admin, campaign.id, {
+    const {userErrors} = await updateCampaign(admin, campaign, {
       status: 'canceled',
       markers: {},
       targets: {},
@@ -729,14 +720,14 @@ export async function action({request, params}) {
   }
 
   if (intent === 'replan') {
-    // Launching records new target IDs over the old ones. Replanning a live campaign
+    // Activating records new target IDs over the old ones. Replanning a live campaign
     // would leave its targets on the store with nothing pointing at them.
     if (campaign.status !== 'canceled') {
-      return {problems: ['Only a canceled campaign can be planned again.']};
+      return {problems: ['You can replan only canceled campaigns.']};
     }
     // Canceling already took everything off the store, leaving the same state a
     // planned campaign is in.
-    const {userErrors} = await updateCampaign(admin, campaign.id, {status: 'planned'});
+    const {userErrors} = await updateCampaign(admin, campaign, {status: 'planned'});
     if (userErrors.length) {
       return {problems: userErrors.map((error) => error.message)};
     }
@@ -749,14 +740,14 @@ export async function action({request, params}) {
     if (campaign.status !== 'canceled') {
       return {problems: ['Only a canceled campaign can be deleted.']};
     }
-    const {userErrors} = await deleteCampaign(admin, campaign.id);
+    const {userErrors} = await deleteCampaign(admin, campaign);
     if (userErrors.length) {
       return {problems: userErrors.map((error) => error.message)};
     }
     return redirect('/app/campaigns');
   }
 
-  return {problems: [`Unknown intent: ${intent}`]};
+  return {problems: ['Unknown action.']};
 }
 // [END campaign-dashboard.lifecycle]
 
@@ -766,7 +757,7 @@ function Unavailable({reason, heading}) {
   if (!reason) return null;
   const note = (
     <s-banner tone="info">
-      <s-paragraph>This store didn't return it: {reason}</s-paragraph>
+      <s-paragraph>Data unavailable: {reason}</s-paragraph>
     </s-banner>
   );
   return heading ? <s-section heading={heading}>{note}</s-section> : note;
@@ -788,7 +779,7 @@ export default function CampaignDashboard() {
     return (
       <s-page heading={campaign.title}>
         <s-section>
-          <s-banner tone="critical" heading="The sales query didn't run">
+          <s-banner tone="critical" heading="Couldn't load sales">
             <s-paragraph>{fatal}</s-paragraph>
           </s-banner>
         </s-section>
@@ -878,11 +869,16 @@ export default function CampaignDashboard() {
     appId,
   });
 
-  // The same conditions the launch applies.
+  // The same conditions activation applies. A blank amount is no target.
   const plannedTargetCount =
-    1 +
-    (campaign.products.length > 0 ? 1 : 0) +
-    (isTargetedTier(campaign.audience) && dimensions.customer.enabled ? 1 : 0);
+    (isPositiveAmount(campaign.revenueTarget) ? 1 : 0) +
+    (promotedFilter(campaign) && isPositiveAmount(campaign.productTarget) ? 1 : 0) +
+    (isTargetedTier(campaign.audience) &&
+    dimensions.customer.enabled &&
+    isPositiveAmount(campaign.audienceTarget)
+      ? 1
+      : 0) +
+    (isPositiveAmount(campaign.qrTarget) ? qrHandles(campaign).length : 0);
 
   const cardQuery = metricCardQuery(range);
 
@@ -976,7 +972,7 @@ export default function CampaignDashboard() {
   // These panels report on annotations and targets a cancel already deleted.
   const canceled = campaign.status === 'canceled';
 
-  // Beside the store's totals on a launched campaign, alone before one.
+  // Beside the store's totals on an active campaign, and on its own before one.
   const statusLine = (
     <s-stack direction="inline" gap="base" alignItems="center">
       <s-badge
@@ -989,7 +985,7 @@ export default function CampaignDashboard() {
           }[campaign.status]
         }
       >
-        {campaign.status}
+        {statusLabel(campaign.status)}
       </s-badge>
       <s-text color="subdued">
         {shortDate(campaign.startDate)} to {shortDate(campaign.endDate)}
@@ -1024,10 +1020,10 @@ export default function CampaignDashboard() {
 
   const markNote =
     !planned && ours.length === 0
-      ? "This campaign has no annotations in the store's analytics."
+      ? 'No annotations for this campaign.'
       : ours.length > marks.length
-        ? `${ours.length - marks.length} annotations are left over from earlier ` +
-          `marks on this campaign. Rewriting replaces them with the current ${marks.length}.`
+        ? `${ours.length - marks.length} annotations are outdated. ` +
+          `Rewriting replaces them with the current ${marks.length}.`
         : null;
 
   return (
@@ -1038,8 +1034,8 @@ export default function CampaignDashboard() {
             tone={partial ? 'warning' : 'critical'}
             heading={
               partial
-                ? "Some of that didn't go through"
-                : "That didn't go through"
+                ? 'Completed with warnings'
+                : 'Action failed'
             }
           >
             <s-unordered-list>
@@ -1052,18 +1048,18 @@ export default function CampaignDashboard() {
       )}
 
       {/* [START campaign-dashboard.status-render] */}
-      {/* Before a launch there are no totals to sit beside. Launch and Cancel are
-          the only actions, so they share the top of the page. */}
+      {/* Before activation there are no totals to sit beside. Activate and Cancel
+          are the only actions, and they share the top of the page. */}
       {planned && (
         <s-section>
           <s-stack direction="block" gap="base">
             {statusLine}
             <s-stack direction="inline" gap="base">
-              <s-button variant="primary" loading={busy} onClick={() => submit('launch')}>
-                Launch the campaign
+              <s-button variant="primary" loading={busy} onClick={() => submit('activate')}>
+                Activate campaign
               </s-button>
               <s-button tone="critical" loading={busy} onClick={() => submit('cancel')}>
-                Cancel the campaign
+                Cancel campaign
               </s-button>
             </s-stack>
           </s-stack>
@@ -1073,30 +1069,30 @@ export default function CampaignDashboard() {
 
       {planned && (
         <Fragment>
-          {/* Everything the launch will write, listed before it writes it. */}
+          {/* Everything activation writes, listed before it writes it. */}
           <s-section heading="Campaign setup">
             <div style={{height: '12px'}} />
-            <s-paragraph>Launch writes three things to the store:</s-paragraph>
+            <s-paragraph>Activation creates:</s-paragraph>
             <s-unordered-list>
               <s-list-item>
-                {marks.length} annotations to the store's analytics. One spans
-                the campaign's run.
+                {marks.length} annotations. One covers the full campaign
+                dates.
               </s-list-item>
               <s-list-item>
                 {plannedTargetCount} analytics{' '}
-                {plannedTargetCount === 1 ? 'target' : 'targets'} for{' '}
-                {shortDate(campaign.startDate)} to {shortDate(campaign.endDate)}.
+                {plannedTargetCount === 1 ? 'target' : 'targets'} through{' '}
+                {shortDate(campaign.endDate)}.
               </s-list-item>
               <s-list-item>
-                A <s-text>promoted_by</s-text> stamp on{' '}
+                A campaign metafield on{' '}
                 {campaign.products.length === 0
                   ? 'the products you select'
                   : `${campaign.products.length} ${
                       campaign.products.length === 1 ? 'product' : 'products'
                     }`}
                 {isTargetedTier(campaign.audience)
-                  ? ` and a tier tag on each ${tierLabel(campaign.audience)} customer.`
-                  : '. The segment is the whole store.'}
+                  ? ` and a segment metafield on each ${tierLabel(campaign.audience)} customer.`
+                  : '. The Everyone segment needs no customer metafields.'}
               </s-list-item>
             </s-unordered-list>
 
@@ -1105,7 +1101,7 @@ export default function CampaignDashboard() {
             <s-stack direction="block" gap="small-200">
               <s-text>
                 Promoted products:{' '}
-                {promotedNames(campaign) || 'none selected yet'}
+                {promotedNames(campaign) || 'None selected'}
               </s-text>
               <s-stack direction="inline" gap="base">
                 <s-button loading={busy} onClick={changeProducts}>
@@ -1131,23 +1127,22 @@ export default function CampaignDashboard() {
           </s-section>
 
           {/* [START campaign-dashboard.qr-setup-render] */}
-          <s-section heading="QR code">
+          <s-section heading="QR codes">
             <div style={{height: '12px'}} />
             {(qrCodes ?? []).length > 0 ? (
               <s-stack direction="block" gap="base">
                 <s-text>
-                  Print the code, or scan it from the screen. Scans land on
-                  the code's product with the campaign's UTM parameters, and
-                  the QR code sales panel reports the orders shoppers place
-                  after scanning.
+                  Print the code or scan it from the screen. Each scan opens
+                  the storefront with the code's UTM parameters. QR code sales
+                  reports orders placed after a scan.
                 </s-text>
                 {qrCodes.map((code) => (
                   <s-stack key={code.handle} direction="block" gap="small-200">
                     {code.productTitle && (
                       <s-text>
-                        This QR code opens the {code.productTitle} product
-                        page where a customer can add it to their cart or buy
-                        now.
+                        {code.destination === 'cart'
+                          ? `Opens checkout with ${code.productTitle} in the cart.`
+                          : `Opens the ${code.productTitle} product page.`}
                       </s-text>
                     )}
                     <s-stack
@@ -1158,10 +1153,10 @@ export default function CampaignDashboard() {
                       <s-image
                         aspectRatio="1/1"
                         src={code.image}
-                        alt={`The QR code for ${campaign.title}`}
+                        alt={`QR code for ${campaign.title}`}
                       />
                       <s-link href={`/app/qrcodes/${code.handle}`}>
-                        Manage this code
+                        Edit QR code
                       </s-link>
                     </s-stack>
                   </s-stack>
@@ -1169,26 +1164,34 @@ export default function CampaignDashboard() {
               </s-stack>
             ) : (
               <s-text>
-                This campaign has no QR code. Create one on the{' '}
-                <s-link href="/app/qrcodes/new">QR codes page</s-link> with
-                the campaign's name, and while the campaign runs the QR code
-                sales panel reports the orders shoppers place after scanning.
+                No QR codes. QR code sales reports orders placed after a scan.
               </s-text>
+            )}
+            {/* Codes join a campaign before activation. */}
+            {campaign.status === 'planned' && (
+              <>
+                <div style={{height: '12px'}} />
+                <s-link
+                  href={`/app/qrcodes/new?campaign=${encodeURIComponent(campaign.gid)}`}
+                >
+                  Create a QR code for this campaign
+                </s-link>
+              </>
             )}
           </s-section>
           {/* [END campaign-dashboard.qr-setup-render] */}
 
-          {/* Each amount becomes a target at launch, and launch rejects a zero. */}
+          {/* Each amount becomes a target at activation. A blank one is no target. */}
           <form onSubmit={saveTargets}>
             <s-section heading="Targets">
               <div style={{height: '12px'}} />
               <s-stack direction="block" gap="base">
                 <s-money-field
-                  label="Store-wide revenue target"
+                  label="Store sales target"
                   name="revenueTarget"
                   value={campaign.revenueTarget}
                   min={0}
-                  details="Measured on total sales."
+                  details="Measures total sales. Leave blank for no target."
                 />
                 <s-money-field
                   label="Promoted product target"
@@ -1206,6 +1209,13 @@ export default function CampaignDashboard() {
                     details={`Sales to the ${tierLabel(campaign.audience)} segment`}
                   />
                 )}
+                <s-money-field
+                  label="QR code target"
+                  name="qrTarget"
+                  value={campaign.qrTarget}
+                  min={0}
+                  details="Creates one target for each assigned QR code. Each target measures attributed sales."
+                />
                 <s-button variant="primary" type="submit" loading={busy}>
                   Save targets
                 </s-button>
@@ -1215,7 +1225,7 @@ export default function CampaignDashboard() {
         </Fragment>
       )}
 
-      {/* A campaign that hasn't launched has nothing attributed to it. Reporting the
+      {/* A planned or canceled campaign has nothing attributed to it. Reporting the
           store's sales for its window would read as a result the campaign produced. */}
       {!planned && !canceled && (
         <Fragment>
@@ -1376,7 +1386,7 @@ export default function CampaignDashboard() {
       >
         {campaign.status === 'canceled' && (
           <s-button tone="critical" loading={busy} onClick={() => submit('delete')}>
-            Delete the campaign
+            Delete campaign
           </s-button>
         )}
       </CampaignLifecycle>
@@ -1392,11 +1402,11 @@ export function ErrorBoundary() {
   return (
     <s-page heading="Campaign">
       <s-section>
-        <s-banner tone="critical" heading="This campaign didn't load">
+        <s-banner tone="critical" heading="Couldn't load campaign">
           <s-paragraph>{String(detail)}</s-paragraph>
         </s-banner>
         <s-box paddingBlockStart="base">
-          <s-link href="/app/campaigns">Back to the campaign list</s-link>
+          <s-link href="/app/campaigns">Back to campaigns</s-link>
         </s-box>
       </s-section>
     </s-page>

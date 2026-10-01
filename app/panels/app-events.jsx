@@ -121,28 +121,28 @@ export function SendEventsPanel({
       />
       {blocked ? (
         <s-banner tone="info">
-          <s-paragraph>This store can't query App Events yet: {blocked}</s-paragraph>
+          <s-paragraph>App Events unavailable: {blocked}</s-paragraph>
         </s-banner>
       ) : (
         <Fragment>
           <s-paragraph>
-            Replay this campaign's sends as App Events. Its {sendCount} sends produce{' '}
-            {eventTotal} events at one request each. Expect a minute or two.
+            Send events to replay {sendCount} sends as {eventTotal} App Events.
+            Sending takes a minute or two.
           </s-paragraph>
           <s-paragraph>
-            Shopify accepts an event before it ingests it. The funnels stay empty for a
-            few minutes after this finishes. Reload the page then.
+            Channel metrics appear a few minutes after sending. Reload the page to
+            see them.
           </s-paragraph>
           {typeof sentEvents === 'number' && (
             <s-banner tone="success">
               <s-paragraph>
-                {integer(sentEvents)} events accepted. Reload in a few minutes to see
-                the funnels.
+                {integer(sentEvents)} events sent. Reload in a few minutes to see
+                channel metrics.
               </s-paragraph>
             </s-banner>
           )}
           <s-button loading={busy} onClick={() => submit('send-events')}>
-            Send the campaign's events
+            Send events
           </s-button>
         </Fragment>
       )}
@@ -170,7 +170,7 @@ export function ChannelMetrics({funnels, integer}) {
           <s-table-header listSlot="primary">Channel</s-table-header>
           <s-table-header listSlot="secondary">Stage</s-table-header>
           <s-table-header listSlot="labeled">Events</s-table-header>
-          <s-table-header listSlot="labeled">Of sent</s-table-header>
+          <s-table-header listSlot="labeled">% of sent</s-table-header>
         </s-table-header-row>
         <s-table-body>
           {funnels.flatMap((entry) =>
@@ -232,7 +232,7 @@ export function SendPerformance({sequence, integer}) {
                   : integer(touch.reached)}
               </s-table-cell>
               <s-table-cell>
-                {integer(touch.engaged)} {touch.action} · {Math.round(touch.rate)}%
+                {integer(touch.engaged)} {touch.action}, {Math.round(touch.rate)}%
               </s-table-cell>
             </s-table-row>
           ))}
@@ -257,8 +257,8 @@ export function Deliverability({
 
   const listResult =
     unsubscribed === 0
-      ? 'Nobody left the list.'
-      : `Unsubscribes took ${integer(unsubscribed)} contacts off the list.`;
+      ? 'No unsubscribes.'
+      : `${integer(unsubscribed)} ${unsubscribed === 1 ? 'unsubscribe' : 'unsubscribes'}.`;
 
   return (
     <s-section>
@@ -271,7 +271,7 @@ export function Deliverability({
         }}
       />
       <s-paragraph>
-        {health.reach.toFixed(1)}% of {integer(sent)} sends arrived. {listResult}
+        {health.reach.toFixed(1)}% of {integer(sent)} messages reached customers. {listResult}
       </s-paragraph>
       <s-table>
         <s-table-header-row>
@@ -288,12 +288,12 @@ export function Deliverability({
               <s-table-cell>
                 {row.bounced === null
                   ? 'Not reported'
-                  : `${integer(row.bounced)} · ${rate(row.bounced, row.sent).toFixed(1)}% of sent`}
+                  : `${integer(row.bounced)}, ${rate(row.bounced, row.sent).toFixed(1)}% of sent`}
               </s-table-cell>
               <s-table-cell>
                 {row.unsubscribed === null
                   ? 'Not reported'
-                  : `${integer(row.unsubscribed)} · ${rate(row.unsubscribed, row.reached).toFixed(1)}% of reached`}
+                  : `${integer(row.unsubscribed)}, ${rate(row.unsubscribed, row.reached).toFixed(1)}% of reached`}
               </s-table-cell>
             </s-table-row>
           ))}

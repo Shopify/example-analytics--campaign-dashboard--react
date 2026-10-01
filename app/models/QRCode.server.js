@@ -36,6 +36,7 @@ export async function getQRCode(handle, graphql, shop) {
           }
           destination: field(key: "destination") { jsonValue }
           scans: field(key: "scans") { jsonValue }
+          liveOn: field(key: "live_on") { jsonValue }
         }
       }
     `,
@@ -119,6 +120,7 @@ async function transformMetaobject(metaobject, shop) {
     productVariantLegacyId: variant?.legacyResourceId,
     destination: metaobject.destination?.jsonValue,
     scans: metaobject.scans?.jsonValue ?? 0,
+    liveOn: metaobject.liveOn?.jsonValue ?? "",
     createdAt: metaobject.updatedAt,
     productDeleted: productId && !product,
     productTitle: product?.title,
@@ -199,6 +201,10 @@ export async function saveQRCode(handle, data, graphql) {
             { key: "product", value: data.productId },
             { key: "product_variant", value: data.productVariantId },
             { key: "destination", value: data.destination },
+            // Left out, the upsert keeps the stored day. Blank clears it.
+            ...(data.liveOn === undefined
+              ? []
+              : [{ key: "live_on", value: data.liveOn }]),
           ],
         },
       },
@@ -298,84 +304,6 @@ export async function endMarketingActivity(handle, shop, graphql) {
     throw new Error(result.userErrors[0].message);
   }
 }
-
-// [START qr-marketing.target]
-const TARGET_EXPECTED_SALES = "1000.00";
-const TARGET_WINDOW_DAYS = 90;
-
-// The target keys on utm_campaign, so the app tracks the code without
-// knowing the campaign name a merchant assigns it later.
-export async function createCampaignTarget(handle, title, graphql) {
-  const startDate = new Date();
-  const endDate = new Date(startDate);
-  endDate.setDate(endDate.getDate() + TARGET_WINDOW_DAYS);
-
-  const response = await graphql(
-    `
-      mutation CreateQRCodeTarget($input: AnalyticsTargetCreateInput!) {
-        analyticsTargetCreate(input: $input) {
-          analyticsTarget { id shopifyqlQuery }
-          userErrors { field message }
-        }
-      }
-    `,
-    {
-      variables: {
-        input: {
-          name: `${title}: attributed sales`,
-          metric: "campaign_last_non_direct_click_total_sales",
-          filters: `utm_campaign = '${handle}'`,
-          expectedValue: TARGET_EXPECTED_SALES,
-          startDate: startDate.toISOString().slice(0, 10),
-          endDate: endDate.toISOString().slice(0, 10),
-        },
-      },
-    },
-  );
-
-  const { data } = await response.json();
-  const result = data?.analyticsTargetCreate;
-
-  if (result?.userErrors?.length) {
-    throw new Error(result.userErrors[0].message);
-  }
-
-  return result?.analyticsTarget;
-}
-// [END qr-marketing.target]
-
-// [START qr-marketing.annotation]
-export async function createLaunchAnnotation(title, graphql) {
-  const response = await graphql(
-    `
-      mutation CreateQRCodeAnnotation($input: AnalyticsAnnotationCreateInput!) {
-        analyticsAnnotationCreate(input: $input) {
-          analyticsAnnotation { id }
-          userErrors { field message }
-        }
-      }
-    `,
-    {
-      variables: {
-        input: {
-          type: "campaign",
-          title: `QR code launch: ${title}`.slice(0, 75),
-          startedAt: new Date().toISOString(),
-        },
-      },
-    },
-  );
-
-  const { data } = await response.json();
-  const result = data?.analyticsAnnotationCreate;
-
-  if (result?.userErrors?.length) {
-    throw new Error(result.userErrors[0].message);
-  }
-
-  return result?.analyticsAnnotation;
-}
-// [END qr-marketing.annotation]
 
 // [START delete-qrcode]
 export async function deleteQRCode(id, graphql) {
