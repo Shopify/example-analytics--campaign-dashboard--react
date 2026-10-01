@@ -5,9 +5,9 @@ import {
   BUNDLE_QUERY,
   METAFIELDS_SET,
   ORDER_PAGE_SIZE,
+  RECORDED_ANNOTATIONS,
   TARGET_CREATE,
   TARGET_UPDATE,
-  annotationsQuery,
   appEventsQuery,
   bounceQuery,
   measureQuery,
@@ -200,40 +200,32 @@ async function resolveLaunchMark(admin, campaign) {
 // [END campaign-dashboard.bundle-mark]
 
 // [START campaign-dashboard.clear-marks]
-// Only this campaign's annotations. Another campaign over the same days has
-// marks in this list too. Page through the whole window. A recorded ID sitting past
-// the first page goes undeleted, and the rewrite doubles the mark on the timeline.
-async function clearOwnMarks(admin, campaign, appId, keys) {
-  const recorded = new Set(
-    Object.entries(campaign.markers ?? {})
-      .filter(([key]) => keys.has(key))
-      .map(([, id]) => id),
+// By recorded ID. A date-window search misses marks once the merchant edits the
+// campaign's dates, and the rewrite doubles them on the timeline. Each problem names
+// the annotation it left in place. A failed read names none.
+export async function clearOwnMarks(admin, ids, appId) {
+  const recorded = ids.filter(
+    (id) => typeof id === 'string' && id.startsWith('gid://shopify/AnalyticsAnnotation/'),
   );
+  if (!recorded.length) return [];
+  const body = await (
+    await admin.graphql(RECORDED_ANNOTATIONS, {variables: {ids: recorded}})
+  ).json();
+  const failed = transportErrors(body);
+  if (failed.length) return failed.map((error) => ({...error, id: null}));
+
   const problems = [];
-  let after = null;
-
-  do {
-    const body = await (
-      await admin.graphql(annotationsQuery(campaign, after))
+  for (const annotation of body.data?.annotations ?? []) {
+    if (annotation?.createdByApp?.id !== appId) continue;
+    const deleted = await (
+      await admin.graphql(ANNOTATION_DELETE, {variables: {id: annotation.id}})
     ).json();
-    const failed = transportErrors(body);
-    if (failed.length) return failed;
-
-    const page = body.data?.shop?.analyticsAnnotations;
-    for (const annotation of page?.nodes ?? []) {
-      if (annotation.createdByApp?.id !== appId) continue;
-      if (!recorded.has(annotation.id)) continue;
-      const deleted = await (
-        await admin.graphql(ANNOTATION_DELETE, {variables: {id: annotation.id}})
-      ).json();
-      problems.push(
-        ...transportErrors(deleted),
-        ...(deleted.data?.analyticsAnnotationDelete?.userErrors ?? []),
-      );
-    }
-    after = page?.pageInfo?.hasNextPage ? page.pageInfo.endCursor : null;
-  } while (after);
-
+    const errors = [
+      ...transportErrors(deleted),
+      ...(deleted.data?.analyticsAnnotationDelete?.userErrors ?? []),
+    ];
+    problems.push(...errors.map((error) => ({...error, id: annotation.id})));
+  }
   return problems;
 }
 // [END campaign-dashboard.clear-marks]
@@ -252,15 +244,27 @@ export async function writeMarks(admin, campaign, appId, markedAt) {
       key.startsWith(QR_MARK_PREFIX),
     ),
   ]);
-  const stale = await clearOwnMarks(admin, campaign, appId, keys);
+  const stale = await clearOwnMarks(
+    admin,
+    Object.entries(campaign.markers ?? {})
+      .filter(([key]) => keys.has(key))
+      .map(([, id]) => id),
+    appId,
+  );
   if (stale.length) {
-    return {markers: {}, problems: stale.map((error) => error.message)};
+    return {markers: campaign.markers ?? {}, problems: stale.map((error) => error.message)};
   }
 
-  const launch = await resolveLaunchMark(admin, campaign);
+  // Save the pruned record first. A create that fails next leaves no deleted IDs behind.
   const markers = Object.fromEntries(
     Object.entries(campaign.markers ?? {}).filter(([key]) => !keys.has(key)),
   );
+  const pruned = await updateCampaign(admin, campaign, {markers});
+  if (pruned.userErrors.length) {
+    return {markers, problems: pruned.userErrors.map((error) => error.message)};
+  }
+
+  const launch = await resolveLaunchMark(admin, campaign);
   for (const mark of marks) {
     const isLaunch = mark.key === 'launch';
     const body = await (
@@ -367,6 +371,9 @@ export async function stampTier(admin, campaign) {
 export async function stampOrders(admin, campaign) {
   const touches = touchMarks(campaign);
   const userErrors = [];
+  // A refund or edit books a later row for the same order. Rows come oldest first,
+  // and the first row is the day the order was placed.
+  const stamped = new Set();
   for (let offset = 0; ; offset += ORDER_PAGE_SIZE) {
     const body = await (
       await admin.graphql(orderDaysQuery(campaign, offset))
@@ -377,7 +384,8 @@ export async function stampOrders(admin, campaign) {
     const rows = body.data?.shopifyqlQuery?.tableData?.rows ?? [];
     const metafields = rows
       .map((row) => ({id: row.order_id, touch: lastTouch(touches, row.day)}))
-      .filter((order) => order.id && order.touch)
+      .filter((order) => order.id && !stamped.has(order.id) && stamped.add(order.id))
+      .filter((order) => order.touch)
       .map((order) => ({
         ownerId: `gid://shopify/Order/${order.id}`,
         namespace: DIMENSION_NAMESPACE,
@@ -443,6 +451,8 @@ export async function markMilestone(admin, target, markedAt, money) {
   const body = await (
     await admin.graphql(measureQuery(target.shopifyqlQuery))
   ).json();
+  const failed = transportErrors(body);
+  if (failed.length) return {userErrors: failed};
   const actual = progressValue(body.data?.shopifyqlQuery);
   if (actual === null || actual < Number(target.expectedValue)) {
     return {userErrors: [{message: 'Target not reached yet.'}]};

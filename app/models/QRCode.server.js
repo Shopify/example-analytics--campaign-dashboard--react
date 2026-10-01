@@ -330,8 +330,9 @@ export async function deleteQRCode(id, graphql) {
 // [END delete-qrcode]
 
 // [START increment-scans]
+// Read, then write. Concurrent scans can lose a count, which a sample tolerates.
 export async function incrementQRCodeScans(id, currentScans, graphql) {
-  await graphql(
+  const response = await graphql(
     `
       mutation IncrementScans($id: ID!, $metaobject: MetaobjectUpdateInput!) {
         metaobjectUpdate(id: $id, metaobject: $metaobject) {
@@ -349,6 +350,10 @@ export async function incrementQRCodeScans(id, currentScans, graphql) {
       },
     },
   );
+  const { data } = await response.json();
+  if (data?.metaobjectUpdate?.userErrors?.length) {
+    throw new Error(data.metaobjectUpdate.userErrors[0].message);
+  }
 }
 // [END increment-scans]
 

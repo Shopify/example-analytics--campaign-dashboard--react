@@ -32,6 +32,12 @@ describe('target charts', () => {
       "FROM campaign_sales SHOW campaign_last_non_direct_click_total_sales WHERE utm_campaign = 'hat-front' TIMESERIES day WITH CUMULATIVE_VALUES SINCE 2026-09-25 UNTIL 2026-10-07 COMPARE TO TARGETS VISUALIZE campaign_last_non_direct_click_total_sales__cumulative TYPE line ANNOTATE ALL",
     );
   });
+  it('adds daily bars under a product target line', () => {
+    expect(targetChartQuery(target({filters: 'product_id IN (1, 2)'}))).toBe(
+      'FROM sales SHOW total_sales WHERE product_id IN (1, 2) TIMESERIES day WITH CUMULATIVE_VALUES SINCE 2026-09-10 UNTIL 2026-10-07 COMPARE TO TARGETS VISUALIZE total_sales TYPE bar, total_sales__cumulative TYPE line ANNOTATE ALL',
+    );
+  });
+
   it('falls back to the table that holds the metric', () => {
     expect(
       targetChartQuery(

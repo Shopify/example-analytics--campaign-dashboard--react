@@ -82,17 +82,11 @@ describe('writeMarks', () => {
   it('clears the mark of a code that moved to another campaign', async () => {
     const appId = 'gid://shopify/App/7';
     const {admin, calls} = mockAdmin({
-      CampaignAnnotations: () => ({
+      RecordedAnnotations: () => ({
         data: {
-          shop: {
-            analyticsAnnotations: {
-              nodes: [
-                {id: 'old-qr', createdByApp: {id: appId}},
-                {id: 'other-app', createdByApp: {id: 'gid://shopify/App/8'}},
-              ],
-              pageInfo: {hasNextPage: false},
-            },
-          },
+          annotations: [
+            {id: 'gid://shopify/AnalyticsAnnotation/1', createdByApp: {id: appId}},
+          ],
         },
       }),
       DeleteCampaignAnnotation: () => ({data: {analyticsAnnotationDelete: {userErrors: []}}}),
@@ -102,10 +96,10 @@ describe('writeMarks', () => {
       CampaignById: () => ({data: {metaobject: null}}),
       UpdateCampaign: () => ({data: {metaobjectUpdate: {metaobject: null, userErrors: []}}}),
     });
-    const moved = campaign({qrCodes: codes('kept'), markers: {'qr:moved': 'old-qr', milestone: 'm1'}});
+    const moved = campaign({qrCodes: codes('kept'), markers: {'qr:moved': 'gid://shopify/AnalyticsAnnotation/1', milestone: 'm1'}});
     const {markers, problems} = await writeMarks(admin, moved, appId, (date) => `${date}T09:00:00Z`);
     expect(problems).toEqual([]);
-    expect(calls.filter((call) => call.op === 'DeleteCampaignAnnotation').map((call) => call.variables.id)).toEqual(['old-qr']);
+    expect(calls.filter((call) => call.op === 'DeleteCampaignAnnotation').map((call) => call.variables.id)).toEqual(['gid://shopify/AnalyticsAnnotation/1']);
     expect(markers).not.toHaveProperty('qr:moved');
     expect(markers).toHaveProperty('qr:kept');
     expect(markers.milestone).toBe('m1');

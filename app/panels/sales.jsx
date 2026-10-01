@@ -76,9 +76,22 @@ export function annotationStatus({campaign, annotations, appId}) {
     (annotation) => annotation.createdByApp?.id === appId,
   );
 
+  // Base marks recorded on this campaign that the current marks no longer cover. Another
+  // campaign's marks, milestones, and incidents stay out of the count.
+  const current = new Set(marks.map((mark) => mark.key));
+  const present = new Set(ours.map((annotation) => annotation.id));
+  const outdated = Object.entries(campaign.markers ?? {}).filter(
+    ([key, id]) =>
+      !current.has(key) &&
+      !key.startsWith('milestone:') &&
+      !key.startsWith('incident:') &&
+      present.has(id),
+  ).length;
+
   return {
     marks,
     ours,
+    outdated,
     // Marker IDs on the record pick this campaign's span out of the app's annotations.
     openCampaign:
       ours.find(
@@ -242,7 +255,11 @@ export function SalesAndOrders({
               {marks.length}.
             </s-text>
             <s-stack direction="inline">
-              <s-button loading={busy} onClick={() => submit('rewrite-marks')}>
+              <s-button
+                loading={busy === 'rewrite-marks'}
+                disabled={Boolean(busy)}
+                onClick={() => submit('rewrite-marks')}
+              >
                 {ours.length > 0 ? 'Rewrite annotations' : 'Write annotations'}
               </s-button>
             </s-stack>

@@ -267,19 +267,20 @@ export const targetNodes = (body) => (body.data?.targets ?? []).filter(Boolean);
 // [END campaign-dashboard.target-read]
 
 // [START campaign-dashboard.all-targets-read]
-export const ALL_TARGETS_QUERY = `
-  query StoreTargets {
-    analyticsTargets(first: 50) {
-      nodes {
-        id
-        metric
-        expectedValue
-        startDate
-        shopifyqlQuery
-      }
-    }
+// Every campaign's recorded IDs in one read. A paged `analyticsTargets` list drops
+// targets past the first page once QR codes add their own.
+export async function readAllTargets(admin, campaigns) {
+  const targets = Object.fromEntries(
+    campaigns.flatMap((campaign) =>
+      Object.entries(campaign.targets ?? {}).map(([key, id]) => [`${campaign.id}:${key}`, id]),
+    ),
+  );
+  try {
+    return await readTargets(admin, {targets});
+  } catch {
+    return {data: null};
   }
-`;
+}
 // [END campaign-dashboard.all-targets-read]
 
 // [START campaign-dashboard.target-progress]
@@ -384,6 +385,21 @@ export const ANNOTATION_DELETE = `
     }
   }
 `;
+
+// A deleted annotation comes back as null. `createdByApp` guards against an ID that
+// someone edited into the record.
+export const RECORDED_ANNOTATIONS = `
+  query RecordedAnnotations($ids: [ID!]!) {
+    annotations: nodes(ids: $ids) {
+      ... on AnalyticsAnnotation {
+        id
+        createdByApp {
+          id
+        }
+      }
+    }
+  }
+`;
 // [END campaign-dashboard.annotation-delete]
 
 // [START campaign-dashboard.annotation-read]
@@ -428,11 +444,15 @@ export const annotationsQuery = (campaign, after = null) => `
 // [START campaign-dashboard.app-events-query]
 // Campaign IDs repeat across apps. Matching `app_name` keeps another app's
 // sends out of this funnel. App titles can hold an apostrophe, and a doubled
-// quote keeps the ShopifyQL string valid.
+// quote keeps the ShopifyQL string valid. A double quote or backslash would end the
+// GraphQL string around it, and JSON escaping covers both.
+const appNameValue = (appName) =>
+  JSON.stringify(appName.replaceAll("'", "''")).slice(1, -1);
+
 export const appEventsQuery = (campaign, appName) => `
   query CampaignFunnel {
     shopifyqlQuery(
-      query: "FROM app_events SHOW ${FUNNEL_METRICS.join(', ')} WHERE campaign_id = ${campaign.id} AND app_name = '${appName.replaceAll("'", "''")}' TIMESERIES day ${recentWindow(campaign)} ORDER BY day ASC"
+      query: "FROM app_events SHOW ${FUNNEL_METRICS.join(', ')} WHERE campaign_id = ${campaign.id} AND app_name = '${appNameValue(appName)}' TIMESERIES day ${recentWindow(campaign)} ORDER BY day ASC"
     ) {
       tableData {
         columns {
@@ -471,7 +491,7 @@ export const sliceQuery = () => `
 export const sequenceQuery = (campaign, appName) => `
   query CampaignSequence {
     shopifyqlQuery(
-      query: "FROM app_events SHOW ${SEQUENCE_METRICS.join(', ')} WHERE campaign_id = ${campaign.id} AND app_name = '${appName.replaceAll("'", "''")}' GROUP BY template_id SINCE -29d UNTIL today ORDER BY template_id ASC"
+      query: "FROM app_events SHOW ${SEQUENCE_METRICS.join(', ')} WHERE campaign_id = ${campaign.id} AND app_name = '${appNameValue(appName)}' GROUP BY template_id SINCE -29d UNTIL today ORDER BY template_id ASC"
     ) {
       tableData {
         columns {
@@ -491,7 +511,7 @@ export const sequenceQuery = (campaign, appName) => `
 export const bounceQuery = (campaign, appName) => `
   query CampaignBounces {
     shopifyqlQuery(
-      query: "FROM app_events SHOW emails_bounced WHERE campaign_id = ${campaign.id} AND app_name = '${appName.replaceAll("'", "''")}' GROUP BY recipient_status SINCE -29d UNTIL today ORDER BY emails_bounced DESC"
+      query: "FROM app_events SHOW emails_bounced WHERE campaign_id = ${campaign.id} AND app_name = '${appNameValue(appName)}' GROUP BY recipient_status SINCE -29d UNTIL today ORDER BY emails_bounced DESC"
     ) {
       tableData {
         columns {

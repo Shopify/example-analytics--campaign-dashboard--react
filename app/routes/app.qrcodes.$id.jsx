@@ -57,6 +57,17 @@ function liveOnError(liveOn, choice) {
 }
 
 const CAMPAIGNS_FAILED = "Couldn't load campaigns. Reload to try again.";
+
+async function qrCodeIdOf(admin, handle) {
+  const response = await admin.graphql(
+    `query QRCodeId($handle: MetaobjectHandleInput!) {
+      metaobjectByHandle(handle: $handle) { id }
+    }`,
+    { variables: { handle: { type: "$app:qrcode", handle } } },
+  );
+  const { data } = await response.json();
+  return data?.metaobjectByHandle?.id ?? null;
+}
 // [END campaign-dashboard.qr-campaign-picker]
 
 export async function loader({ request, params }) {
@@ -111,12 +122,34 @@ export async function action({ request, params }) {
   // [END qr-marketing.save-activity]
 
   const data = Object.fromEntries(await request.formData());
+  // The URL's handle names the code. A posted ID could name any metaobject on the shop.
+  const qrCodeId = params.id === "new" ? null : await qrCodeIdOf(admin, params.id);
 
   if (data.action === "delete") {
+    if (!qrCodeId) return redirect("/app/qrcodes");
+    // An active or closed campaign reports on its codes. Deleting one would change it.
+    const choices = await campaignChoices(admin, qrCodeId);
+    if (choices.failed.length || choices.locked) {
+      return new Response(
+        JSON.stringify({
+          errors: {
+            campaign: choices.failed.length
+              ? "Couldn't load campaigns. Try again."
+              : "This code belongs to an active or closed campaign and can't be deleted.",
+          },
+        }),
+        { status: 422, headers: { "Content-Type": "application/json" } },
+      );
+    }
     // Drop the code from its campaign first. The campaign keeps reporting its other codes.
-    const unassigned = await assignQRCode(admin, data.metaobjectId, null);
+    const unassigned = await assignQRCode(admin, qrCodeId, null);
     if (unassigned.length) {
-      console.error("Could not unassign the QR code", unassigned);
+      return new Response(
+        JSON.stringify({
+          errors: { campaign: "Couldn't remove the code from its campaign. Try again." },
+        }),
+        { status: 422, headers: { "Content-Type": "application/json" } },
+      );
     }
     try {
       // On this page params.id is the code's handle, the activity's remoteId.
@@ -124,7 +157,7 @@ export async function action({ request, params }) {
     } catch (error) {
       console.error("Could not end the marketing activity", error);
     }
-    await deleteQRCode(data.metaobjectId, admin.graphql);
+    await deleteQRCode(qrCodeId, admin.graphql);
     return redirect("/app/qrcodes");
   }
 
@@ -147,7 +180,7 @@ export async function action({ request, params }) {
   const reassigned = campaign !== (data.initialCampaign || null);
   const moved = reassigned || liveOn !== (data.initialLiveOn || "");
   const choices = moved
-    ? await campaignChoices(admin, data.metaobjectId || null)
+    ? await campaignChoices(admin, qrCodeId)
     : null;
   const choice = choices?.campaigns.find((option) => option.gid === campaign);
   const campaignError = !choices
@@ -352,9 +385,9 @@ export default function QRCodeForm() {
               {/* [START title] */}
               <s-text-field
                 label="Title"
-                details="Only store staff can see this title"
+                details="Shows on the code's public page"
                 error={errors.title}
-                autoComplete="off"
+                autocomplete="off"
                 name="title"
                 value={formState.title}
                 onInput={(e) =>
@@ -363,7 +396,7 @@ export default function QRCodeForm() {
               ></s-text-field>
               {/* [END title] */}
               {/* [START destination] */}
-              <s-stack gap="500" align="space-between" blockAlign="start">
+              <s-stack gap="base" justifyContent="space-between" alignItems="start">
                 <s-select
                   name="destination"
                   label="Scan destination"
@@ -387,7 +420,6 @@ export default function QRCodeForm() {
                 </s-select>
                 {initialFormState.destinationUrl ? (
                   <s-link
-                    variant="plain"
                     href={initialFormState.destinationUrl}
                     target="_blank"
                   >
@@ -446,7 +478,6 @@ export default function QRCodeForm() {
                     <s-link
                       onClick={removeProduct}
                       accessibilityLabel="Remove the product from this QR Code"
-                      variant="tertiary"
                       tone="neutral"
                     >
                       Clear
@@ -481,7 +512,7 @@ export default function QRCodeForm() {
                           {formState.productImage ? (
                             <s-image src={formState.productImage}></s-image>
                           ) : (
-                            <s-icon size="large" type="product" />
+                            <s-icon type="product" />
                           )}
                         </s-box>
                       </s-clickable>
@@ -509,7 +540,7 @@ export default function QRCodeForm() {
                 {errors.productId ? (
                   <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
                     <s-icon type="alert-circle" tone="critical" size="small" />
-                    <s-text tone="critical" variant="bodySm">{errors.productId}</s-text>
+                    <s-text tone="critical">{errors.productId}</s-text>
                   </div>
                 ) : null}
               </s-stack>
@@ -561,7 +592,7 @@ export default function QRCodeForm() {
                   <s-button
                     disabled={!initialFormState?.image}
                     href={initialFormState?.image}
-                    download
+                    download={`${initialFormState?.handle ?? "qr-code"}.png`}
                     variant="primary"
                   >
                     Download

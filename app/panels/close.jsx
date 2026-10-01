@@ -1,4 +1,6 @@
 // [START campaign-dashboard.close-render]
+import {ConfirmButton} from './confirm';
+
 // The writes that end a campaign sit after the evidence they act on.
 export function CampaignLifecycle({
   campaign,
@@ -33,19 +35,40 @@ export function CampaignLifecycle({
         )}
         <s-stack direction="inline" gap="base">
           {running && (
-            <s-button variant="primary" loading={busy} onClick={() => submit('close')}>
-              Close campaign
-            </s-button>
+            <ConfirmButton
+              id="close-campaign"
+              variant="primary"
+              label="Close campaign"
+              heading="Close this campaign?"
+              body={`The campaign ends on ${shortDate(closesOn)} and stamps each order with its last campaign touch. You can't reopen it.`}
+              confirmLabel="Close campaign"
+              loading={busy === 'close'}
+              disabled={Boolean(busy)}
+              onConfirm={() => submit('close')}
+            />
           )}
           {campaign.status === 'canceled' && (
-            <s-button variant="primary" loading={busy} onClick={() => submit('replan')}>
+            <s-button
+              variant="primary"
+              loading={busy === 'replan'}
+              disabled={Boolean(busy)}
+              onClick={() => submit('replan')}
+            >
               Replan campaign
             </s-button>
           )}
           {running && (
-            <s-button tone="critical" loading={busy} onClick={() => submit('cancel')}>
-              Cancel campaign
-            </s-button>
+            <ConfirmButton
+              id="cancel-running"
+              tone="critical"
+              label="Cancel campaign"
+              heading="Cancel this campaign?"
+              body="Canceling removes this campaign's annotations and targets from Shopify Analytics."
+              confirmLabel="Cancel campaign"
+              loading={busy === 'cancel'}
+              disabled={Boolean(busy)}
+              onConfirm={() => submit('cancel')}
+            />
           )}
           {children}
         </s-stack>

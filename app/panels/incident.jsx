@@ -30,7 +30,8 @@ export function IncidentBanner({
             <s-text color="subdued">Incident flagged.</s-text>
           ) : (
             <s-button
-              loading={busy}
+              loading={busy === 'flag-incident'}
+              disabled={Boolean(busy)}
               onClick={() => submit('flag-incident', {day: today})}
             >
               Flag incident

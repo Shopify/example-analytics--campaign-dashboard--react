@@ -3,12 +3,12 @@ import {redirect, useFetcher, useLoaderData, useRouteError} from 'react-router';
 import {authenticate} from '../shopify.server';
 import {createCampaign, ensureCampaign, readCampaigns} from '../campaigns.server';
 import {
-  ALL_TARGETS_QUERY,
   progressQuery,
   progressValue,
-  runIfSupported,
+  readAllTargets,
   runOptional,
   sliceQuery,
+  targetNodes,
 } from '../campaign-queries.server';
 import {enableDimension, readDimensions} from '../dimensions.server';
 import {
@@ -29,7 +29,7 @@ export const loader = async ({request}) => {
 
   const [dimensions, targetsBody, sends] = await Promise.all([
     readDimensions(admin, appId),
-    runIfSupported(admin, ALL_TARGETS_QUERY),
+    readAllTargets(admin, campaigns),
     runOptional(admin, sliceQuery()),
   ]);
 
@@ -41,7 +41,7 @@ export const loader = async ({request}) => {
   }
 
   // A target with no generated query has nothing to measure it. Drop it from the list.
-  const nodes = targetsBody.data?.analyticsTargets?.nodes ?? [];
+  const nodes = targetNodes(targetsBody);
   const measurable = nodes.filter(
     (target) => target.shopifyqlQuery && owner.has(target.id),
   );
@@ -574,9 +574,9 @@ export default function CampaignsIndex() {
                         tone={
                           {
                             planned: 'info',
-                            running: 'caution',
-                            closed: 'success',
-                            canceled: 'critical',
+                            running: 'success',
+                            closed: 'neutral',
+                            canceled: 'neutral',
                           }[campaign.status]
                         }
                       >

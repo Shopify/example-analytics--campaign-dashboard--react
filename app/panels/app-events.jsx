@@ -141,7 +141,11 @@ export function SendEventsPanel({
               </s-paragraph>
             </s-banner>
           )}
-          <s-button loading={busy} onClick={() => submit('send-events')}>
+          <s-button
+            loading={busy === 'send-events'}
+            disabled={Boolean(busy)}
+            onClick={() => submit('send-events')}
+          >
             Send events
           </s-button>
         </Fragment>

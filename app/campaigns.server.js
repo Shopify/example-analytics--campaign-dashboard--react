@@ -299,8 +299,9 @@ export function campaignFromNode(node) {
     members: listOf(values.members),
     // Entries are editable in the admin. Codes reach ShopifyQL filters.
     creatorCodes: listOf(values.creator_codes)
-      .filter((pair) => isRecord(pair) && pair.code && pair.creator)
-      .map((pair) => ({code: sanitizeCode(pair.code), creator: String(pair.creator)})),
+      .filter((pair) => isRecord(pair) && pair.creator)
+      .map((pair) => ({code: sanitizeCode(String(pair.code ?? '')), creator: String(pair.creator)}))
+      .filter((pair) => pair.code),
     revenueTarget: values.revenue_target ?? '',
     productTarget: values.product_target ?? '',
     audienceTarget: values.audience_target ?? '',

@@ -185,20 +185,73 @@ describe('cancel', () => {
   it('keeps the IDs whose delete failed on the record', async () => {
     const entry = planned({
       status: 'running',
-      markers: {campaign: 'a1', 'qr:hat': 'a2'},
-      targets: {store: 't1', 'qr:hat': 't2'},
+      markers: {campaign: 'gid://shopify/AnalyticsAnnotation/1', 'qr:hat': 'gid://shopify/AnalyticsAnnotation/2'},
+      targets: {store: 'gid://shopify/AnalyticsTarget/1', 'qr:hat': 'gid://shopify/AnalyticsTarget/2'},
     });
     const {mock, result} = run(
       {
         ...base(entry),
+        RecordedAnnotations: ({ids}) => ({data: {annotations: ids.map((id) => ({id, createdByApp: {id: 'gid://shopify/App/7'}}))}}),
+        CampaignTargets: ({ids}) => ({data: {targets: ids.map((id) => ({id, name: 'Summer launch: store-wide sales'}))}}),
         DeleteCampaignAnnotation: ({id}) => ({
-          data: {analyticsAnnotationDelete: {userErrors: id === 'a2' ? [{message: 'Busy'}] : []}},
+          data: {analyticsAnnotationDelete: {userErrors: id === 'gid://shopify/AnalyticsAnnotation/2' ? [{message: 'Busy'}] : []}},
         }),
-        DeleteCampaignTargets: () => ({data: {analyticsTargetsDelete: {deletedIds: ['t1'], userErrors: []}}}),
+        DeleteCampaignTargets: () => ({data: {analyticsTargetsDelete: {deletedIds: ['gid://shopify/AnalyticsTarget/1'], userErrors: []}}}),
       },
       {intent: 'cancel'},
     );
     expect(await result).toEqual({problems: ['Busy']});
-    expect(lastUpdate(mock.calls)).toEqual({markers: '{"qr:hat":"a2"}', targets: '{"qr:hat":"t2"}'});
+    expect(lastUpdate(mock.calls)).toEqual({markers: '{"qr:hat":"gid://shopify/AnalyticsAnnotation/2"}', targets: '{"qr:hat":"gid://shopify/AnalyticsTarget/2"}'});
+  });
+});
+
+describe('guards', () => {
+  it('creates only the targets a failed activation left missing', async () => {
+    const entry = planned({
+      products: [{id: 'gid://shopify/Product/1', title: 'Hat'}],
+      revenueTarget: '100',
+      productTarget: '50',
+      targets: {store: 'gid://shopify/AnalyticsTarget/77'},
+    });
+    const {mock, result} = run(
+      {
+        ...base(entry),
+        ...marking,
+        ...targeting,
+        PromotedProductKinds: () => ({data: {nodes: []}}),
+        SetCampaignMetafields: () => ({data: {metafieldsSet: {userErrors: []}}}),
+      },
+      {intent: 'activate'},
+    );
+    await result;
+    const created = mock.calls.filter((call) => call.op === 'CreateCampaignTarget').map((call) => call.variables.input.name);
+    expect(created).toEqual(['Summer launch: promoted products']);
+    expect(JSON.parse(lastUpdate(mock.calls).targets)).toMatchObject({store: 'gid://shopify/AnalyticsTarget/77'});
+  });
+
+  it('refuses target edits after activation', async () => {
+    const {mock, result} = run(base(planned({status: 'running'})), {intent: 'set-targets', revenueTarget: '10'});
+    expect((await result).problems[0]).toMatch(/before the campaign is activated/);
+    expect(ops(mock.calls)).not.toContain('UpdateCampaign');
+  });
+
+  it('refuses a milestone day outside the campaign', async () => {
+    const {result} = run(base(planned({status: 'running'})), {intent: 'milestone', day: 'not-a-day', targetId: 'x'});
+    expect((await result).problems[0]).toMatch(/inside the campaign/);
+  });
+
+  it('refuses to raise a target that is not reached', async () => {
+    const target = {id: 'gid://shopify/AnalyticsTarget/5', expectedValue: '10000', shopifyqlQuery: 'FROM sales SHOW total_sales'};
+    const entry = planned({status: 'running', targets: {store: target.id}});
+    const {mock, result} = run(
+      {
+        ...base(entry),
+        CampaignTargets: () => ({data: {targets: [target]}}),
+        MeasureTarget: () => ({data: {shopifyqlQuery: {tableData: {rows: [{total_sales: '3000'}]}, parseErrors: []}}}),
+      },
+      {intent: 'raise-target', targetId: target.id},
+    );
+    expect((await result).problems[0]).toMatch(/reached yet/);
+    expect(ops(mock.calls)).not.toContain('RaiseCampaignTarget');
   });
 });

@@ -46,14 +46,15 @@ export const qrTitle = (campaign, handle) => qrCodeOf(campaign, handle)?.title |
 // to the campaign's first day.
 export function qrLiveOn(campaign, handle) {
   const day = qrCodeOf(campaign, handle)?.liveOn;
-  return isCalendarDate(day) && day >= campaign.startDate && day <= campaign.endDate
-    ? day
-    : campaign.startDate;
+  return inWindow(campaign, day) ? day : campaign.startDate;
 }
+
+export const inWindow = (campaign, day) =>
+  isCalendarDate(day) && day >= campaign.startDate && day <= campaign.endDate;
 // [END campaign-dashboard.qr-live-on]
 // [END campaign-dashboard.qr-handles]
 
-export const STATUS_LABELS = {
+const STATUS_LABELS = {
   planned: 'Planned',
   running: 'Active',
   closed: 'Closed',

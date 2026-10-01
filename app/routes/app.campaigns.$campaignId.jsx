@@ -1,4 +1,4 @@
-import {Fragment, useState} from 'react';
+import {Fragment, useEffect, useRef, useState} from 'react';
 import {redirect, useFetcher, useLoaderData, useRouteError} from 'react-router';
 import {authenticate} from '../shopify.server';
 import {
@@ -20,7 +20,6 @@ import {
   readSequence,
 } from '../campaign-report.server';
 import {
-  ANNOTATION_DELETE,
   SHOP_QUERY,
   TARGETS_DELETE,
   annotationsQuery,
@@ -42,6 +41,7 @@ import {
   touchSalesQuery,
 } from '../campaign-queries.server';
 import {
+  QR_MARK_PREFIX,
   campaignWindow,
   codeFilter,
   isPositiveAmount,
@@ -52,6 +52,7 @@ import {
   qrHandleFilter,
   qrHandles,
   safeLocale,
+  inWindow,
   shopMorning,
   statusLabel,
 } from '../campaigns';
@@ -69,6 +70,7 @@ import {
   sendsByDay,
 } from '../panels/app-events';
 import {
+  clearOwnMarks,
   closeCampaign,
   createAudienceTarget,
   createProductTarget,
@@ -89,6 +91,7 @@ import {
   writeMarks,
 } from '../campaign-mutations.server';
 import {CampaignLifecycle} from '../panels/close';
+import {ConfirmButton} from '../panels/confirm';
 import {
   SalesAndOrders,
   StoreTotals,
@@ -120,7 +123,14 @@ export async function loader({request, params}) {
   // Redirect on a miss. A thrown response renders above this route's layout
   // and takes the app's navigation with it. The search params hold App Bridge's store and host.
   const {admin, session} = await authenticate.admin(request);
-  const {appId, appName, campaigns} = await readCampaigns(admin);
+  const {appId, appName, campaigns, failed} = await readCampaigns(admin);
+  // A failed read isn't a deleted campaign. Report it instead of redirecting.
+  if (failed.length) {
+    return {
+      campaign: {title: 'Campaign'},
+      fatal: failed.map((error) => error.message).join(' '),
+    };
+  }
   const campaign = findCampaign(campaigns, params.campaignId);
   if (!campaign) {
     return redirect(`/app/campaigns${new URL(request.url).search}`);
@@ -310,6 +320,10 @@ export async function action({request, params}) {
   }
 
   if (intent === 'set-targets') {
+    // Activation turns the amounts into targets. Later edits would drift from them.
+    if (campaign.status !== 'planned') {
+      return {problems: ['Targets can change only before the campaign is activated.']};
+    }
     const amounts = {};
     // The form renders a field only for a target this campaign can activate, and a
     // segment of everyone has no segment target. Validate what came in, and leave
@@ -404,38 +418,50 @@ export async function action({request, params}) {
     if (unmarked.length) return {problems: unmarked};
 
     // An activation that failed past this point left its IDs on the record. Reuse them,
-    // or the retry creates a second set the app can never reach.
+    // and create only the targets still missing. A retry otherwise creates a second set
+    // the app can never reach.
     const targets = {...(campaign.targets ?? {})};
     const rejected = [];
-    if (!Object.keys(targets).length) {
-      const [store, product, audience] = await Promise.all([
-        createStoreTarget(admin, campaign),
-        createProductTarget(admin, campaign),
-        createAudienceTarget(admin, campaign, dimensions.customer),
-      ]);
-      for (const [key, result] of [
-        ['store', store],
-        ['product', product],
-        ['audience', audience],
-      ]) {
-        if (result.id) targets[key] = result.id;
-        rejected.push(...result.userErrors);
-      }
-      const qr = await createQrTargets(admin, campaign);
-      Object.assign(targets, qr.targets);
-      rejected.push(...qr.userErrors);
+    const missing = [
+      ['store', () => createStoreTarget(admin, campaign)],
+      ['product', () => createProductTarget(admin, campaign)],
+      ['audience', () => createAudienceTarget(admin, campaign, dimensions.customer)],
+    ].filter(([key]) => !targets[key]);
+    const results = await Promise.all(missing.map(([, create]) => create()));
+    const created = {};
+    missing.forEach(([key], index) => {
+      if (results[index].id) created[key] = results[index].id;
+      rejected.push(...results[index].userErrors);
+    });
+    const qr = await createQrTargets(admin, {
+      ...campaign,
+      qrCodes: campaign.qrCodes.filter(
+        (qrCode) => !targets[`${QR_MARK_PREFIX}${qrCode.handle}`],
+      ),
+    });
+    Object.assign(created, qr.targets);
+    rejected.push(...qr.userErrors);
 
-      // Save the IDs before the stamps run, and delete what was created if that
-      // write fails.
-      const created = Object.values(targets);
-      if (created.length) {
-        const {userErrors: unsaved} = await updateCampaign(admin, campaign, {
-          targets,
-        });
-        if (unsaved.length) {
-          await admin.graphql(TARGETS_DELETE, {variables: {ids: created}});
-          return {problems: unsaved.map((error) => error.message)};
-        }
+    // Save the IDs before the stamps run, and delete what was created if that
+    // write fails.
+    if (Object.keys(created).length) {
+      Object.assign(targets, created);
+      const {userErrors: unsaved} = await updateCampaign(admin, campaign, {
+        targets,
+      });
+      if (unsaved.length) {
+        const rollback = await (
+          await admin.graphql(TARGETS_DELETE, {
+            variables: {ids: Object.values(created)},
+          })
+        ).json();
+        return {
+          problems: [
+            ...unsaved,
+            ...transportErrors(rollback),
+            ...(rollback.data?.analyticsTargetsDelete?.userErrors ?? []),
+          ].map((error) => error.message),
+        };
       }
     }
 
@@ -500,6 +526,9 @@ export async function action({request, params}) {
     if (actual === null) {
       return {problems: ["Couldn't measure this target. Reload and try again."]};
     }
+    if (actual < Number(target.expectedValue)) {
+      return {problems: ['This target isn\'t reached yet.']};
+    }
     const userErrors = await raiseTarget(admin, {...target, actual});
     if (userErrors.length) {
       return {problems: userErrors.map((error) => error.message)};
@@ -512,6 +541,9 @@ export async function action({request, params}) {
       return {problems: ['Only active campaigns can mark milestones.']};
     }
     const day = String(form.get('day'));
+    if (!inWindow(campaign, day)) {
+      return {problems: ['Pick a day inside the campaign.']};
+    }
     const targetsBody = await readTargets(admin, campaign);
     const target = recordedTarget(campaign, targetsBody, form.get('targetId'));
     if (!target) return {problems: ['That target no longer exists.']};
@@ -546,6 +578,9 @@ export async function action({request, params}) {
       return {problems: ['Only active campaigns can flag incidents.']};
     }
     const day = String(form.get('day'));
+    if (!inWindow(campaign, day)) {
+      return {problems: ['Pick a day inside the campaign.']};
+    }
     if (campaign.markers?.[`incident:${day}`]) {
       return {problems: ['An incident is already flagged for this day.']};
     }
@@ -665,29 +700,28 @@ export async function action({request, params}) {
     if (campaign.status !== 'planned' && campaign.status !== 'running') {
       return {problems: ['You can cancel only planned or active campaigns.']};
     }
-    // Only the IDs on the record. `analyticsTargetsDelete` deletes any target on the
-    // shop, including the targets the user set. Each ID drops off the record as its delete lands.
-    const undone = [];
-    const markers = {};
-    for (const [key, id] of Object.entries(campaign.markers ?? {})) {
-      const body = await (
-        await admin.graphql(ANNOTATION_DELETE, {variables: {id}})
-      ).json();
-      const errors = [
-        ...transportErrors(body),
-        ...(body.data?.analyticsAnnotationDelete?.userErrors ?? []),
-      ];
-      if (errors.length) {
-        markers[key] = id;
-        undone.push(...errors);
-      }
-    }
+    // Only what this app made. The record is merchant-editable, and
+    // `analyticsTargetsDelete` deletes any target on the shop. Annotations carry
+    // `createdByApp`. Targets carry the name this app gave them.
+    const undone = await clearOwnMarks(
+      admin,
+      Object.values(campaign.markers ?? {}),
+      appId,
+    );
+    const kept = undone.map((error) => error.id);
+    const markers = Object.fromEntries(
+      Object.entries(campaign.markers ?? {}).filter(
+        ([, id]) => kept.includes(null) || kept.includes(id),
+      ),
+    );
 
     const targets = {...campaign.targets};
-    const ids = Object.values(targets);
-    if (ids.length > 0) {
+    const ours = targetNodes(await readTargets(admin, campaign)).filter((target) =>
+      target.name?.startsWith(`${campaign.title}: `),
+    );
+    if (ours.length > 0) {
       const body = await (
-        await admin.graphql(TARGETS_DELETE, {variables: {ids}})
+        await admin.graphql(TARGETS_DELETE, {variables: {ids: ours.map((target) => target.id)}})
       ).json();
       const result = body.data?.analyticsTargetsDelete;
       undone.push(...transportErrors(body), ...(result?.userErrors ?? []));
@@ -696,7 +730,6 @@ export async function action({request, params}) {
         if (key) delete targets[key];
       }
     }
-
     // Clearing the record on a failed delete abandons what's still on the timeline. The
     // IDs are the only handle the app has on it.
     if (undone.length) {
@@ -764,6 +797,21 @@ function Unavailable({reason, heading}) {
 }
 // [END campaign-dashboard.unavailable-note]
 
+
+const DONE = {
+  activate: 'Campaign activated',
+  close: 'Campaign closed',
+  cancel: 'Campaign canceled',
+  replan: 'Campaign replanned',
+  'set-products': 'Products saved',
+  'set-audience': 'Audience saved',
+  'set-targets': 'Targets saved',
+  'send-events': 'Events sent',
+  'rewrite-marks': 'Annotations written',
+  'raise-target': 'Target raised',
+  milestone: 'Milestone marked',
+  'flag-incident': 'Incident flagged',
+};
 
 export default function CampaignDashboard() {
   const data = useLoaderData();
@@ -863,7 +911,7 @@ export default function CampaignDashboard() {
 
   const {storeTarget, scopedTargets} = splitTargets(targets);
 
-  const {marks, ours, openCampaign, incidentFlagged} = annotationStatus({
+  const {marks, ours, outdated, openCampaign, incidentFlagged} = annotationStatus({
     campaign,
     annotations,
     appId,
@@ -932,7 +980,17 @@ export default function CampaignDashboard() {
   const problems = fetcher.data?.problems ?? [];
   // Problems alongside `ok` mean the action landed with something rejected inside it.
   const partial = Boolean(fetcher.data?.ok);
-  const busy = fetcher.state !== 'idle';
+  // The intent in flight, so only its button spins while the rest wait.
+  const busy = fetcher.state === 'idle' ? null : (fetcher.formData?.get('intent') ?? 'pending');
+  const pending = useRef(null);
+  useEffect(() => {
+    if (busy) pending.current = busy;
+  }, [busy]);
+  useEffect(() => {
+    if (fetcher.state !== 'idle' || !fetcher.data?.ok || fetcher.data.problems?.length) return;
+    const message = DONE[pending.current];
+    if (message) shopify.toast.show(message);
+  }, [fetcher.state, fetcher.data]);
   const today = dayOf(Date.now());
   // Closing early ends it today. The action clamps the same.
   const closesOn = today < campaign.endDate ? today : campaign.endDate;
@@ -979,9 +1037,9 @@ export default function CampaignDashboard() {
         tone={
           {
             planned: 'info',
-            running: 'caution',
-            closed: 'success',
-            canceled: 'critical',
+            running: 'success',
+            closed: 'neutral',
+            canceled: 'neutral',
           }[campaign.status]
         }
       >
@@ -1021,9 +1079,9 @@ export default function CampaignDashboard() {
   const markNote =
     !planned && ours.length === 0
       ? 'No annotations for this campaign.'
-      : ours.length > marks.length
-        ? `${ours.length - marks.length} annotations are outdated. ` +
-          `Rewriting replaces them with the current ${marks.length}.`
+      : outdated > 0
+        ? `${outdated} ${outdated === 1 ? 'annotation is' : 'annotations are'} outdated. ` +
+          `Rewriting replaces ${outdated === 1 ? 'it' : 'them'} with the current ${marks.length}.`
         : null;
 
   return (
@@ -1055,12 +1113,25 @@ export default function CampaignDashboard() {
           <s-stack direction="block" gap="base">
             {statusLine}
             <s-stack direction="inline" gap="base">
-              <s-button variant="primary" loading={busy} onClick={() => submit('activate')}>
+              <s-button
+                variant="primary"
+                loading={busy === 'activate'}
+                disabled={Boolean(busy)}
+                onClick={() => submit('activate')}
+              >
                 Activate campaign
               </s-button>
-              <s-button tone="critical" loading={busy} onClick={() => submit('cancel')}>
-                Cancel campaign
-              </s-button>
+              <ConfirmButton
+                id="cancel-planned"
+                tone="critical"
+                label="Cancel campaign"
+                heading="Cancel this campaign?"
+                body="The campaign stops before it starts. You can replan it or delete it afterward."
+                confirmLabel="Cancel campaign"
+                loading={busy === 'cancel'}
+                disabled={Boolean(busy)}
+                onConfirm={() => submit('cancel')}
+              />
             </s-stack>
           </s-stack>
         </s-section>
@@ -1104,7 +1175,11 @@ export default function CampaignDashboard() {
                 {promotedNames(campaign) || 'None selected'}
               </s-text>
               <s-stack direction="inline" gap="base">
-                <s-button loading={busy} onClick={changeProducts}>
+                <s-button
+                  loading={busy === 'set-products'}
+                  disabled={Boolean(busy)}
+                  onClick={changeProducts}
+                >
                   {campaign.products.length > 0
                     ? 'Change products'
                     : 'Select products'}
@@ -1216,7 +1291,12 @@ export default function CampaignDashboard() {
                   min={0}
                   details="Creates one target for each assigned QR code. Each target measures attributed sales."
                 />
-                <s-button variant="primary" type="submit" loading={busy}>
+                <s-button
+                  variant="primary"
+                  type="submit"
+                  loading={busy === 'set-targets'}
+                  disabled={Boolean(busy)}
+                >
                   Save targets
                 </s-button>
               </s-stack>
@@ -1385,9 +1465,17 @@ export default function CampaignDashboard() {
         shortDate={shortDate}
       >
         {campaign.status === 'canceled' && (
-          <s-button tone="critical" loading={busy} onClick={() => submit('delete')}>
-            Delete campaign
-          </s-button>
+          <ConfirmButton
+            id="delete-campaign"
+            tone="critical"
+            label="Delete campaign"
+            heading="Delete this campaign?"
+            body="Deleting removes the campaign entry. You can't undo this."
+            confirmLabel="Delete campaign"
+            loading={busy === 'delete'}
+            disabled={Boolean(busy)}
+            onConfirm={() => submit('delete')}
+          />
         )}
       </CampaignLifecycle>
     </s-page>

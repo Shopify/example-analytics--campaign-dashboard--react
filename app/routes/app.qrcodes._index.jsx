@@ -107,7 +107,7 @@ const QRTableRow = ({ qrCode }) => (
           {qrCode.productImage ? (
             <s-image objectFit="cover" src={qrCode.productImage}></s-image>
           ) : (
-            <s-icon size="large" type="image" />
+            <s-icon type="image" />
           )}
         </s-clickable>
         <s-link href={`/app/qrcodes/${qrCode.handle}`}>

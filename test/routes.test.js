@@ -56,6 +56,7 @@ describe('QR code save', () => {
     QRCodeHandles: handlesFor(campaigns),
     UpdateCampaign: () => ({data: {metaobjectUpdate: {metaobject: null, userErrors: []}}}),
     UpsertQRCode: () => ({data: {metaobjectUpsert: {metaobject: {id: 'gid://shopify/Metaobject/50', handle: 'hat-front'}, userErrors: []}}}),
+    QRCodeId: () => ({data: {metaobjectByHandle: {id: 'gid://shopify/Metaobject/50'}}}),
     ...extra,
   });
   const form = (campaign) => ({

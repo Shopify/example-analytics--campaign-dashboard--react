@@ -16,6 +16,7 @@ database.sqlite
 
 yarn.lock
 pnpm-lock.yaml
+pnpm-workspace.yaml
 
 # Ignore shopify files created during app dev
 .shopify/*

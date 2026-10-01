@@ -8,9 +8,12 @@ export async function measureTargets(admin, campaign, targetsBody) {
     (target) => recorded.has(target.id),
   );
   const measurable = targetNodes.filter((target) => target.shopifyqlQuery);
-  const progress = measurable.length
-    ? ((await (await admin.graphql(progressQuery(measurable))).json()).data ?? {})
+  const body = measurable.length
+    ? await (await admin.graphql(progressQuery(measurable))).json()
     : {};
+  const progress = body.data ?? {};
+  // A throttled or failed read shows on every card. Silence reads as no progress.
+  const unread = body.errors?.[0]?.message ?? null;
 
   return targetNodes.map((target) => {
     const index = measurable.indexOf(target);
@@ -26,7 +29,8 @@ export async function measureTargets(admin, campaign, targetsBody) {
       queryError:
         index === -1
           ? `Couldn't measure ${target.metric}. Reload to try again.`
-          : (progress[`t${index}`]?.parseErrors?.[0] ?? null),
+          : (progress[`t${index}`]?.parseErrors?.[0] ??
+            (actual === null ? unread : null)),
     };
   });
 }
