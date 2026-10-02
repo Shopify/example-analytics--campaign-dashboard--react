@@ -36,6 +36,8 @@ function TargetCard({target, scope, by, format, cardReady}) {
   const {percent, actual, expectedValue, queryError} = target;
   const met = percent !== null && percent >= 100;
   const query = targetChartQuery(target);
+  // A QR code's chart stays blank until an order arrives through its link.
+  const noSales = !actual && target.filters?.startsWith('utm_campaign');
   return (
     <s-box padding="base" background="subdued" borderRadius="base">
       <s-stack direction="block" gap="small-200">
@@ -53,7 +55,12 @@ function TargetCard({target, scope, by, format, cardReady}) {
 
         {/* The card fills its container's height. */}
         <div style={{height: '200px'}}>
-          {cardReady ? (
+          {noSales ? (
+            <s-paragraph color="subdued">
+              No sales from this code yet. Sales appear here after customers check out through
+              the code's link.
+            </s-paragraph>
+          ) : cardReady ? (
             <s-shopifyql-metric-card
               heading={scope}
               query={query}
