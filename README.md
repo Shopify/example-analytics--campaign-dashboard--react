@@ -41,16 +41,14 @@ You'll need Node 20.19+ or 22.12+, [app development permissions](https://shopify
    scopes = "read_reports,write_reports,read_analytics_annotations,write_analytics_annotations,write_products,write_customers,write_orders,write_metaobject_definitions,write_metaobjects,write_marketing_events"
    ```
 
-5. In `extensions/app-events/shopify.extension.toml`, replace `your-org` in `namespace` with your organization's name, as the comment in that file asks.
-
-6. Create the local database, then deploy the app, the QR code metaobject definition, and the event declarations:
+5. Create the local database, then deploy the app, the QR code metaobject definition, and the event declarations:
 
    ```shell
    npm run setup
    npm run deploy
    ```
 
-7. Start the app, press `p` to open the preview URL, then click **Install app**. The prompt lists the scopes from step 4:
+6. Start the app, press `p` to open the preview URL, then click **Install app**. The prompt lists the scopes from step 4:
 
    ```shell
    npm run dev

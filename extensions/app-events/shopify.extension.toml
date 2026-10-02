@@ -3,9 +3,6 @@
 type = "analytics_app_events"
 handle = "app-events"
 
-# Replace your-org with your organization name.
-namespace = "your-org-campaign-dashboard"
-
 # The email funnel, in order.
 [[extensions.events]]
 name = "shopify.marketing.email_sent"

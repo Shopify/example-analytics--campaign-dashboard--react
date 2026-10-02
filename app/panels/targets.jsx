@@ -39,44 +39,46 @@ function TargetCard({target, scope, by, format, cardReady}) {
   // A QR code's chart stays blank until an order arrives through its link.
   const noSales = !actual && target.filters?.startsWith('utm_campaign');
   return (
-    <s-box padding="base" background="subdued" borderRadius="base">
-      <s-stack direction="block" gap="small-200">
-        <s-stack direction="inline" gap="small-200" alignItems="center" justifyContent="space-between">
-          <s-text color="subdued">{scope}</s-text>
-          <s-badge tone={met ? 'success' : 'info'}>
-            {percent === null ? 'Not measured' : `${percent}%`}
-          </s-badge>
-        </s-stack>
-        <s-text type="strong">
-          {actual === null
-            ? `Target ${format(expectedValue)} by ${by}`
-            : `${format(actual)} of ${format(expectedValue)} by ${by}`}
-        </s-text>
+    <s-box padding="base" background="subdued" borderRadius="base" blockSize="100%">
+      <s-stack direction="block" gap="base" blockSize="100%" justifyContent="space-between">
+        <s-stack direction="block" gap="small-200">
+          <s-stack direction="inline" gap="small-200" alignItems="center" justifyContent="space-between">
+            <s-text color="subdued">{scope}</s-text>
+            <s-badge tone={met ? 'success' : 'info'}>
+              {percent === null ? 'Not measured' : `${percent}%`}
+            </s-badge>
+          </s-stack>
+          <s-text type="strong">
+            {actual === null
+              ? `Target ${format(expectedValue)} by ${by}`
+              : `${format(actual)} of ${format(expectedValue)} by ${by}`}
+          </s-text>
 
-        {/* The card fills its container's height. */}
-        <div style={{height: '200px'}}>
-          {noSales ? (
-            <s-paragraph color="subdued">
-              No sales from this code yet. Sales appear here after customers check out through
-              the code's link.
-            </s-paragraph>
-          ) : cardReady ? (
-            <s-shopifyql-metric-card
-              heading={scope}
-              query={query}
-              summary="none"
-              reportLinkDisabled
-            />
-          ) : (
-            <s-spinner accessibilityLabel="Loading the target chart" />
+          {/* The card fills its container's height. */}
+          <div style={{height: '200px'}}>
+            {noSales ? (
+              <s-paragraph color="subdued">
+                No sales from this code yet. Sales appear here after customers check out through
+                the code's link.
+              </s-paragraph>
+            ) : cardReady ? (
+              <s-shopifyql-metric-card
+                heading={scope}
+                query={query}
+                summary="none"
+                reportLinkDisabled
+              />
+            ) : (
+              <s-spinner accessibilityLabel="Loading the target chart" />
+            )}
+          </div>
+
+          {queryError && (
+            <s-banner tone="warning">
+              <s-paragraph>{queryError}</s-paragraph>
+            </s-banner>
           )}
-        </div>
-
-        {queryError && (
-          <s-banner tone="warning">
-            <s-paragraph>{queryError}</s-paragraph>
-          </s-banner>
-        )}
+        </s-stack>
 
         <s-link
           href={exploreLink(query)}
@@ -208,7 +210,7 @@ export function TargetsPanel({
           </s-stack>
         )}
 
-        <s-grid gridTemplateColumns="repeat(auto-fit, minmax(300px, 1fr))" gap="base">
+        <s-grid gridTemplateColumns="@container (inline-size > 560px) 1fr 1fr, 1fr" gap="base">
           {storeTarget && card(storeTarget)}
           {scopedTargets.map(card)}
         </s-grid>
