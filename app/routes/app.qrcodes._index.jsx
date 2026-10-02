@@ -71,7 +71,7 @@ function truncate(str, { length = 25 } = {}) {
 
 // [START table]
 const QRTable = ({ qrCodes }) => (
-  <s-section padding="none" accessibilityLabel="QRCode table">
+  <s-section padding="none" accessibilityLabel="QR code table">
     <s-table>
       <s-table-header-row>
         <s-table-header listSlot="primary">Title</s-table-header>
@@ -135,7 +135,11 @@ const QRTableRow = ({ qrCode }) => (
         "None"
       )}
     </s-table-cell>
-    <s-table-cell>{new Date(qrCode.createdAt).toDateString()}</s-table-cell>
+    <s-table-cell>
+      {new Intl.DateTimeFormat("en", { month: "short", day: "numeric", year: "numeric" }).format(
+        new Date(qrCode.createdAt),
+      )}
+    </s-table-cell>
     <s-table-cell>{qrCode.scans}</s-table-cell>
   </s-table-row>
 );

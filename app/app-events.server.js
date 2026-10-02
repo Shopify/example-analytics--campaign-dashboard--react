@@ -197,6 +197,22 @@ export const funnelWindowEnd = (startDate, timeZone) =>
 export const funnelFitsWindow = (startDate, endDate, timeZone) =>
   funnelWindowEnd(startDate, timeZone) <= shopMorning(endDate, timeZone) + 86400000;
 
+// Why an active campaign can't send yet, or null. The page disables the button
+// with this reason, and the action checks it again.
+export function sendBlocker(campaign, timeZone, locale, now = Date.now()) {
+  if (!funnelFitsWindow(campaign.startDate, campaign.endDate, timeZone)) {
+    return 'The send schedule runs 14 days, and this campaign is shorter. Send events from a campaign that runs at least 14 days.';
+  }
+  // The replay dates its events across the two weeks after the start date. A campaign
+  // still mid-schedule would stamp the remainder ahead of today.
+  const lastSend = funnelWindowEnd(campaign.startDate, timeZone);
+  if (lastSend > now) {
+    const day = new Intl.DateTimeFormat(locale, {month: 'short', day: 'numeric', timeZone}).format(lastSend);
+    return `Available from ${day}, when the 14-day send schedule ends.`;
+  }
+  return null;
+}
+
 // Event data can't be deleted. Sending a channel the campaign didn't select would leave
 // permanent numbers on a funnel the app never renders.
 const selected = (channels) =>

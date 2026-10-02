@@ -11,6 +11,7 @@ import {
   nextCampaignId,
   readCampaigns,
   rememberMarkers,
+  updateCampaign,
 } from '../app/campaigns.server';
 import {mockAdmin, ops} from './helpers/admin';
 import {ALL_FIELDS, listOf, node, qrCodeHandles} from './helpers/campaign';
@@ -45,7 +46,6 @@ describe('field mapping', () => {
         products: [{id: 'gid://shopify/Product/1', title: 'Hat'}],
         qrCodes: [{id: 'gid://shopify/Metaobject/9', handle: 'summer-hat'}],
         audience: 'vip',
-        members: ['gid://shopify/Customer/5'],
         creatorCodes: [{code: 'A', creator: 'B'}],
         revenueTarget: '100.0',
         status: 'running',
@@ -60,7 +60,6 @@ describe('field mapping', () => {
       id: 4210,
       products: [{id: 'gid://shopify/Product/1', title: 'Hat'}],
       qrCodes: [{id: 'gid://shopify/Metaobject/9', handle: null, title: ''}],
-      members: ['gid://shopify/Customer/5'],
       revenueTarget: '100.0',
       productTarget: '',
       qrTarget: '',
@@ -76,7 +75,6 @@ describe('field mapping', () => {
       channels: [],
       products: [],
       qrCodes: [],
-      members: [],
       audience: 'everyone',
       status: 'planned',
       markers: {},
@@ -275,6 +273,28 @@ describe('createCampaign', () => {
 describe('entry writes', () => {
   const updated = () => ({data: {metaobjectUpdate: {metaobject: null, userErrors: []}}});
 
+  it('refuses a write when someone changed the campaign since it was read', async () => {
+    const campaign = {gid: 'g1', updatedAt: '2026-09-30T10:00:00Z'};
+    const {admin, calls} = mockAdmin({
+      CampaignVersion: () => ({data: {metaobject: {updatedAt: '2026-09-30T10:05:00Z'}}}),
+    });
+    const {userErrors} = await updateCampaign(admin, campaign, {status: 'running'});
+    expect(userErrors[0].code).toBe('STALE');
+    expect(ops(calls)).toEqual(['CampaignVersion']);
+  });
+
+  it('carries the new version to the next write in the same action', async () => {
+    const campaign = {gid: 'g1', updatedAt: '2026-09-30T10:00:00Z'};
+    const {admin} = mockAdmin({
+      CampaignVersion: () => ({data: {metaobject: {updatedAt: campaign.updatedAt}}}),
+      UpdateCampaign: () => ({
+        data: {metaobjectUpdate: {metaobject: node({id: 4210, updatedAt: '2026-09-30T10:01:00Z'}), userErrors: []}},
+      }),
+    });
+    await updateCampaign(admin, campaign, {status: 'running'});
+    expect(campaign.updatedAt).toBe('2026-09-30T10:01:00Z');
+  });
+
   it('merges new marker IDs into the stored ones', async () => {
     const stale = campaignFromNode(node({id: 4210, markers: {}}));
     const {admin, calls} = mockAdmin({
@@ -288,18 +308,14 @@ describe('entry writes', () => {
     });
   });
 
-  it('removes a redacted customer from only the campaigns that hold them', async () => {
+  it('deletes a redacted customer\'s tier metafield', async () => {
     const {admin, calls} = mockAdmin({
-      CampaignList: listOf([
-        node({gid: 'g1', id: 4210, members: ['c1', 'c2']}),
-        node({gid: 'g2', id: 4211, members: ['c3']}),
-      ]),
-      UpdateCampaign: updated,
+      DeleteCustomerTier: () => ({data: {metafieldsDelete: {deletedMetafields: [{key: 'tier'}], userErrors: []}}}),
     });
-    expect(await forgetCustomer(admin, 'c1')).toEqual([]);
-    const updates = calls.filter((call) => call.op === 'UpdateCampaign');
-    expect(updates).toHaveLength(1);
-    expect(updates[0].variables).toEqual({id: 'g1', metaobject: {fields: [{key: 'members', value: '["c2"]'}]}});
+    expect(await forgetCustomer(admin, 'gid://shopify/Customer/5')).toEqual([]);
+    expect(calls[0].variables.metafields).toEqual([
+      {ownerId: 'gid://shopify/Customer/5', namespace: '$app:campaign_dashboard', key: 'tier'},
+    ]);
   });
 
   it('adds a QR code to its new campaign, then drops it from every other', async () => {

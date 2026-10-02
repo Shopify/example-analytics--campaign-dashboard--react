@@ -47,7 +47,7 @@ export default function QRCode() {
   return (
     <>
       <h1>{title}</h1>
-      <img src={image} alt={`QR Code for product`} />
+      <img src={image} alt="QR code for the product" />
     </>
   );
 }

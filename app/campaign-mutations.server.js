@@ -329,20 +329,20 @@ export async function stampProducts(admin, campaign) {
 // [START campaign-dashboard.stamp-tier]
 export async function stampTier(admin, campaign) {
   const tier = AUDIENCE_TIERS.find((entry) => entry.value === campaign.audience);
-  if (!tier?.size) return {members: [], userErrors: []};
+  if (!tier?.size) return [];
 
   const body = await (await admin.graphql(tierRankQuery(tier))).json();
   // A failed rank read finds no customers. Returning no errors would read as a tier
   // with nobody in it.
   const unranked = transportErrors(body);
-  if (unranked.length) return {members: [], userErrors: unranked};
+  if (unranked.length) return unranked;
 
   // GROUP BY returns a numeric ID. Every mutation below wants a GID.
   const ids = (body.data?.shopifyqlQuery?.tableData?.rows ?? [])
     .map((row) => row.customer_id)
     .filter(Boolean)
     .map((id) => `gid://shopify/Customer/${id}`);
-  if (ids.length === 0) return {members: [], userErrors: []};
+  if (ids.length === 0) return [];
 
   const stamped = await (
     await admin.graphql(METAFIELDS_SET, {
@@ -358,12 +358,10 @@ export async function stampTier(admin, campaign) {
     })
   ).json();
 
-  // The members field holds customer references. The admin shows each name.
-  const userErrors = [
+  return [
     ...transportErrors(stamped),
     ...(stamped.data?.metafieldsSet?.userErrors ?? []),
   ];
-  return {members: userErrors.length ? [] : ids, userErrors};
 }
 // [END campaign-dashboard.stamp-tier]
 

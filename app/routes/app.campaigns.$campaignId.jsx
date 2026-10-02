@@ -3,8 +3,7 @@ import {redirect, useFetcher, useLoaderData, useRouteError} from 'react-router';
 import {authenticate} from '../shopify.server';
 import {
   eventTotal,
-  funnelFitsWindow,
-  funnelWindowEnd,
+  sendBlocker,
   sendCampaignFunnel,
   sendCount,
 } from '../app-events.server';
@@ -238,6 +237,7 @@ export async function loader({request, params}) {
     codeSales,
     qrSales,
     qrCodes,
+    sendBlocked: sendBlocker(campaign, salesBody.data?.shop?.ianaTimezone ?? 'Etc/UTC', locale),
   };
 }
 
@@ -362,20 +362,12 @@ export async function action({request, params}) {
         ],
       };
     }
-    if (!funnelFitsWindow(campaign.startDate, campaign.endDate, timeZone)) {
-      return {
-        problems: [
-          'The send schedule runs 14 days. Set the end date at least 14 days after the start date.',
-        ],
-      };
-    }
-    // The replay dates its events across the two weeks after the start date. A campaign
-    // still mid-schedule would stamp the remainder ahead of today.
-    const lastSend = funnelWindowEnd(campaign.startDate, timeZone);
-    if (lastSend > Date.now()) {
-      const day = new Date(lastSend).toISOString().slice(0, 10);
-      return {problems: [`Send events on or after ${day}.`]};
-    }
+    const blocked = sendBlocker(
+      campaign,
+      timeZone,
+      safeLocale(new URL(request.url).searchParams.get('locale')),
+    );
+    if (blocked) return {problems: [blocked]};
     if (!shopId) return {problems: ["Couldn't read the store ID. Reload and try again."]};
     const {accepted, failures} = await sendCampaignFunnel({
       shopId,
@@ -466,12 +458,11 @@ export async function action({request, params}) {
     }
 
     const unstamped = await stampProducts(admin, campaign);
-    const {members, userErrors: untiered} = await stampTier(admin, campaign);
+    const untiered = await stampTier(admin, campaign);
     const {userErrors} = await updateCampaign(admin, campaign, {
       status: 'running',
       markers,
       targets,
-      members,
     });
     if (userErrors.length) {
       return {problems: userErrors.map((error) => error.message)};
@@ -849,6 +840,7 @@ export default function CampaignDashboard() {
     funnel,
     sequence,
     bounces,
+    sendBlocked,
     promoted,
     tierSales,
     touchSales,
@@ -1268,12 +1260,17 @@ export default function CampaignDashboard() {
                   min={0}
                   details="Measures total sales. Leave blank for no target."
                 />
+                {/* A disabled field doesn't submit, and the action keeps its saved amount. */}
                 <s-money-field
                   label="Promoted product target"
                   name="productTarget"
                   value={campaign.productTarget}
                   min={0}
-                  details={promotedNames(campaign) || 'No products selected'}
+                  disabled={campaign.products.length === 0}
+                  details={
+                    promotedNames(campaign) ||
+                    'Select promoted products under Campaign setup to set this target.'
+                  }
                 />
                 {isTargetedTier(campaign.audience) && (
                   <s-money-field
@@ -1281,7 +1278,12 @@ export default function CampaignDashboard() {
                     name="audienceTarget"
                     value={campaign.audienceTarget}
                     min={0}
-                    details={`Sales to the ${tierLabel(campaign.audience)} segment`}
+                    disabled={!dimensions.customer.enabled}
+                    details={
+                      dimensions.customer.enabled
+                        ? `Sales to the ${tierLabel(campaign.audience)} segment`
+                        : 'Make the customer dimension queryable on the campaign list to set this target.'
+                    }
                   />
                 )}
                 <s-money-field
@@ -1359,6 +1361,7 @@ export default function CampaignDashboard() {
           sendCount={sendCount}
           eventTotal={eventTotal}
           alreadySent={Boolean(campaign.sentEvents)}
+          blocked={sendBlocked}
           sentEvents={fetcher.data?.sentEvents}
           integer={integer}
           busy={busy}

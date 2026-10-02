@@ -160,22 +160,27 @@ export function PromotedProductSales({
       <s-paragraph>
         Grouped by <s-text type="strong">{dimensions.product.dimension}</s-text>.
       </s-paragraph>
-      <s-table variant="auto">
-        <s-table-header-row>
-          <s-table-header listSlot="primary">Day</s-table-header>
-          <s-table-header listSlot="labeled">Promoted products</s-table-header>
-          <s-table-header listSlot="labeled">Other products</s-table-header>
-        </s-table-header-row>
-        <s-table-body>
-          {promotedRows.map((row) => (
-            <s-table-row key={row.day}>
-              <s-table-cell>{shortDate(row.day)}</s-table-cell>
-              <s-table-cell>{currency(row.promoted)}</s-table-cell>
-              <s-table-cell>{currency(row.rest)}</s-table-cell>
-            </s-table-row>
-          ))}
-        </s-table-body>
-      </s-table>
+      <details>
+        <summary>Daily breakdown</summary>
+        <s-box paddingBlockStart="base">
+          <s-table variant="auto">
+            <s-table-header-row>
+              <s-table-header listSlot="primary">Day</s-table-header>
+              <s-table-header listSlot="labeled">Promoted products</s-table-header>
+              <s-table-header listSlot="labeled">Other products</s-table-header>
+            </s-table-header-row>
+            <s-table-body>
+              {promotedRows.map((row) => (
+                <s-table-row key={row.day}>
+                  <s-table-cell>{shortDate(row.day)}</s-table-cell>
+                  <s-table-cell>{currency(row.promoted)}</s-table-cell>
+                  <s-table-cell>{currency(row.rest)}</s-table-cell>
+                </s-table-row>
+              ))}
+            </s-table-body>
+          </s-table>
+        </s-box>
+      </details>
     </s-section>
   );
 }
@@ -216,20 +221,25 @@ export function SegmentSales({
           sales totals aren&rsquo;t available for this period yet.
         </s-paragraph>
       )}
-      <s-table variant="auto">
-        <s-table-header-row>
-          <s-table-header listSlot="primary">Day</s-table-header>
-          <s-table-header listSlot="labeled">Sales</s-table-header>
-        </s-table-header-row>
-        <s-table-body>
-          {tierRows.map((row) => (
-            <s-table-row key={row.day}>
-              <s-table-cell>{shortDate(row.day)}</s-table-cell>
-              <s-table-cell>{currency(row.sales)}</s-table-cell>
-            </s-table-row>
-          ))}
-        </s-table-body>
-      </s-table>
+      <details>
+        <summary>Daily breakdown</summary>
+        <s-box paddingBlockStart="base">
+          <s-table variant="auto">
+            <s-table-header-row>
+              <s-table-header listSlot="primary">Day</s-table-header>
+              <s-table-header listSlot="labeled">Sales</s-table-header>
+            </s-table-header-row>
+            <s-table-body>
+              {tierRows.map((row) => (
+                <s-table-row key={row.day}>
+                  <s-table-cell>{shortDate(row.day)}</s-table-cell>
+                  <s-table-cell>{currency(row.sales)}</s-table-cell>
+                </s-table-row>
+              ))}
+            </s-table-body>
+          </s-table>
+        </s-box>
+      </details>
     </s-section>
   );
 }

@@ -48,6 +48,14 @@ describe('create', () => {
     const result = await createAction({request: post('/app/campaigns', {...fields, qrTarget: '0'})});
     expect(result.problems).toEqual(['QR code target must be greater than 0. Leave it blank for no target.']);
   });
+
+  it('drops a target the form hides', async () => {
+    const mock = mockAdmin(creating());
+    session.admin = mock.admin;
+    await createAction({request: post('/app/campaigns', {...fields, productTarget: '500', audienceTarget: '250'})});
+    const saved = Object.fromEntries(mock.calls.find((call) => call.op === 'CreateCampaign').variables.metaobject.fields.map((f) => [f.key, f.value]));
+    expect(saved).toMatchObject({product_target: '', audience_target: ''});
+  });
 });
 
 describe('QR code save', () => {
@@ -103,7 +111,7 @@ describe('QR code save', () => {
     session.admin = mock.admin;
     const response = await qrAction({request: post('/app/qrcodes/hat-front', {...form('g1'), liveOn: '2026-10-20'}), params: {id: 'hat-front'}});
     expect(response.status).toBe(422);
-    expect(await response.json()).toEqual({errors: {liveOn: 'Select a day from 2026-09-10 to 2026-10-07.'}});
+    expect(await response.json()).toEqual({errors: {liveOn: 'Select a day from Sep 10 to Oct 7.'}});
     expect(ops(mock.calls)).not.toContain('UpsertQRCode');
   });
 

@@ -1,5 +1,6 @@
 // Every GraphQL document this app sends. Campaign-dependent queries are builders.
-import {campaignWindow, recentWindow} from './campaigns';
+import {TIER_METAFIELD} from './audiences';
+import {DIMENSION_NAMESPACE, campaignWindow, recentWindow} from './campaigns';
 import {FUNNEL_METRICS, SEQUENCE_METRICS} from './channels';
 
 // [START campaign-dashboard.shop-query]
@@ -46,6 +47,7 @@ export const ID_KEY = 'last_campaign_id';
 const CAMPAIGN_NODE = `
   id
   handle
+  updatedAt
   fields {
     key
     jsonValue
@@ -91,6 +93,38 @@ export const CAMPAIGN_BY_ID = `
   query CampaignById($id: ID!) {
     metaobject(id: $id) {
       ${CAMPAIGN_NODE}
+    }
+  }
+`;
+
+export const CAMPAIGN_VERSION = `
+  query CampaignVersion($id: ID!) {
+    metaobject(id: $id) {
+      updatedAt
+    }
+  }
+`;
+
+export const CUSTOMER_TIER = `
+  query CustomerTier($id: ID!) {
+    customer(id: $id) {
+      tier: metafield(namespace: "${DIMENSION_NAMESPACE}", key: "${TIER_METAFIELD.key}") {
+        value
+      }
+    }
+  }
+`;
+
+export const METAFIELDS_DELETE = `
+  mutation DeleteCustomerTier($metafields: [MetafieldIdentifierInput!]!) {
+    metafieldsDelete(metafields: $metafields) {
+      deletedMetafields {
+        key
+      }
+      userErrors {
+        field
+        message
+      }
     }
   }
 `;

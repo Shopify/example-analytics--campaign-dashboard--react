@@ -29,6 +29,6 @@ export const TIER_METAFIELD = {key: 'tier'};
 export const tierLabel = (value) =>
   AUDIENCE_TIERS.find((tier) => tier.value === value)?.label ?? value;
 
-// `everyone` measures the whole store. Nothing to filter on, no roster to write.
+// `everyone` measures the whole store. Nothing to filter on, and no customer gets a tier.
 export const isTargetedTier = (value) => Boolean(value) && value !== 'everyone';
 // [END campaign-dashboard.audience-tiers]

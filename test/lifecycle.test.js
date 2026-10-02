@@ -24,7 +24,7 @@ describe('activate', () => {
     expect(await result).toEqual({ok: true});
     expect(ops(mock.calls)).not.toContain('CreateCampaignTarget');
     expect(ops(mock.calls)).toContain('CreateCampaignAnnotation');
-    expect(lastUpdate(mock.calls)).toMatchObject({status: 'running', targets: '{}', members: '[]'});
+    expect(lastUpdate(mock.calls)).toMatchObject({status: 'running', targets: '{}'});
   });
 
   it('creates every target with an amount, one per QR code', async () => {

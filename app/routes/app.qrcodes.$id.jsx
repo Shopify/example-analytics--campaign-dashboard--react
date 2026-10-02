@@ -22,7 +22,7 @@ import {
   campaignOf,
   readCampaigns,
 } from "../campaigns.server";
-import { isCalendarDate } from "../campaigns";
+import { isCalendarDate, shortDate } from "../campaigns";
 
 // [START campaign-dashboard.qr-campaign-picker]
 // Activation writes a mark for each code, and a target when the campaign sets a QR
@@ -52,7 +52,7 @@ function liveOnError(liveOn, choice) {
   if (!liveOn) return null;
   if (!choice) return "Select a campaign to set a live date.";
   return !isCalendarDate(liveOn) || liveOn < choice.startDate || liveOn > choice.endDate
-    ? `Select a day from ${choice.startDate} to ${choice.endDate}.`
+    ? `Select a day from ${shortDate(choice.startDate)} to ${shortDate(choice.endDate)}.`
     : null;
 }
 
@@ -376,11 +376,11 @@ export default function QRCodeForm() {
             slot="breadcrumb-actions"
           >
           {/* [END breadcrumbs] */}
-            QR Codes
+            QR codes
           </s-link>
           {initialFormState.handle &&
             <s-button slot="secondary-actions" onClick={handleDelete}>Delete</s-button>}
-          <s-section heading="QR Code information">
+          <s-section heading="QR code information">
             <s-stack gap="base">
               {/* [START title] */}
               <s-text-field
@@ -457,7 +457,7 @@ export default function QRCodeForm() {
                   label="Live on"
                   details={
                     chosenCampaign
-                      ? `${chosenCampaign.startDate} to ${chosenCampaign.endDate}. Leave blank to go live with the campaign. The code's annotation and target start on this day.`
+                      ? `${shortDate(chosenCampaign.startDate)} to ${shortDate(chosenCampaign.endDate)}. Leave blank to go live with the campaign. The code's annotation and target start on this day.`
                       : "Leave blank to go live with the campaign."
                   }
                   disabled={loaderData.campaignLocked || loaderData.campaignsFailed}
@@ -477,7 +477,7 @@ export default function QRCodeForm() {
                   {formState.productId ? (
                     <s-link
                       onClick={removeProduct}
-                      accessibilityLabel="Remove the product from this QR Code"
+                      accessibilityLabel="Remove the product from this QR code"
                       tone="neutral"
                     >
                       Clear
@@ -561,7 +561,7 @@ export default function QRCodeForm() {
                     <s-image
                       aspectRatio="1/0.8"
                       src={initialFormState.image}
-                      alt="The QR Code for the current form"
+                      alt="The QR code for the current form"
                     />
                   ) : (
                     <s-stack

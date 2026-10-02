@@ -1,15 +1,14 @@
 import {authenticate} from '../shopify.server';
 import {forgetCustomer} from '../campaigns.server';
 
-// Activating a campaign saves a reference to each tier member on the campaign entry.
-// Redaction has to reach that too.
+// Activating a targeted campaign writes a tier metafield on each customer in the tier.
+// Redaction deletes it.
 export const action = async ({request}) => {
   const {admin, shop, topic, payload} = await authenticate.webhook(request);
 
   console.log(`Received ${topic} for ${shop}`);
 
-  // Without a session the app can't reach the store. The merchant can still delete
-  // the campaign entries in the admin.
+  // Without a session the app can't reach the store.
   if (!admin) return new Response();
 
   const id = payload.customer?.id;

@@ -211,28 +211,33 @@ export function SalesAndOrders({
 
       {/* [START campaign-dashboard.sales-table-render] */}
       {/* The rows render as the query returned them. `cell` reads the generated columns. */}
-      <s-table variant="auto">
-        <s-table-header-row>
-          <s-table-header listSlot="primary">Day</s-table-header>
-          {showSends && (
-            <s-table-header listSlot="labeled">Messages sent</s-table-header>
-          )}
-          <s-table-header listSlot="labeled">Orders</s-table-header>
-          <s-table-header listSlot="labeled">Sales</s-table-header>
-        </s-table-header-row>
-        <s-table-body>
-          {rows.map((row) => (
-            <s-table-row key={String(cell(row, 'day'))}>
-              <s-table-cell>{shortDate(cell(row, 'day'))}</s-table-cell>
+      <details>
+        <summary>Daily breakdown</summary>
+        <s-box paddingBlockStart="base">
+          <s-table variant="auto">
+            <s-table-header-row>
+              <s-table-header listSlot="primary">Day</s-table-header>
               {showSends && (
-                <s-table-cell>{sends.get(String(cell(row, 'day'))) ?? 0}</s-table-cell>
+                <s-table-header listSlot="labeled">Messages sent</s-table-header>
               )}
-              <s-table-cell>{Number(cell(row, 'orders') ?? 0)}</s-table-cell>
-              <s-table-cell>{currency(cell(row, 'total_sales'))}</s-table-cell>
-            </s-table-row>
-          ))}
-        </s-table-body>
-      </s-table>
+              <s-table-header listSlot="labeled">Orders</s-table-header>
+              <s-table-header listSlot="labeled">Sales</s-table-header>
+            </s-table-header-row>
+            <s-table-body>
+              {rows.map((row) => (
+                <s-table-row key={String(cell(row, 'day'))}>
+                  <s-table-cell>{shortDate(cell(row, 'day'))}</s-table-cell>
+                  {showSends && (
+                    <s-table-cell>{sends.get(String(cell(row, 'day'))) ?? 0}</s-table-cell>
+                  )}
+                  <s-table-cell>{Number(cell(row, 'orders') ?? 0)}</s-table-cell>
+                  <s-table-cell>{currency(cell(row, 'total_sales'))}</s-table-cell>
+                </s-table-row>
+              ))}
+            </s-table-body>
+          </s-table>
+        </s-box>
+      </details>
       {/* [END campaign-dashboard.sales-table-render] */}
 
       <s-stack direction="block" gap="base">

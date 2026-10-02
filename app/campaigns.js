@@ -98,6 +98,12 @@ export function parseProducts(input) {
     .slice(0, 5);
 }
 
+// Local midnight. A bare date string is UTC, and formats a day early west of it.
+export const shortDate = (day, locale = 'en') =>
+  new Intl.DateTimeFormat(locale, {month: 'short', day: 'numeric'}).format(
+    new Date(`${day}T00:00:00`),
+  );
+
 export function safeLocale(value) {
   if (!value) return 'en';
   try {

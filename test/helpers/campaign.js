@@ -3,9 +3,10 @@ import {CAMPAIGN_FIELDS, campaignFields} from '../../app/campaigns.server';
 export const INSTALLATION = {id: 'gid://shopify/AppInstallation/1', app: {id: 'gid://shopify/App/7', title: 'Campaign dashboard'}};
 
 // An entry as the list query returns it, built from a camelCase campaign.
-export function node({gid = 'gid://shopify/Metaobject/1', handle, products = [], qrCodes = [], ...fields}) {
+export function node({gid = 'gid://shopify/Metaobject/1', handle, updatedAt, products = [], qrCodes = [], ...fields}) {
   return {
     id: gid,
+    updatedAt,
     handle: handle ?? `campaign-${fields.id}`,
     fields: campaignFields({...fields, products, qrCodes}).map(({key, value}) => ({key, jsonValue: decode(key, value)})),
     products: {references: {nodes: products}},
@@ -17,7 +18,7 @@ export function node({gid = 'gid://shopify/Metaobject/1', handle, products = [],
 // The API hands back JSON for lists and json fields, a number for integers, strings otherwise.
 function decode(key, value) {
   if (value === '') return null;
-  if (['channels', 'products', 'qr_code_ids', 'members', 'creator_codes', 'markers', 'targets'].includes(key)) {
+  if (['channels', 'products', 'qr_code_ids', 'creator_codes', 'markers', 'targets'].includes(key)) {
     return JSON.parse(value);
   }
   if (key === 'campaign_id' || key === 'sent_events') return Number(value);

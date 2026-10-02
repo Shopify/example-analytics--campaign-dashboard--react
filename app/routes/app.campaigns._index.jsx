@@ -19,7 +19,7 @@ import {
   safeLocale,
   statusLabel,
 } from '../campaigns';
-import {AUDIENCE_TIERS, tierLabel} from '../audiences';
+import {AUDIENCE_TIERS, isTargetedTier, tierLabel} from '../audiences';
 import {CHANNELS, CHANNEL_KEYS} from '../channels';
 
 // [START campaign-dashboard.overview-read]
@@ -104,6 +104,10 @@ export const action = async ({request}) => {
     audienceTarget: String(form.get('audienceTarget') || '').trim(),
     qrTarget: String(form.get('qrTarget') || '').trim(),
   };
+
+  // The form hides a target activation can't create. Drop one that arrives anyway.
+  if (!isTargetedTier(fields.audience)) fields.audienceTarget = '';
+  if (fields.products.length === 0) fields.productTarget = '';
 
   const problems = [];
   if (!fields.title) problems.push('Enter a campaign name.');
@@ -237,6 +241,7 @@ export default function CampaignsIndex() {
   const fetcher = useFetcher();
   const [products, setProducts] = useState([]);
   const [channels, setChannels] = useState(CHANNEL_KEYS);
+  const [audience, setAudience] = useState('everyone');
   const [composing, setComposing] = useState(false);
   const problems = fetcher.data?.problems ?? [];
   const saving = fetcher.state !== 'idle';
@@ -361,6 +366,7 @@ export default function CampaignsIndex() {
               <s-select
                 label="Customer segment"
                 name="audience"
+                onChange={(event) => setAudience(event.currentTarget.value)}
                 details="Activation writes the segment to a metafield on each customer in the segment. The customer segment target measures sales to the segment."
               >
                 {AUDIENCE_TIERS.map((tier) => (
@@ -377,33 +383,6 @@ export default function CampaignsIndex() {
                 placeholder="AVERY10:Avery, JUNO15:Juno"
                 details="Enter CODE:Creator pairs. Separate the pairs with commas. A creator can have more than one code."
               />
-
-              {/* Each amount becomes a target at activation. Leave one blank for no target. */}
-              <s-money-field
-                label="Store sales target"
-                name="revenueTarget"
-                placeholder="5000.00"
-                details="Leave blank for no target."
-              />
-              <s-money-field
-                label="Promoted product target"
-                name="productTarget"
-                placeholder="5000.00"
-                details="Sales of the promoted products."
-              />
-              <s-money-field
-                label="Customer segment target"
-                name="audienceTarget"
-                placeholder="2500.00"
-                details="Sales to the customer segment."
-              />
-              <s-money-field
-                label="QR code target"
-                name="qrTarget"
-                placeholder="1000.00"
-                details="One target for each QR code assigned to this campaign."
-              />
-
             </s-stack>
           </s-section>
           {/* [END campaign-dashboard.spawn-form] */}
@@ -462,6 +441,58 @@ export default function CampaignsIndex() {
             </s-choice-list>
           </s-section>
           {/* [END campaign-dashboard.channel-picker] */}
+
+          <div style={{height: '12px'}} />
+
+          {/* [START campaign-dashboard.spawn-targets] */}
+          {/* Each amount becomes a target at activation. The form offers only the
+              targets this campaign can create. */}
+          <s-section heading="Targets">
+            <div style={{height: '12px'}} />
+            <s-stack direction="block" gap="base">
+              <s-paragraph>
+                Activation creates a target for each amount. Leave an amount
+                blank for no target.
+              </s-paragraph>
+              <s-money-field
+                label="Store sales target"
+                name="revenueTarget"
+                placeholder="5000.00"
+                details="Measures total sales."
+              />
+              <s-money-field
+                label="Promoted product target"
+                name="productTarget"
+                placeholder="5000.00"
+                disabled={products.length === 0}
+                details={
+                  products.length > 0
+                    ? 'Sales of the promoted products.'
+                    : 'Select promoted products to set this target.'
+                }
+              />
+              {isTargetedTier(audience) && (
+                <s-money-field
+                  label="Customer segment target"
+                  name="audienceTarget"
+                  placeholder="2500.00"
+                  disabled={!dimensions.customer.enabled}
+                  details={
+                    dimensions.customer.enabled
+                      ? `Sales to the ${tierLabel(audience)} segment.`
+                      : 'Make the customer dimension queryable under Analytics dimensions to set this target.'
+                  }
+                />
+              )}
+              <s-money-field
+                label="QR code target"
+                name="qrTarget"
+                placeholder="1000.00"
+                details="One target for each QR code. Assign QR codes from the campaign page before you activate."
+              />
+            </s-stack>
+          </s-section>
+          {/* [END campaign-dashboard.spawn-targets] */}
 
           <div style={{height: '12px'}} />
           <s-stack direction="inline" gap="base">

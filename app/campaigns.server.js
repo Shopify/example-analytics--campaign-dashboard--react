@@ -1,4 +1,4 @@
-import {AUDIENCE_TIERS} from './audiences';
+import {AUDIENCE_TIERS, TIER_METAFIELD} from './audiences';
 import {
   CAMPAIGN_BY_ID,
   CAMPAIGN_CREATE,
@@ -9,14 +9,17 @@ import {
   CAMPAIGN_TYPE,
   CAMPAIGN_UPDATE,
   CAMPAIGN_UPSERT,
+  CAMPAIGN_VERSION,
   CAMPAIGNS_QUERY,
+  CUSTOMER_TIER,
   ID_KEY,
   ID_NAMESPACE,
+  METAFIELDS_DELETE,
   METAFIELDS_SET,
   QR_CODE_HANDLES,
 } from './campaign-queries.server';
 import {CHANNELS} from './channels';
-import {sanitizeCode} from './campaigns';
+import {DIMENSION_NAMESPACE, sanitizeCode} from './campaigns';
 
 // [START campaign-dashboard.campaign-ids]
 // IDs stay spent. Event data can't be deleted, and a reused ID inherits its funnel.
@@ -106,13 +109,6 @@ export const CAMPAIGN_FIELDS = [
     type: 'single_line_text_field',
     validations: choices(AUDIENCE_TIERS.map((tier) => tier.value)),
     description: 'Tier value written onto each targeted customer at activation.',
-  },
-  {
-    field: 'members',
-    key: 'members',
-    name: 'Tier members',
-    type: 'list.customer_reference',
-    description: 'Customers who got the segment metafield at activation. Redaction removes them.',
   },
   {
     field: 'creatorCodes',
@@ -282,6 +278,7 @@ export function campaignFromNode(node) {
   return {
     gid: node.id,
     handle: node.handle,
+    updatedAt: node.updatedAt ?? null,
     id: Number(values.campaign_id),
     title: values.title ?? '',
     startDate: values.start_date ?? '',
@@ -296,7 +293,6 @@ export function campaignFromNode(node) {
       .filter((id) => /^gid:\/\/shopify\/Metaobject\/\d+$/.test(id))
       .map((id) => ({id, handle: null, title: '', liveOn: ''})),
     audience: values.audience ?? 'everyone',
-    members: listOf(values.members),
     // Entries are editable in the admin. Codes reach ShopifyQL filters.
     creatorCodes: listOf(values.creator_codes)
       .filter((pair) => isRecord(pair) && pair.creator)
@@ -414,14 +410,32 @@ const entryResult = (body, name) => {
 };
 
 // A write touches one entry. Two writes to different campaigns never collide.
+// Two writes to the same campaign can, and metaobjectUpdate has no version check.
+// Re-reading the version narrows that window to one round trip.
 export async function updateCampaign(admin, campaign, change) {
+  if (campaign.updatedAt) {
+    const version = await (
+      await admin.graphql(CAMPAIGN_VERSION, {variables: {id: campaign.gid}})
+    ).json();
+    const failed = transportErrors(version);
+    if (failed.length) return {campaign: null, userErrors: failed};
+    if (version.data?.metaobject?.updatedAt !== campaign.updatedAt) {
+      return {campaign: null, userErrors: [{code: 'STALE', message: STALE_MESSAGE}]};
+    }
+  }
   const body = await (
     await admin.graphql(CAMPAIGN_UPDATE, {
       variables: {id: campaign.gid, metaobject: {fields: campaignFields(change)}},
     })
   ).json();
-  return entryResult(body, 'metaobjectUpdate');
+  const result = entryResult(body, 'metaobjectUpdate');
+  // The next write in the same action compares against this one.
+  if (result.campaign?.updatedAt) campaign.updatedAt = result.campaign.updatedAt;
+  return result;
 }
+
+export const STALE_MESSAGE =
+  'Someone else changed this campaign while you were working. Reload the page and try again.';
 
 // Annotation IDs per mark, to find and rewrite an annotation after the campaign runs.
 // Re-read first. Each ID lands as its mark saves, and the record in hand is stale.
@@ -434,9 +448,12 @@ export async function rememberMarkers(admin, campaign, markers) {
   const current = body.data?.metaobject
     ? campaignFromNode(body.data.metaobject)
     : campaign;
-  return updateCampaign(admin, campaign, {
+  // The merge already holds every recorded ID, so the fresh version is the one to check.
+  const result = await updateCampaign(admin, current, {
     markers: {...current.markers, ...markers},
   });
+  campaign.updatedAt = current.updatedAt;
+  return result;
 }
 // [END campaign-dashboard.campaign-write]
 
@@ -451,22 +468,30 @@ export async function deleteCampaign(admin, campaign) {
   return {userErrors: body.data?.metaobjectDelete?.userErrors ?? []};
 }
 
-// The tier members are the only customer data this app stores. Shopify deletes the
-// tier metafield with the customer. Clearing the member lists is this app's job.
-export async function forgetCustomer(admin, customerId) {
-  const {campaigns, failed} = await readCampaigns(admin);
-  if (failed.length) return failed;
-
-  const userErrors = [];
-  for (const campaign of campaigns) {
-    if (!campaign.members.includes(customerId)) continue;
-    const result = await updateCampaign(admin, campaign, {
-      members: campaign.members.filter((member) => member !== customerId),
-    });
-    userErrors.push(...result.userErrors);
-  }
-  return userErrors;
+// [START campaign-dashboard.customer-data]
+// The tier metafield is the only customer data this app writes. A data request reads it,
+// and a redaction deletes it.
+export async function customerTier(admin, customerId) {
+  const body = await (
+    await admin.graphql(CUSTOMER_TIER, {variables: {id: customerId}})
+  ).json();
+  return {
+    tier: body.data?.customer?.tier?.value ?? null,
+    userErrors: transportErrors(body),
+  };
 }
+
+export async function forgetCustomer(admin, customerId) {
+  const body = await (
+    await admin.graphql(METAFIELDS_DELETE, {
+      variables: {
+        metafields: [{ownerId: customerId, namespace: DIMENSION_NAMESPACE, key: TIER_METAFIELD.key}],
+      },
+    })
+  ).json();
+  return [...transportErrors(body), ...(body.data?.metafieldsDelete?.userErrors ?? [])];
+}
+// [END campaign-dashboard.customer-data]
 
 // [START campaign-dashboard.qr-assign]
 // A code belongs to one campaign. Assigning it drops it from every other campaign.

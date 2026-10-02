@@ -92,6 +92,7 @@ export function bounceReasons({bounces, cell, humanize}) {
 export function SendEventsPanel({
   running,
   alreadySent,
+  blocked,
   funnel,
   sendCount,
   eventTotal,
@@ -106,7 +107,7 @@ export function SendEventsPanel({
 
   // An undeclared column fails on `parseErrors` while the request itself succeeds.
   // Before the declaration propagates, that's the only signal App Events is unready.
-  const blocked =
+  const unavailable =
     funnel.unavailable ??
     (funnel.parseErrors?.length ? funnel.parseErrors.join(' ') : null);
 
@@ -119,9 +120,9 @@ export function SendEventsPanel({
             'The events this app published as the campaign ran, queryable like any schema.',
         }}
       />
-      {blocked ? (
+      {unavailable ? (
         <s-banner tone="info">
-          <s-paragraph>App Events unavailable: {blocked}</s-paragraph>
+          <s-paragraph>App Events unavailable: {unavailable}</s-paragraph>
         </s-banner>
       ) : (
         <Fragment>
@@ -143,11 +144,12 @@ export function SendEventsPanel({
           )}
           <s-button
             loading={busy === 'send-events'}
-            disabled={Boolean(busy)}
+            disabled={Boolean(busy || blocked)}
             onClick={() => submit('send-events')}
           >
             Send events
           </s-button>
+          {blocked && <s-paragraph color="subdued">{blocked}</s-paragraph>}
         </Fragment>
       )}
     </s-section>
