@@ -134,6 +134,28 @@ describe('close', () => {
     expect(lastUpdate(mock.calls)).toEqual({end_date: '2026-09-30', status: 'closed'});
   });
 
+  it('removes the marks dated after an early close', async () => {
+    vi.setSystemTime(new Date('2026-09-15T12:00:00Z'));
+    const ids = {campaign: 9, vip: 10, promo: 11};
+    const markers = Object.fromEntries(
+      Object.entries(ids).map(([key, id]) => [key, `gid://shopify/AnalyticsAnnotation/${id}`]),
+    );
+    const {mock, result} = run(
+      {
+        ...closing(running({markers}), [], () => ({data: {shopifyqlQuery: {tableData: {rows: [{total_sales: '10'}]}, parseErrors: []}}})),
+        RecordedAnnotations: ({ids: asked}) => ({
+          data: {annotations: asked.map((id) => ({id, createdByApp: {id: 'gid://shopify/App/7'}}))},
+        }),
+        DeleteCampaignAnnotation: () => ({data: {analyticsAnnotationDelete: {userErrors: []}}}),
+      },
+      {intent: 'close'},
+    );
+    expect(await result).toMatchObject({ok: true});
+    const deleted = mock.calls.filter((call) => call.op === 'DeleteCampaignAnnotation').map((call) => call.variables.id);
+    expect(deleted).toEqual([markers.promo]);
+    expect(JSON.parse(lastUpdate(mock.calls).markers)).toEqual({campaign: markers.campaign, vip: markers.vip});
+  });
+
   it('refuses to close on an unmeasured read', async () => {
     const {mock, result} = run(
       closing(running(), [], () => ({data: {shopifyqlQuery: {parseErrors: ['bad']}}})),

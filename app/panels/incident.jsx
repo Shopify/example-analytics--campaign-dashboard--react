@@ -9,6 +9,7 @@ export function IncidentBanner({
   busy,
   submit,
   today,
+  canFlag,
 }) {
   if (bounced === 0) return null;
 
@@ -22,22 +23,26 @@ export function IncidentBanner({
           {integer(bounced)} of {integer(total('emails_sent'))} emails bounced
           {bounceReasons.length > 0 ? `. Top reason: ${bounceReasons[0].reason}` : ''}.
         </s-paragraph>
-        <s-paragraph>
-          Flag the incident to annotate the store's sales charts.
-        </s-paragraph>
-        <s-box paddingBlockStart="base">
-          {incidentFlagged ? (
+        {incidentFlagged ? (
+          <s-box paddingBlockStart="base">
             <s-text color="subdued">Incident flagged.</s-text>
-          ) : (
-            <s-button
-              loading={busy === 'flag-incident'}
-              disabled={Boolean(busy)}
-              onClick={() => submit('flag-incident', {day: today})}
-            >
-              Flag incident
-            </s-button>
-          )}
-        </s-box>
+          </s-box>
+        ) : canFlag && (
+          <>
+            <s-paragraph>
+              Flag the incident to annotate the store's sales charts.
+            </s-paragraph>
+            <s-box paddingBlockStart="base">
+              <s-button
+                loading={busy === 'flag-incident'}
+                disabled={Boolean(busy)}
+                onClick={() => submit('flag-incident', {day: today})}
+              >
+                Flag incident
+              </s-button>
+            </s-box>
+          </>
+        )}
       </s-banner>
     </s-section>
   );

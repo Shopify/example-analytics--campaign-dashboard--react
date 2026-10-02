@@ -121,8 +121,13 @@ export function SendEventsPanel({
         }}
       />
       {unavailable ? (
-        <s-banner tone="info">
-          <s-paragraph>App Events unavailable: {unavailable}</s-paragraph>
+        <s-banner tone="info" heading="Campaign events aren't available yet">
+          {/* The event declarations define the columns. Without them, every column is missing. */}
+          <s-paragraph>
+            {/Column Not Found/i.test(unavailable)
+              ? "The store doesn't have this app's event declarations. Deploy the app, then reload the page."
+              : `Reload the page to try again. The store returned: ${unavailable}`}
+          </s-paragraph>
         </s-banner>
       ) : (
         <Fragment>

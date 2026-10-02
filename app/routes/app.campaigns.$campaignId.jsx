@@ -41,6 +41,7 @@ import {
 } from '../campaign-queries.server';
 import {
   QR_MARK_PREFIX,
+  campaignMarks,
   campaignWindow,
   codeFilter,
   isPositiveAmount,
@@ -128,6 +129,7 @@ export async function loader({request, params}) {
     return {
       campaign: {title: 'Campaign'},
       fatal: failed.map((error) => error.message).join(' '),
+      fatalHeading: "Couldn't load campaign",
     };
   }
   const campaign = findCampaign(campaigns, params.campaignId);
@@ -666,6 +668,21 @@ export async function action({request, params}) {
     );
     if (errors.length) return {problems: errors.map((error) => error.message)};
 
+    // An early close leaves the planned marks for days that never ran.
+    const unrun = campaignMarks(campaign)
+      .filter((mark) => mark.date > closedOn && campaign.markers?.[mark.key])
+      .map((mark) => mark.key);
+    const markers = {...campaign.markers};
+    if (unrun.length) {
+      const left = await clearOwnMarks(
+        admin,
+        unrun.map((key) => markers[key]),
+        appId,
+      );
+      if (left.length) return {problems: left.map((error) => error.message)};
+      for (const key of unrun) delete markers[key];
+    }
+
     // Attribution needs the orders to exist, and close is the first point they do.
     // Skipped until the definition is a dimension.
     const unattributed = dimensions.order.enabled
@@ -678,6 +695,7 @@ export async function action({request, params}) {
     const {userErrors} = await updateCampaign(admin, campaign, {
       status: 'closed',
       endDate: closedOn,
+      ...(unrun.length ? {markers} : {}),
     });
     if (userErrors.length) {
       return {problems: userErrors.map((error) => error.message)};
@@ -768,7 +786,7 @@ export async function action({request, params}) {
     if (userErrors.length) {
       return {problems: userErrors.map((error) => error.message)};
     }
-    return redirect('/app/campaigns');
+    return redirect(`/app/campaigns${new URL(request.url).search}`);
   }
 
   return {problems: ['Unknown action.']};
@@ -780,8 +798,8 @@ export async function action({request, params}) {
 function Unavailable({reason, heading}) {
   if (!reason) return null;
   const note = (
-    <s-banner tone="info">
-      <s-paragraph>Data unavailable: {reason}</s-paragraph>
+    <s-banner tone="info" heading="This report didn't load">
+      <s-paragraph>Reload the page to try again. The store returned: {reason}</s-paragraph>
     </s-banner>
   );
   return heading ? <s-section heading={heading}>{note}</s-section> : note;
@@ -795,7 +813,7 @@ const DONE = {
   cancel: 'Campaign canceled',
   replan: 'Campaign replanned',
   'set-products': 'Products saved',
-  'set-audience': 'Audience saved',
+  'set-audience': 'Customer segment saved',
   'set-targets': 'Targets saved',
   'send-events': 'Events sent',
   'rewrite-marks': 'Annotations written',
@@ -812,15 +830,18 @@ export default function CampaignDashboard() {
 
   const [range, setRange] = useState('last30days');
 
-  const {campaign, locale, fatal} = data;
+  const {campaign, locale, fatal, fatalHeading} = data;
 
   if (fatal) {
     return (
       <s-page heading={campaign.title}>
         <s-section>
-          <s-banner tone="critical" heading="Couldn't load sales">
+          <s-banner tone="critical" heading={fatalHeading ?? "Couldn't load sales"}>
             <s-paragraph>{fatal}</s-paragraph>
           </s-banner>
+          <s-box paddingBlockStart="base">
+            <s-link href="/app/campaigns">Back to campaigns</s-link>
+          </s-box>
         </s-section>
       </s-page>
     );
@@ -1061,7 +1082,7 @@ export default function CampaignDashboard() {
             span,
           );
           const left =
-            today <= campaign.endDate ? dayGap(today, campaign.endDate) + 1 : 0;
+            running && today <= campaign.endDate ? dayGap(today, campaign.endDate) + 1 : 0;
           const earned = Number(storeTarget.actual ?? 0);
           const short = Math.max(0, Number(storeTarget.expectedValue) - earned);
           return {perDay: earned / elapsed, needed: left > 0 ? short / left : short, left};
@@ -1220,7 +1241,7 @@ export default function CampaignDashboard() {
                       <s-image
                         aspectRatio="1/1"
                         src={code.image}
-                        alt={`QR code for ${campaign.title}`}
+                        alt={`${code.title} QR code`}
                       />
                       <s-link href={`/app/qrcodes/${code.handle}`}>
                         Edit QR code
@@ -1291,7 +1312,12 @@ export default function CampaignDashboard() {
                   name="qrTarget"
                   value={campaign.qrTarget}
                   min={0}
-                  details="Creates one target for each assigned QR code. Each target measures attributed sales."
+                  disabled={campaign.qrCodes.length === 0}
+                  details={
+                    campaign.qrCodes.length
+                      ? 'Creates one target for each assigned QR code. Each target measures attributed sales.'
+                      : 'Assign a QR code to this campaign to set this target.'
+                  }
                 />
                 <s-button
                   variant="primary"
@@ -1380,6 +1406,7 @@ export default function CampaignDashboard() {
           busy={busy}
           submit={submit}
           today={today}
+          canFlag={running && inWindow(campaign, today)}
         />
 
         <SendPerformance sequence={sequence} integer={integer} />

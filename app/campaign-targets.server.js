@@ -28,7 +28,7 @@ export async function measureTargets(admin, campaign, targetsBody) {
           : Math.round((actual / expected) * 100),
       queryError:
         index === -1
-          ? `Couldn't measure ${target.metric}. Reload to try again.`
+          ? "Couldn't measure this target. Reload to try again."
           : (progress[`t${index}`]?.parseErrors?.[0] ??
             (actual === null ? unread : null)),
     };

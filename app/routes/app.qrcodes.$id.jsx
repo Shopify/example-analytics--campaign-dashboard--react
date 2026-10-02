@@ -4,6 +4,7 @@ import {
   useLoaderData,
   useSubmit,
   useParams,
+  useRouteError,
 } from "react-router";
 import { authenticate } from "../shopify.server";
 import { boundary } from "@shopify/shopify-app-react-router/server";
@@ -93,6 +94,7 @@ export async function loader({ request, params }) {
   }
 
   const qrCode = await getQRCode(params.id, admin.graphql, session.shop);
+  if (!qrCode) throw new Response("No QR code has this handle.", { status: 404 });
   const { campaigns, current, failed, locked } = await campaignChoices(
     admin,
     qrCode?.id,
@@ -379,7 +381,28 @@ export default function QRCodeForm() {
             QR codes
           </s-link>
           {initialFormState.handle &&
-            <s-button slot="secondary-actions" onClick={handleDelete}>Delete</s-button>}
+            <s-button slot="secondary-actions" commandFor="delete-qr-code" command="--show">
+              Delete
+            </s-button>}
+          {initialFormState.handle &&
+            <s-modal id="delete-qr-code" heading="Delete this QR code?">
+              <s-paragraph>
+                Scans of the printed code stop reaching the product. You can't undo this.
+              </s-paragraph>
+              <s-button slot="secondary-actions" commandFor="delete-qr-code" command="--hide">
+                Go back
+              </s-button>
+              <s-button
+                slot="primary-action"
+                variant="primary"
+                tone="critical"
+                commandFor="delete-qr-code"
+                command="--hide"
+                onClick={handleDelete}
+              >
+                Delete QR code
+              </s-button>
+            </s-modal>}
           <s-section heading="QR code information">
             <s-stack gap="base">
               {/* [START title] */}
@@ -606,6 +629,24 @@ export default function QRCodeForm() {
         {/* [END polaris] */}
       </form>
     </>
+  );
+}
+
+// Without a boundary here, a failed load takes AppProvider and the app's navigation with it.
+export function ErrorBoundary() {
+  const error = useRouteError();
+  const detail = error?.data ?? error?.message ?? "The load failed.";
+  return (
+    <s-page heading="QR code">
+      <s-section>
+        <s-banner tone="critical" heading="Couldn't load the QR code">
+          <s-paragraph>{String(detail)}</s-paragraph>
+        </s-banner>
+        <s-box paddingBlockStart="base">
+          <s-link href="/app/qrcodes">Back to QR codes</s-link>
+        </s-box>
+      </s-section>
+    </s-page>
   );
 }
 

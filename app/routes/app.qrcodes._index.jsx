@@ -97,7 +97,7 @@ const QRTableRow = ({ qrCode }) => (
       <s-stack direction="inline" gap="small" alignItems="center">
         <s-clickable
           href={`/app/qrcodes/${qrCode.handle}`}
-          accessibilityLabel={`Go to the product page for ${qrCode.productTitle}`}
+          accessibilityLabel={`Edit the ${qrCode.title} QR code`}
           border="base"
           borderRadius="base"
           overflow="hidden"

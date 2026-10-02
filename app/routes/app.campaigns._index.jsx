@@ -51,6 +51,7 @@ export const loader = async ({request}) => {
 
   // Alias back by position, indexed off `measurable`.
   const targets = measurable.map((target, index) => ({
+    id: target.id,
     campaignId: owner.get(target.id),
     expected: Number(target.expectedValue),
     actual: progressValue(progress[`t${index}`]),
@@ -167,17 +168,18 @@ function writtenBack(campaign) {
   return `${plural(markers, 'annotation')}, ${plural(count, 'target')}`;
 }
 
+// Product and QR code sales are part of store sales. Summing them with the store
+// target would count the same orders twice.
 function targetProgress(campaign, targets) {
   const mine = targets.filter(
     (target) => target.campaignId === String(campaign.id),
   );
-  const expected = mine.reduce((total, target) => total + target.expected, 0);
-  if (mine.length === 0 || expected <= 0) return null;
-  const actual = mine.reduce(
-    (total, target) => total + (target.actual ?? 0),
-    0,
-  );
-  return {count: mine.length, percent: Math.round((actual / expected) * 100)};
+  const store = mine.find((target) => target.id === campaign.targets?.store);
+  if (!store || store.expected <= 0) return {count: mine.length, percent: null};
+  return {
+    count: mine.length,
+    percent: Math.round(((store.actual ?? 0) / store.expected) * 100),
+  };
 }
 
 // Matched on the app too, because IDs aren't unique across apps.
@@ -239,6 +241,11 @@ export default function CampaignsIndex() {
   const {campaigns, appName, dimensions, targets, locale, sends, seedErrors} =
     useLoaderData();
   const fetcher = useFetcher();
+  // Its own fetcher, so a dimension error doesn't land on the create form.
+  const dimensionFetcher = useFetcher();
+  const enabling =
+    dimensionFetcher.state !== 'idle' && dimensionFetcher.formData?.get('which');
+  const dimensionProblems = dimensionFetcher.data?.problems ?? [];
   const [products, setProducts] = useState([]);
   const [channels, setChannels] = useState(CHANNEL_KEYS);
   const [audience, setAudience] = useState('everyone');
@@ -590,10 +597,13 @@ export default function CampaignsIndex() {
                       )}
                     </s-table-cell>
                     <s-table-cell>
-                      {target ? (
+                      {target.percent !== null ? (
                         <s-text tone={target.percent >= 100 ? 'success' : 'info'}>
-                          {target.percent}% across {target.count}{' '}
-                          {target.count === 1 ? 'target' : 'targets'}
+                          {target.percent}% of the store sales target
+                        </s-text>
+                      ) : target.count > 0 ? (
+                        <s-text>
+                          {target.count} {target.count === 1 ? 'target' : 'targets'}
                         </s-text>
                       ) : (
                         <s-text color="subdued">None</s-text>
@@ -660,9 +670,25 @@ export default function CampaignsIndex() {
           The app writes campaign values to products, customers, and orders as
           metafields. Create a dimension from each metafield. Campaign reports
           group sales by each dimension. Each dimension works for every
-          campaign. Turn on analytics for the Campaign metaobject to use the
-          product dimension.
+          campaign.
         </s-paragraph>
+        {dimensionProblems.length > 0 && (
+          <s-banner tone="critical" heading="Dimension not created">
+            <s-unordered-list>
+              {dimensionProblems.map((problem) => (
+                <s-list-item key={problem}>{problem}</s-list-item>
+              ))}
+            </s-unordered-list>
+          </s-banner>
+        )}
+        {dimensions.product.reference &&
+          dimensions.product.defined &&
+          !dimensions.product.enabled && (
+            <s-paragraph>
+              Turn on analytics for the Campaign metaobject to use the product
+              dimension.
+            </s-paragraph>
+          )}
         <s-table variant="auto">
           <s-table-header-row>
             <s-table-header listSlot="primary">Dimension</s-table-header>
@@ -676,7 +702,7 @@ export default function CampaignsIndex() {
               return (
                 <s-table-row key={which}>
                   <s-table-cell>
-                    <s-text>{definition.dimension}</s-text>
+                    <s-text>{definition.name}</s-text>
                   </s-table-cell>
                   <s-table-cell>
                     {definition.enabled
@@ -706,9 +732,10 @@ export default function CampaignsIndex() {
                         (!definition.defined ||
                           (definition.eligible && !definition.reference)) && (
                           <s-button
-                            loading={saving}
+                            loading={enabling === which}
+                            disabled={Boolean(enabling) && enabling !== which}
                             onClick={() =>
-                              fetcher.submit(
+                              dimensionFetcher.submit(
                                 {intent: 'enable-dimension', which},
                                 {method: 'post'},
                               )

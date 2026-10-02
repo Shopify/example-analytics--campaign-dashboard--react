@@ -11,7 +11,7 @@ export async function getQRCode(handle, graphql, shop) {
         metaobjectByHandle(handle: $handle) {
           id
           handle
-          updatedAt
+          createdAt
           title: field(key: "title") { jsonValue }
           product: field(key: "product") {
             jsonValue
@@ -65,7 +65,7 @@ export async function getQRCodes(graphql, shop) {
           nodes {
             id
             handle
-            updatedAt
+            createdAt
             title: field(key: "title") { jsonValue }
             product: field(key: "product") {
               jsonValue
@@ -121,7 +121,7 @@ async function transformMetaobject(metaobject, shop) {
     destination: metaobject.destination?.jsonValue,
     scans: metaobject.scans?.jsonValue ?? 0,
     liveOn: metaobject.liveOn?.jsonValue ?? "",
-    createdAt: metaobject.updatedAt,
+    createdAt: metaobject.createdAt,
     productDeleted: productId && !product,
     productTitle: product?.title,
     productImage: product?.media?.nodes[0]?.preview?.image?.url,

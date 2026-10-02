@@ -1,4 +1,4 @@
-import {promotedNames, qrTitle} from '../campaigns';
+import {inWindow, promotedNames, qrTitle} from '../campaigns';
 import {tierLabel} from '../audiences';
 import {exploreLink} from '../annotations';
 
@@ -139,6 +139,7 @@ export function TargetsPanel({
   const onPace =
     pace &&
     (pace.left === 0 ? (storeTarget?.percent ?? 0) >= 100 : pace.perDay >= pace.needed);
+  const reached = pace && pace.left > 0 && pace.needed === 0;
 
   const card = (target) => (
     <TargetCard
@@ -164,8 +165,8 @@ export function TargetsPanel({
       />
       <s-paragraph>
         Each line is the running total since its target started, against the target.
-        The chart marks the campaign's annotations, including the day each QR code
-        went live.
+        Each chart marks the store's annotations, including the day each QR code went
+        live.
       </s-paragraph>
 
       <s-stack direction="block" gap="base">
@@ -177,12 +178,20 @@ export function TargetsPanel({
               icon={onPace ? 'check-circle' : 'clock'}
               tone={onPace ? 'success' : 'info'}
             >
-              {pace.left === 0 ? 'Ended' : onPace ? 'On pace' : 'Behind pace'}
+              {pace.left === 0
+                ? 'Ended'
+                : reached
+                  ? 'Target reached'
+                  : onPace
+                    ? 'On pace'
+                    : 'Behind pace'}
             </s-badge>
             <s-text color="subdued">
               {pace.left === 0
                 ? `Averaged ${currency(pace.perDay)} a day.`
-                : `Averaging ${currency(pace.perDay)} a day. The store target needs ${currency(
+                : reached
+                  ? `Averaging ${currency(pace.perDay)} a day.`
+                  : `Averaging ${currency(pace.perDay)} a day. The store target needs ${currency(
                     pace.needed,
                   )} a day for the ${pace.left} ${pace.left === 1 ? 'day' : 'days'} left.`}
             </s-text>
@@ -192,7 +201,7 @@ export function TargetsPanel({
           <s-stack direction="inline" gap="base">
             <s-button
               loading={busy === 'milestone'}
-              disabled={Boolean(busy)}
+              disabled={Boolean(busy) || !inWindow(campaign, today)}
               onClick={() => submit('milestone', {targetId: storeTarget.id, day: today})}
             >
               Mark milestone
@@ -207,6 +216,12 @@ export function TargetsPanel({
               disabled={Boolean(busy)}
               onConfirm={() => submit('raise-target', {targetId: storeTarget.id})}
             />
+            {!inWindow(campaign, today) && (
+              <s-text color="subdued">
+                Milestones mark a day from {shortDate(campaign.startDate)} to{' '}
+                {shortDate(campaign.endDate)}.
+              </s-text>
+            )}
           </s-stack>
         )}
 

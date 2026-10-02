@@ -4,6 +4,7 @@ import {
   creatorCodes,
   creatorTouches,
   qrHandleFilter,
+  qrTitle,
   touchMarks,
 } from '../campaigns';
 import {tierLabel} from '../audiences';
@@ -300,7 +301,7 @@ export function CreatorRevenue({creatorRows, codeTotal, touchedTotal, currency})
         }}
       />
       <s-paragraph>
-        This report groups <s-text type="strong">discount_code</s-text> sales by the
+        This report groups sales from this campaign&rsquo;s discount codes by the
         creator who shares each code.
       </s-paragraph>
       <s-table variant="auto">
@@ -408,7 +409,7 @@ export function QRCodeSales({
         <s-table-body>
           {qrRows.map((row) => (
             <s-table-row key={row.code}>
-              <s-table-cell>{row.code}</s-table-cell>
+              <s-table-cell>{qrTitle(campaign, row.code)}</s-table-cell>
               <s-table-cell>{row.orders}</s-table-cell>
               <s-table-cell>{currency(row.sales)}</s-table-cell>
             </s-table-row>

@@ -39,7 +39,7 @@ export default function App() {
             <label className={styles.label}>
               <span>Shop domain</span>
               <input className={styles.input} type="text" name="shop" />
-              <span>e.g: my-shop-domain.myshopify.com</span>
+              <span>For example, my-shop-domain.myshopify.com</span>
             </label>
             {error && <p className={styles.text}>{error}</p>}
             <button className={styles.button} type="submit">
