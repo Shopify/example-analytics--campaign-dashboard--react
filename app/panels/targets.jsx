@@ -210,10 +210,13 @@ export function TargetsPanel({
           </s-stack>
         )}
 
-        <s-grid gridTemplateColumns="@container (inline-size > 560px) 1fr 1fr, 1fr" gap="base">
-          {storeTarget && card(storeTarget)}
-          {scopedTargets.map(card)}
-        </s-grid>
+        {/* The container query needs a query container to measure. */}
+        <s-query-container>
+          <s-grid gridTemplateColumns="@container (inline-size > 560px) 1fr 1fr, 1fr" gap="base">
+            {storeTarget && card(storeTarget)}
+            {scopedTargets.map(card)}
+          </s-grid>
+        </s-query-container>
       </s-stack>
     </s-section>
   );

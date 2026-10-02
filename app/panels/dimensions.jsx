@@ -158,7 +158,7 @@ export function PromotedProductSales({
         </s-paragraph>
       )}
       <s-paragraph>
-        Grouped by each product&rsquo;s{' '}
+        This report groups sales by the campaign ID on each product&rsquo;s{' '}
         <s-text type="strong">{dimensions.product.name}</s-text> metafield.
       </s-paragraph>
       <details>
@@ -260,8 +260,8 @@ export function OrderAttribution({touchRows, dimensions, currency}) {
         }}
       />
       <s-paragraph>
-        The app writes each order&rsquo;s last campaign touch to its{' '}
-        <s-text type="strong">{dimensions.order.name}</s-text> metafield at close. This
+        When the campaign closes, the app writes each order&rsquo;s last campaign touch to the
+        order&rsquo;s <s-text type="strong">{dimensions.order.name}</s-text> metafield. This
         report groups sales by the last touch.
       </s-paragraph>
       <s-table variant="auto">
