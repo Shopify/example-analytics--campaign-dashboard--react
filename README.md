@@ -120,11 +120,11 @@ Each campaign is an entry of the **Campaign** metaobject type, which the app cre
 
 ## Get numbers on the charts
 
-A dev store with no orders reports `$0`. The seed creates campaigns. The sales come from orders you place.
+A dev store with no orders reports `$0`. The seed creates campaigns. The sales come from orders you create.
 
-- Place test orders inside `Summer launch`'s window. The nine sends land between 20 and 7 days before you install.
+- A dev store accepts only test payments, and test orders never reach the `sales` dataset. Create orders with the GraphQL Admin API's [`orderCreate`](https://shopify.dev/docs/api/admin-graphql/latest/mutations/orderCreate) mutation instead, with a `processedAt` date inside `Summer launch`'s window. The nine sends land between 20 and 7 days before you install.
 - Cluster the orders in the days right after a send, with the largest cluster in the last few days. Orders placed only in the opening week make every later send read as having moved nothing.
-- Create `AVERY10`, `AVERYSUMMER`, and `JUNO15` under **Discounts**, then place storefront orders that use them. **Creator revenue** groups sales by `discount_code`, and that column counts a code only when a buyer enters it at checkout. A discount added to an order in the admin has no code, and the panel stays hidden until one order has a code.
+- **Creator revenue** groups sales by `discount_code`, and that column counts a code only when a buyer enters it at checkout. An order created through the API or in the admin has no code. **QR code sales** reads orders that follow a scan. Both panels need real checkouts on a store that accepts payments, and a dev store leaves them empty.
 
 ## What it does
 
