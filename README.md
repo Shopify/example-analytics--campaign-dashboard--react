@@ -125,7 +125,7 @@ Four more controls write to the same charts. **Close campaign** rewrites the ann
 
 To try the QR code flow, click **QR codes** in the app's navigation and create a code. Under **Campaign**, pick a planned campaign, then save. A planned campaign's page also links to a new code with its campaign picked. A code belongs to one campaign, and the **Campaign** column on the list links to it. **Live on** sets the day the code's mark lands on the timeline. Blank goes live with the campaign. Activating the campaign marks each of its codes on the timeline. With a **QR code target** amount, activation also creates one target per code. Every scan redirects to the product with the code's UTM parameters, and the **QR code sales** panel reports the orders shoppers place after scanning.
 
-Each campaign is an entry of the **Campaign** metaobject type, which the app creates on first load. The admin lists the entries with the store's other metaobjects, and a merchant can edit them there. Re-cloning doesn't reset them. The seed runs once per store. Deleting the seeded campaigns doesn't bring them back.
+Each campaign is an entry of the **Campaign** metaobject type, which the app creates on first load. The admin lists the entries with the store's other metaobjects, and a merchant can edit them there. Re-cloning doesn't reset them. The seed runs once per store. Deleting the seeded campaigns doesn't bring them back. Each creator is an entry of the **Creator** type, and campaigns share those entries. Deleting a campaign leaves its creators in place.
 
 ## Get numbers on the charts
 
@@ -172,6 +172,8 @@ The QR code routes come from that tutorial. `/app/qrcodes` lists the codes, `/ap
 GraphQL documents are in `app/campaign-queries.server.js`, campaign entries in `app/campaigns.server.js`, and the App Events client and send plan in `app/app-events.server.js`. Each group of panels is a separate module under `app/panels/`. Event declarations are in `extensions/app-events/shopify.extension.toml`. `shopify.app.toml` holds no credentials.
 
 Each campaign is an entry of the `campaign_dashboard_campaign` metaobject type. `ensureDefinition` creates the type at runtime, because analytics joins only types without the `$app:` prefix. The `qr_code_ids` field holds QR code IDs as text, and an uninstall leaves every entry in place. `CAMPAIGN_FIELDS` documents the shape field by field.
+
+Creators are entries of the `campaign_dashboard_creator` type, and `ensureDefinition` creates that type first. The Campaign `creators` field validates against the Creator definition's ID, and a metaobject reference validation can't change after the field exists. A runtime type keeps one ID for the life of the store. `CREATOR_FIELDS` documents the Creator shape.
 
 For a smaller starting point covering only the ShopifyQL half, see [Build a sales dashboard with the GraphQL Admin API](https://shopify.dev/docs/apps/build/shopifyql/graphql-admin-api/build-a-sales-dashboard) and [`example-shopifyql--sales-dashboard--react`](https://github.com/Shopify/example-shopifyql--sales-dashboard--react).
 

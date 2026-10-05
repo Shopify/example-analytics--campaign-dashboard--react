@@ -1,6 +1,6 @@
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {lockStore, mockAdmin, ops} from './helpers/admin';
-import {handlesFor, listOf, node} from './helpers/campaign';
+import {creatorNode, handlesFor, listOf, node} from './helpers/campaign';
 import {planned, post, resetTargets, session} from './helpers/routes';
 
 vi.mock('../app/shopify.server', async () => (await import('./helpers/routes')).shopifyServer);
@@ -10,6 +10,8 @@ const {action: qrAction, loader: qrLoader} = await import('../app/routes/app.qrc
 const {loader: qrListLoader} = await import('../app/routes/app.qrcodes._index.jsx');
 const {salesTotals} = await import('../app/routes/app.campaigns.$campaignId.jsx');
 const {salesQuery} = await import('../app/campaign-queries.server');
+const {creatorShape} = await import('../app/panels/dimensions.jsx');
+const {campaignFromNode} = await import('../app/campaigns.server');
 
 const upsertedFields = (calls) => calls.find((call) => call.op === 'UpsertQRCode').variables.metaobject.fields;
 
@@ -57,6 +59,84 @@ describe('create', () => {
     await createAction({request: post('/app/campaigns', {...fields, productTarget: '500', audienceTarget: '250'})});
     const saved = Object.fromEntries(mock.calls.find((call) => call.op === 'CreateCampaign').variables.metaobject.fields.map((f) => [f.key, f.value]));
     expect(saved).toMatchObject({product_target: '', audience_target: ''});
+  });
+
+  it('upserts each creator in the form and references the entries', async () => {
+    const mock = mockAdmin({
+      ...creating(),
+      CreatorByHandle: () => ({data: {metaobjectByHandle: null}}),
+      UpsertCreator: ({handle, metaobject}) => {
+        const values = Object.fromEntries(metaobject.fields.map((field) => [field.key, field.value]));
+        return {
+          data: {
+            metaobjectUpsert: {
+              metaobject: creatorNode({id: `gid-${handle.handle}`, handle: handle.handle, name: values.name, codes: JSON.parse(values.discount_codes)}),
+              userErrors: [],
+            },
+          },
+        };
+      },
+    });
+    session.admin = mock.raw;
+    await createAction({request: post('/app/campaigns', {...fields, creatorCodes: 'AVERY10:Avery, juno15:Juno'})});
+    const upserts = mock.calls.filter((call) => call.op === 'UpsertCreator');
+    expect(upserts.map((call) => call.variables.handle.handle)).toEqual(['creator-avery', 'creator-juno']);
+    expect(upserts[1].variables.metaobject.fields).toContainEqual({key: 'discount_codes', value: '["JUNO15"]'});
+    const saved = Object.fromEntries(mock.calls.find((call) => call.op === 'CreateCampaign').variables.metaobject.fields.map((f) => [f.key, f.value]));
+    expect(saved.creators).toBe('["gid-creator-avery","gid-creator-juno"]');
+  });
+
+  it('writes no creator when the form names none', async () => {
+    const mock = mockAdmin(creating());
+    session.admin = mock.raw;
+    await createAction({request: post('/app/campaigns', fields)});
+    expect(ops(mock.calls)).not.toContain('UpsertCreator');
+  });
+
+  it('stops before the campaign when a creator write fails', async () => {
+    const mock = mockAdmin({
+      ...creating(),
+      CreatorByHandle: () => ({data: {metaobjectByHandle: null}}),
+      UpsertCreator: () => ({data: {metaobjectUpsert: {metaobject: null, userErrors: [{message: 'Name is too long'}]}}}),
+    });
+    session.admin = mock.raw;
+    const result = await createAction({request: post('/app/campaigns', {...fields, creatorCodes: 'AVERY10:Avery'})});
+    expect(result).toEqual({problems: ['Name is too long']});
+    expect(ops(mock.calls)).not.toContain('CreateCampaign');
+  });
+});
+
+describe('creator revenue', () => {
+  const cell = (row, key) => row[key];
+  const codeSales = {
+    tableData: {
+      rows: [
+        {discount_code: 'AVERY10', total_sales: '120', orders: '3'},
+        {discount_code: 'AVERYSUMMER', total_sales: '30', orders: '1'},
+        {discount_code: 'JUNO15', total_sales: '200', orders: '4'},
+      ],
+    },
+  };
+
+  it('maps each code to the creator entry that lists it', () => {
+    const campaign = campaignFromNode(
+      planned({
+        creators: [
+          {id: 'a', handle: 'creator-avery', name: 'Avery', codes: ['AVERY10', 'AVERYSUMMER']},
+          {id: 'j', handle: 'creator-juno', name: 'Juno', codes: ['JUNO15', 'JUNOFALL']},
+        ],
+      }),
+    );
+    const {creatorRows, codeTotal} = creatorShape({codeSales, campaign, touchRows: [], cell});
+    expect(creatorRows).toEqual([
+      {creator: 'Juno', sales: 200, orders: 4, codes: [{code: 'JUNO15', sales: 200, orders: 4}, {code: 'JUNOFALL', sales: 0, orders: 0}]},
+      {creator: 'Avery', sales: 150, orders: 4, codes: [{code: 'AVERY10', sales: 120, orders: 3}, {code: 'AVERYSUMMER', sales: 30, orders: 1}]},
+    ]);
+    expect(codeTotal).toBe(350);
+  });
+
+  it('shows no creator for a campaign without creators', () => {
+    expect(creatorShape({codeSales, campaign: campaignFromNode(planned()), touchRows: [], cell}).creatorRows).toEqual([]);
   });
 });
 

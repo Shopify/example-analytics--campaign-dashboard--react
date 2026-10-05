@@ -1,7 +1,13 @@
 import {Fragment, useEffect, useState} from 'react';
 import {redirect, useFetcher, useLoaderData, useRouteError} from 'react-router';
 import {authenticate} from '../shopify.server';
-import {createCampaign, ensureCampaign, readCampaigns, withReturnedErrors} from '../campaigns.server';
+import {
+  createCampaign,
+  ensureCampaign,
+  readCampaigns,
+  upsertCreators,
+  withReturnedErrors,
+} from '../campaigns.server';
 import {
   progressQuery,
   progressValue,
@@ -88,6 +94,8 @@ export const action = async ({request}) => {
   }
 
   const products = parseProducts(form.get('products'));
+  // Sanitize on the way in. A code that can't be queried shouldn't reach the record.
+  const creatorPairs = parseCreatorCodes(form.get('creatorCodes'));
   const fields = {
     title: String(form.get('title') || '').trim(),
     startDate: String(form.get('startDate') || ''),
@@ -97,8 +105,6 @@ export const action = async ({request}) => {
     // JSON, because a form can't submit an array of objects.
     products: products ?? [],
     audience: String(form.get('audience') || 'everyone'),
-    // Sanitize on the way in. A code that can't be queried shouldn't reach the record.
-    creatorCodes: parseCreatorCodes(form.get('creatorCodes')),
     // Blank means no target. Activation skips it.
     revenueTarget: String(form.get('revenueTarget') || '').trim(),
     productTarget: String(form.get('productTarget') || '').trim(),
@@ -150,7 +156,16 @@ export const action = async ({request}) => {
   }
   if (problems.length > 0) return {problems};
 
-  const {campaign, userErrors} = await createCampaign(admin, fields);
+  // Each name becomes a shared Creator entry, and the campaign references it.
+  const creators = await upsertCreators(admin, creatorPairs);
+  if (creators.userErrors.length > 0) {
+    return {problems: creators.userErrors.map((error) => error.message)};
+  }
+
+  const {campaign, userErrors} = await createCampaign(admin, {
+    ...fields,
+    creators: creators.creators,
+  });
   if (userErrors.length > 0) {
     return {problems: userErrors.map((error) => error.message)};
   }

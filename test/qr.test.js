@@ -2,7 +2,7 @@ import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {campaignMarks, qrHandleFilter, qrHandles, qrLiveOn, touchMarks} from '../app/campaigns';
 import {enableDimension, readDimensions} from '../app/dimensions.server';
 import {mockAdmin, ops} from './helpers/admin';
-import {ALL_FIELDS} from './helpers/campaign';
+import {ALL_FIELDS, objectDefinitions} from './helpers/campaign';
 
 const campaign = (overrides = {}) => ({
   gid: 'gid://shopify/Metaobject/1',
@@ -110,12 +110,12 @@ describe('dimensions', () => {
 
   it('creates the reference validated against the Campaign definition', async () => {
     const {admin, calls} = mockAdmin({
-      CampaignDefinition: () => ({data: {campaign: {id: 'gid://shopify/MetaobjectDefinition/2', fieldDefinitions: ALL_FIELDS}}}),
+      ObjectDefinition: objectDefinitions({campaign: {id: 'gid://shopify/MetaobjectDefinition/2', fieldDefinitions: ALL_FIELDS}}),
       CreateAnalyticsDimension: () => ({data: {metafieldDefinitionCreate: {createdDefinition: {id: 'x'}, userErrors: []}}}),
     });
     const {product} = await readDimensions(mockAdmin({AppMetafieldDefinitions: definitions([])}).admin, 'gid://shopify/App/7');
     expect(await enableDimension(admin, product)).toEqual([]);
-    const {definition} = calls[1].variables;
+    const {definition} = calls.find((call) => call.op === 'CreateAnalyticsDimension').variables;
     expect(definition).toMatchObject({
       key: 'campaign',
       type: 'metaobject_reference',

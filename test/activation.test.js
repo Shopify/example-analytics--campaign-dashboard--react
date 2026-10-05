@@ -22,7 +22,7 @@ const campaign = (overrides = {}) => ({
   qrCodes: [],
   audience: 'everyone',
   members: [],
-  creatorCodes: [],
+  creators: [],
   markers: {},
   targets: {},
   ...overrides,

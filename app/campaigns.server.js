@@ -2,20 +2,23 @@ import {AUDIENCE_TIERS, TIER_METAFIELD} from './audiences';
 import {
   CAMPAIGN_BY_ID,
   CAMPAIGN_CREATE,
-  CAMPAIGN_DEFINITION_CREATE,
-  CAMPAIGN_DEFINITION_QUERY,
-  CAMPAIGN_FIELDS_ADD,
   CAMPAIGN_DELETE,
   CAMPAIGN_TYPE,
   CAMPAIGN_UPDATE,
   CAMPAIGN_UPSERT,
   CAMPAIGN_VERSION,
   CAMPAIGNS_QUERY,
+  CREATOR_BY_HANDLE,
+  CREATOR_TYPE,
+  CREATOR_UPSERT,
   CUSTOMER_TIER,
   ID_KEY,
   ID_NAMESPACE,
   METAFIELDS_DELETE,
   METAFIELDS_SET,
+  OBJECT_DEFINITION_CREATE,
+  OBJECT_DEFINITION_QUERY,
+  OBJECT_FIELDS_ADD,
   QR_CODE_HANDLES,
 } from './campaign-queries.server';
 import {CHANNELS} from './channels';
@@ -117,13 +120,13 @@ export const CAMPAIGN_FIELDS = [
     type: 'list.customer_reference',
     description: 'Customers who got the tier metafield at activation. Redaction removes them.',
   },
+  // ensureDefinition adds the validation. It names the Creator definition's ID.
   {
-    field: 'creatorCodes',
-    key: 'creator_codes',
-    name: 'Creator codes',
-    type: 'json',
-    description:
-      'Each discount code and the creator who shares it.',
+    field: 'creators',
+    key: 'creators',
+    name: 'Creators',
+    type: 'list.metaobject_reference',
+    description: 'Creators who share a discount code for this campaign.',
   },
   {
     field: 'revenueTarget',
@@ -192,21 +195,48 @@ export const CAMPAIGN_FIELDS = [
 ];
 // [END campaign-dashboard.campaign-store]
 
+// [START campaign-dashboard.creator-store]
+// One entry per creator. Every campaign that names the creator references it.
+export const CREATOR_FIELDS = [
+  {
+    field: 'name',
+    key: 'name',
+    name: 'Name',
+    type: 'single_line_text_field',
+    required: true,
+    description: 'The name the creator posts under.',
+  },
+  {
+    field: 'codes',
+    key: 'discount_codes',
+    name: 'Discount codes',
+    type: 'list.single_line_text_field',
+    description: 'Discount codes the creator shares.',
+  },
+];
+// [END campaign-dashboard.creator-store]
+
 // [START campaign-dashboard.campaign-definition]
-const fieldInput = ({field, ...definition}) => definition;
+const fieldInput = ({field, ...definition}, creatorDefinitionId) =>
+  definition.type === 'list.metaobject_reference'
+    ? {
+        ...definition,
+        validations: [{name: 'metaobject_definition_id', value: creatorDefinitionId}],
+      }
+    : definition;
 
 // A field added after the first install reaches existing stores on the next load.
-async function addMissingFields(admin, campaign) {
-  const keys = new Set(campaign.fieldDefinitions.map((field) => field.key));
-  const missing = CAMPAIGN_FIELDS.filter((definition) => !keys.has(definition.key));
-  if (!missing.length) return {definitionId: campaign.id, userErrors: []};
+async function addMissingFields(admin, stored, fields) {
+  const keys = new Set(stored.fieldDefinitions.map((field) => field.key));
+  const missing = fields.filter((definition) => !keys.has(definition.key));
+  if (!missing.length) return {definitionId: stored.id, userErrors: []};
 
   const body = await (
-    await admin.graphql(CAMPAIGN_FIELDS_ADD, {
+    await admin.graphql(OBJECT_FIELDS_ADD, {
       variables: {
-        id: campaign.id,
+        id: stored.id,
         definition: {
-          fieldDefinitions: missing.map((definition) => ({create: fieldInput(definition)})),
+          fieldDefinitions: missing.map((definition) => ({create: definition})),
         },
       },
     })
@@ -215,14 +245,14 @@ async function addMissingFields(admin, campaign) {
     ...transportErrors(body),
     ...(body.data?.metaobjectDefinitionUpdate?.userErrors ?? []),
   ];
-  return {definitionId: userErrors.length ? null : campaign.id, userErrors};
+  return {definitionId: userErrors.length ? null : stored.id, userErrors};
 }
 
-export async function ensureDefinition(admin) {
+async function ensureType(admin, {fieldDefinitions, ...definition}) {
   const read = async () =>
     (
-      await admin.graphql(CAMPAIGN_DEFINITION_QUERY, {
-        variables: {type: CAMPAIGN_TYPE},
+      await admin.graphql(OBJECT_DEFINITION_QUERY, {
+        variables: {type: definition.type},
       })
     ).json();
 
@@ -230,20 +260,12 @@ export async function ensureDefinition(admin) {
   const failed = transportErrors(body);
   if (failed.length) return {definitionId: null, userErrors: failed};
 
-  const campaign = body.data?.campaign;
-  if (campaign) return addMissingFields(admin, campaign);
+  const stored = body.data?.definition;
+  if (stored) return addMissingFields(admin, stored, fieldDefinitions);
 
   const created = await (
-    await admin.graphql(CAMPAIGN_DEFINITION_CREATE, {
-      variables: {
-        definition: {
-          type: CAMPAIGN_TYPE,
-          name: 'Campaign',
-          description: 'Marketing campaigns planned in the campaign dashboard app.',
-          displayNameKey: 'title',
-          fieldDefinitions: CAMPAIGN_FIELDS.map(fieldInput),
-        },
-      },
+    await admin.graphql(OBJECT_DEFINITION_CREATE, {
+      variables: {definition: {...definition, fieldDefinitions}},
     })
   ).json();
 
@@ -253,11 +275,33 @@ export async function ensureDefinition(admin) {
   }
   // Two first loads race to create it. The loser finds the winner's definition.
   const again = await read();
-  if (again.data?.campaign) return {definitionId: again.data.campaign.id, userErrors: []};
+  if (again.data?.definition) return {definitionId: again.data.definition.id, userErrors: []};
   return {
     definitionId: null,
     userErrors: [...transportErrors(created), ...(result?.userErrors ?? [])],
   };
+}
+
+// The Creator type comes first. The Campaign's `creators` field validates against its ID.
+export async function ensureDefinition(admin) {
+  const creator = await ensureType(admin, {
+    type: CREATOR_TYPE,
+    name: 'Creator',
+    description: 'Creators who share discount codes for campaigns in the campaign dashboard app.',
+    displayNameKey: 'name',
+    fieldDefinitions: CREATOR_FIELDS.map((definition) => fieldInput(definition)),
+  });
+  if (!creator.definitionId) return creator;
+
+  return ensureType(admin, {
+    type: CAMPAIGN_TYPE,
+    name: 'Campaign',
+    description: 'Marketing campaigns planned in the campaign dashboard app.',
+    displayNameKey: 'title',
+    fieldDefinitions: CAMPAIGN_FIELDS.map((definition) =>
+      fieldInput(definition, creator.definitionId),
+    ),
+  });
 }
 // [END campaign-dashboard.campaign-definition]
 
@@ -323,11 +367,10 @@ export function campaignFromNode(node) {
       .map((id) => ({id, handle: null, title: '', liveOn: ''})),
     audience: values.audience ?? 'everyone',
     members: listOf(values.members),
-    // Entries are editable in the admin. Codes reach ShopifyQL filters.
-    creatorCodes: listOf(values.creator_codes)
-      .filter((pair) => isRecord(pair) && pair.creator)
-      .map((pair) => ({code: sanitizeCode(String(pair.code ?? '')), creator: String(pair.creator)}))
-      .filter((pair) => pair.code),
+    // An entry from before the `creators` field has no references and no creators.
+    creators: (node.creators?.references?.nodes ?? [])
+      .filter((creator) => creator?.id)
+      .map(creatorFromNode),
     revenueTarget: values.revenue_target ?? '',
     productTarget: values.product_target ?? '',
     audienceTarget: values.audience_target ?? '',
@@ -336,6 +379,19 @@ export function campaignFromNode(node) {
     markers: isRecord(values.markers) ? values.markers : {},
     targets: isRecord(values.targets) ? values.targets : {},
     sentEvents: values.sent_events ?? null,
+  };
+}
+
+// Entries are editable in the admin. Codes reach ShopifyQL filters.
+export function creatorFromNode(node) {
+  const values = Object.fromEntries(
+    (node.fields ?? []).map((field) => [field.key, field.jsonValue]),
+  );
+  return {
+    id: node.id,
+    handle: node.handle,
+    name: String(values.name ?? ''),
+    codes: listOf(values.discount_codes).map(sanitizeCode).filter(Boolean),
   };
 }
 
@@ -491,8 +547,54 @@ export async function rememberMarkers(admin, campaign, markers) {
 }
 // [END campaign-dashboard.campaign-write]
 
+// [START campaign-dashboard.creator-write]
+const slug = (name) =>
+  name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+
+// Upsert on a handle from the name. A creator named again keeps the codes an earlier
+// campaign gave them.
+export async function upsertCreators(admin, pairs) {
+  const byName = new Map();
+  for (const {code, creator} of pairs) {
+    byName.set(creator, [...(byName.get(creator) ?? []), code]);
+  }
+  const creators = [];
+  for (const [name, codes] of byName) {
+    const handle = {type: CREATOR_TYPE, handle: `creator-${slug(name) || slug(codes[0])}`};
+    const read = await (
+      await admin.graphql(CREATOR_BY_HANDLE, {variables: {handle}})
+    ).json();
+    const failed = transportErrors(read);
+    if (failed.length) return {creators: [], userErrors: failed};
+    const kept = read.data?.metaobjectByHandle
+      ? creatorFromNode(read.data.metaobjectByHandle).codes
+      : [];
+
+    const body = await (
+      await admin.graphql(CREATOR_UPSERT, {
+        variables: {
+          handle,
+          metaobject: {
+            fields: [
+              {key: 'name', value: name},
+              {key: 'discount_codes', value: JSON.stringify([...new Set([...kept, ...codes])])},
+            ],
+          },
+        },
+      })
+    ).json();
+    const result = body.data?.metaobjectUpsert;
+    const userErrors = [...transportErrors(body), ...(result?.userErrors ?? [])];
+    if (userErrors.length || !result?.metaobject) return {creators: [], userErrors};
+    creators.push(creatorFromNode(result.metaobject));
+  }
+  return {creators, userErrors: []};
+}
+// [END campaign-dashboard.creator-write]
+
 // The route gates the delete to canceled campaigns. Cancel removes the annotations
-// and targets. Shopify drops the product references to a deleted entry.
+// and targets. Shopify drops the product references to a deleted entry. Creator
+// entries stay, because other campaigns can reference them.
 export async function deleteCampaign(admin, campaign) {
   const body = await (
     await admin.graphql(CAMPAIGN_DELETE, {variables: {id: campaign.gid}})
@@ -763,7 +865,7 @@ function seedRecords() {
       channels: ['email', 'sms', 'push'],
       audience: 'vip',
       // Two belong to one creator, the pairing no built-in dimension holds.
-      creatorCodes: [
+      creatorPairs: [
         {code: 'AVERY10', creator: 'Avery'},
         {code: 'AVERYSUMMER', creator: 'Avery'},
         {code: 'JUNO15', creator: 'Juno'},
@@ -795,10 +897,15 @@ export async function ensureCampaign(admin) {
   // Seed once per store. A high-water mark means the seed IDs went out already.
   if (state.highWater || state.campaigns.length > 0) return {...state, userErrors: []};
 
-  // Upsert on fixed handles. Two first loads racing each other write the same two entries.
+  // Upsert on fixed handles. Two first loads racing each other write the same entries.
   const seeded = await Promise.all(
-    seedRecords().map(async (seed) =>
-      entryResult(
+    seedRecords().map(async ({creatorPairs, ...seed}) => {
+      if (creatorPairs) {
+        const {creators, userErrors} = await upsertCreators(admin, creatorPairs);
+        if (userErrors.length) return {campaign: null, userErrors};
+        seed.creators = creators;
+      }
+      return entryResult(
         await (
           await admin.graphql(CAMPAIGN_UPSERT, {
             variables: {
@@ -808,8 +915,8 @@ export async function ensureCampaign(admin) {
           })
         ).json(),
         'metaobjectUpsert',
-      ),
-    ),
+      );
+    }),
   );
   const userErrors = seeded.flatMap((result) => result.userErrors);
   if (userErrors.length === 0) {

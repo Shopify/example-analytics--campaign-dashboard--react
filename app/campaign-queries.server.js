@@ -20,6 +20,10 @@ export const SHOP_QUERY = `
 // the type. The prefix keeps it clear of a type the merchant made.
 export const CAMPAIGN_TYPE = 'campaign_dashboard_campaign';
 
+// A Campaign's `creators` field validates against this type's definition ID. A reserved
+// `$app:` type gets a new ID on reinstall, and the validation can never change.
+export const CREATOR_TYPE = 'campaign_dashboard_creator';
+
 // A campaign stores its QR code IDs as text. Each code's handle is its utm_campaign,
 // and its title names it on the chart.
 export const QR_CODE_HANDLES = `
@@ -43,6 +47,15 @@ export const QR_CODE_HANDLES = `
 export const ID_NAMESPACE = 'campaign_dashboard';
 export const ID_KEY = 'last_campaign_id';
 
+const CREATOR_NODE = `
+  id
+  handle
+  fields {
+    key
+    jsonValue
+  }
+`;
+
 // `jsonValue` returns each field typed. Reference lists also resolve what they point at.
 const CAMPAIGN_NODE = `
   id
@@ -58,6 +71,15 @@ const CAMPAIGN_NODE = `
         ... on Product {
           id
           title
+        }
+      }
+    }
+  }
+  creators: field(key: "creators") {
+    references(first: 50) {
+      nodes {
+        ... on Metaobject {
+          ${CREATOR_NODE}
         }
       }
     }
@@ -835,9 +857,9 @@ export const qrSalesQuery = (campaign, filter) => `
 // [END campaign-dashboard.qr-sales-queries]
 
 // [START campaign-dashboard.campaign-documents]
-export const CAMPAIGN_DEFINITION_QUERY = `
-  query CampaignDefinition($type: String!) {
-    campaign: metaobjectDefinitionByType(type: $type) {
+export const OBJECT_DEFINITION_QUERY = `
+  query ObjectDefinition($type: String!) {
+    definition: metaobjectDefinitionByType(type: $type) {
       id
       fieldDefinitions {
         key
@@ -846,8 +868,8 @@ export const CAMPAIGN_DEFINITION_QUERY = `
   }
 `;
 
-export const CAMPAIGN_FIELDS_ADD = `
-  mutation AddCampaignFields($id: ID!, $definition: MetaobjectDefinitionUpdateInput!) {
+export const OBJECT_FIELDS_ADD = `
+  mutation AddObjectFields($id: ID!, $definition: MetaobjectDefinitionUpdateInput!) {
     metaobjectDefinitionUpdate(id: $id, definition: $definition) {
       metaobjectDefinition {
         id
@@ -861,8 +883,8 @@ export const CAMPAIGN_FIELDS_ADD = `
   }
 `;
 
-export const CAMPAIGN_DEFINITION_CREATE = `
-  mutation CreateCampaignDefinition($definition: MetaobjectDefinitionCreateInput!) {
+export const OBJECT_DEFINITION_CREATE = `
+  mutation CreateObjectDefinition($definition: MetaobjectDefinitionCreateInput!) {
     metaobjectDefinitionCreate(definition: $definition) {
       metaobjectDefinition {
         id
@@ -913,6 +935,29 @@ export const CAMPAIGN_UPDATE = `
     metaobjectUpdate(id: $id, metaobject: $metaobject) {
       metaobject {
         ${CAMPAIGN_NODE}
+      }
+      userErrors {
+        field
+        message
+        code
+      }
+    }
+  }
+`;
+
+export const CREATOR_BY_HANDLE = `
+  query CreatorByHandle($handle: MetaobjectHandleInput!) {
+    metaobjectByHandle(handle: $handle) {
+      ${CREATOR_NODE}
+    }
+  }
+`;
+
+export const CREATOR_UPSERT = `
+  mutation UpsertCreator($handle: MetaobjectHandleInput!, $metaobject: MetaobjectUpsertInput!) {
+    metaobjectUpsert(handle: $handle, metaobject: $metaobject) {
+      metaobject {
+        ${CREATOR_NODE}
       }
       userErrors {
         field

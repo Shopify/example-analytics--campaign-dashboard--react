@@ -27,7 +27,7 @@ const campaign = (overrides = {}) => ({
   channels: ['email', 'sms', 'push'],
   products: [{id: 'gid://shopify/Product/1', title: 'Board'}],
   audience: 'vip',
-  creatorCodes: [],
+  creators: [],
   ...overrides,
 });
 
@@ -152,7 +152,7 @@ describe('campaignMarks', () => {
 
   it('adds the creator mark only with creator codes', () => {
     const marks = campaignMarks(
-      campaign({creatorCodes: [{code: 'AVERY10', creator: 'Avery'}]}),
+      campaign({creators: [{name: 'Avery', codes: ['AVERY10']}]}),
     );
     expect(marks.find((mark) => mark.key === 'creator').description).toBe(
       'Avery posted a personal discount code.',
@@ -172,7 +172,7 @@ describe('campaignMarks', () => {
 describe('touches', () => {
   it('keeps only marks that reached a customer, in date order', () => {
     const touches = touchMarks(
-      campaign({creatorCodes: [{code: 'A', creator: 'Avery'}]}),
+      campaign({creators: [{name: 'Avery', codes: ['A']}]}),
     );
     expect(touches.map((mark) => mark.key)).toEqual([
       'email',
@@ -183,7 +183,7 @@ describe('touches', () => {
     ]);
     expect(lastTouch(touches, '2026-09-09')).toBeNull();
     expect(lastTouch(touches, '2026-09-19')).toBe('BOGO offer on Summer launch');
-    expect(creatorTouches(campaign({creatorCodes: [{code: 'A', creator: 'Avery'}]}))).toEqual(
+    expect(creatorTouches(campaign({creators: [{name: 'Avery', codes: ['A']}]}))).toEqual(
       ['Influencer drop for Summer launch'],
     );
   });
@@ -198,7 +198,11 @@ describe('creator codes', () => {
       {code: 'JUNO15', creator: 'Juno'},
       {code: 'BARE', creator: 'bare'},
     ]);
-    expect(codeFilter({creatorCodes: codes})).toBe(
+    const creators = [
+      {name: 'Avery', codes: ['AVERY10']},
+      {name: 'Juno', codes: ['JUNO15', 'BARE']},
+    ];
+    expect(codeFilter({creators})).toBe(
       "discount_code IN ('AVERY10', 'JUNO15', 'BARE')",
     );
     expect(codeFilter({})).toBeNull();

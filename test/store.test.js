@@ -5,6 +5,7 @@ import {
   campaignFields,
   campaignFromNode,
   createCampaign,
+  creatorFromNode,
   ensureCampaign,
   ensureDefinition,
   forgetCustomer,
@@ -13,10 +14,11 @@ import {
   readCampaigns,
   rememberMarkers,
   updateCampaign,
+  upsertCreators,
   withReturnedErrors,
 } from '../app/campaigns.server';
 import {lockStore, mockAdmin, ops} from './helpers/admin';
-import {ALL_FIELDS, listOf, node, qrCodeHandles} from './helpers/campaign';
+import {ALL_FIELDS, creatorNode, listOf, node, objectDefinitions, qrCodeHandles} from './helpers/campaign';
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -48,7 +50,6 @@ describe('field mapping', () => {
         products: [{id: 'gid://shopify/Product/1', title: 'Hat'}],
         qrCodes: [{id: 'gid://shopify/Metaobject/9', handle: 'summer-hat'}],
         audience: 'vip',
-        creatorCodes: [{code: 'A', creator: 'B'}],
         revenueTarget: '100.0',
         status: 'running',
         markers: {campaign: 'gid://shopify/AnalyticsAnnotation/1'},
@@ -118,34 +119,75 @@ describe('field mapping', () => {
 });
 
 describe('ensureDefinition', () => {
-  it('returns the stored definition without creating one', async () => {
-    const {admin, calls} = mockAdmin({
-      CampaignDefinition: () => ({data: {campaign: {id: 'def', fieldDefinitions: ALL_FIELDS}}}),
-    });
-    expect(await ensureDefinition(admin)).toEqual({definitionId: 'def', userErrors: []});
-    expect(ops(calls)).toEqual(['CampaignDefinition']);
+  const created = (id) => () => ({
+    data: {metaobjectDefinitionCreate: {metaobjectDefinition: {id}, userErrors: []}},
   });
 
-  it('adds a field the stored definition lacks', async () => {
+  it('returns the stored definition without creating one', async () => {
+    const {admin, calls} = mockAdmin({ObjectDefinition: objectDefinitions()});
+    expect(await ensureDefinition(admin)).toEqual({definitionId: 'def', userErrors: []});
+    expect(ops(calls)).toEqual(['ObjectDefinition', 'ObjectDefinition']);
+  });
+
+  it('reads and creates the Creator type before the Campaign type', async () => {
     const {admin, calls} = mockAdmin({
-      CampaignDefinition: () => ({data: {campaign: {id: 'def', fieldDefinitions: [{key: 'title'}]}}}),
-      AddCampaignFields: () => ({data: {metaobjectDefinitionUpdate: {metaobjectDefinition: {id: 'def'}, userErrors: []}}}),
+      ObjectDefinition: objectDefinitions({creator: null, campaign: null}),
+      CreateObjectDefinition: ({definition}) =>
+        created(definition.type === 'campaign_dashboard_creator' ? 'creator-def' : 'def')(),
     });
     expect(await ensureDefinition(admin)).toEqual({definitionId: 'def', userErrors: []});
-    const keys = calls[1].variables.definition.fieldDefinitions.map(({create}) => create.key);
-    expect(keys).toContain('qr_code_ids');
-    expect(keys).not.toContain('title');
+    expect(calls.map((call) => [call.op, call.variables.type ?? call.variables.definition.type])).toEqual([
+      ['ObjectDefinition', 'campaign_dashboard_creator'],
+      ['CreateObjectDefinition', 'campaign_dashboard_creator'],
+      ['ObjectDefinition', 'campaign_dashboard_campaign'],
+      ['CreateObjectDefinition', 'campaign_dashboard_campaign'],
+    ]);
+    const creator = calls[1].variables.definition;
+    expect(creator).toMatchObject({displayNameKey: 'name'});
+    expect(creator.fieldDefinitions.map((field) => field.key)).toEqual(['name', 'discount_codes']);
+    const campaign = calls[3].variables.definition;
+    expect(campaign.fieldDefinitions.find((field) => field.key === 'creators')).toEqual({
+      key: 'creators',
+      name: 'Creators',
+      type: 'list.metaobject_reference',
+      description: 'Creators who share a discount code for this campaign.',
+      validations: [{name: 'metaobject_definition_id', value: 'creator-def'}],
+    });
+  });
+
+  it('stops before the Campaign type when the Creator type fails', async () => {
+    const {admin, calls} = mockAdmin({
+      ObjectDefinition: () => ({errors: [{message: 'Throttled'}], data: null}),
+    });
+    expect(await ensureDefinition(admin)).toEqual({definitionId: null, userErrors: [{message: 'Throttled'}]});
+    expect(calls).toHaveLength(1);
+  });
+
+  it('adds the creators field to a stored Campaign definition', async () => {
+    const {admin, calls} = mockAdmin({
+      ObjectDefinition: objectDefinitions({
+        campaign: {id: 'def', fieldDefinitions: [{key: 'title'}, {key: 'creator_codes'}]},
+      }),
+      AddObjectFields: () => ({data: {metaobjectDefinitionUpdate: {metaobjectDefinition: {id: 'def'}, userErrors: []}}}),
+    });
+    expect(await ensureDefinition(admin)).toEqual({definitionId: 'def', userErrors: []});
+    const added = calls.find((call) => call.op === 'AddObjectFields');
+    expect(added.variables.id).toBe('def');
+    const fields = added.variables.definition.fieldDefinitions.map(({create}) => create);
+    expect(fields.map((field) => field.key)).toContain('qr_code_ids');
+    expect(fields.map((field) => field.key)).not.toContain('title');
+    expect(fields.find((field) => field.key === 'creators').validations).toEqual([
+      {name: 'metaobject_definition_id', value: 'creator-def'},
+    ]);
   });
 
   it('stores QR code IDs as text that an uninstall leaves in place', async () => {
     const {admin, calls} = mockAdmin({
-      CampaignDefinition: () => ({data: {campaign: null}}),
-      CreateCampaignDefinition: () => ({
-        data: {metaobjectDefinitionCreate: {metaobjectDefinition: {id: 'def'}, userErrors: []}},
-      }),
+      ObjectDefinition: objectDefinitions({campaign: null}),
+      CreateObjectDefinition: created('def'),
     });
     expect((await ensureDefinition(admin)).definitionId).toBe('def');
-    const {definition} = calls[1].variables;
+    const {definition} = calls.find((call) => call.op === 'CreateObjectDefinition').variables;
     expect(definition.fieldDefinitions.find((field) => field.key === 'qr_code_ids')).toMatchObject({
       type: 'list.single_line_text_field',
       validations: [{name: 'list.max', value: '50'}],
@@ -156,10 +198,11 @@ describe('ensureDefinition', () => {
   it('finds the definition a racing request created', async () => {
     let reads = 0;
     const {admin} = mockAdmin({
-      CampaignDefinition: () => ({
-        data: {campaign: reads++ ? {id: 'winner', fieldDefinitions: ALL_FIELDS} : null},
-      }),
-      CreateCampaignDefinition: () => ({
+      ObjectDefinition: ({type}) =>
+        type === 'campaign_dashboard_creator'
+          ? objectDefinitions()({type})
+          : {data: {definition: reads++ ? {id: 'winner', fieldDefinitions: ALL_FIELDS} : null}},
+      CreateObjectDefinition: () => ({
         data: {metaobjectDefinitionCreate: {metaobjectDefinition: null, userErrors: [{message: 'Type taken'}]}},
       }),
     });
@@ -167,48 +210,156 @@ describe('ensureDefinition', () => {
   });
 });
 
-describe('ensureCampaign', () => {
-  const definition = () => ({data: {campaign: {id: 'def', fieldDefinitions: ALL_FIELDS}}});
+describe('creators', () => {
+  const avery = {id: 'gid://shopify/Metaobject/70', handle: 'creator-avery', name: 'Avery', codes: ['AVERY10']};
+  const creatorStore = (stored = {}) => {
+    const entries = new Map(Object.entries(stored));
+    return {
+      entries,
+      CreatorByHandle: ({handle}) => ({
+        data: {metaobjectByHandle: entries.has(handle.handle) ? creatorNode(entries.get(handle.handle)) : null},
+      }),
+      UpsertCreator: ({handle, metaobject}) => {
+        const values = Object.fromEntries(metaobject.fields.map((field) => [field.key, field.value]));
+        const entry = {
+          id: entries.get(handle.handle)?.id ?? `gid://shopify/Metaobject/${entries.size + 70}`,
+          handle: handle.handle,
+          name: values.name,
+          codes: JSON.parse(values.discount_codes),
+        };
+        entries.set(handle.handle, entry);
+        return {data: {metaobjectUpsert: {metaobject: creatorNode(entry), userErrors: []}}};
+      },
+    };
+  };
 
-  it('seeds two campaigns and spends both IDs on a new store', async () => {
-    const {admin, calls} = mockAdmin({
-      CampaignDefinition: definition,
-      CampaignList: listOf([]),
-      UpsertCampaign: ({handle}) => ({
+  it('upserts one entry per creator on a handle from the name', async () => {
+    const store = creatorStore();
+    const {admin, calls} = mockAdmin(store);
+    const {creators, userErrors} = await upsertCreators(admin, [
+      {code: 'AVERY10', creator: 'Avery'},
+      {code: 'AVERYSUMMER', creator: 'Avery'},
+      {code: 'JUNO15', creator: 'Juno Park'},
+    ]);
+    expect(userErrors).toEqual([]);
+    expect(creators.map(({handle, name, codes}) => ({handle, name, codes}))).toEqual([
+      {handle: 'creator-avery', name: 'Avery', codes: ['AVERY10', 'AVERYSUMMER']},
+      {handle: 'creator-juno-park', name: 'Juno Park', codes: ['JUNO15']},
+    ]);
+    expect(ops(calls)).toEqual(['CreatorByHandle', 'UpsertCreator', 'CreatorByHandle', 'UpsertCreator']);
+  });
+
+  it('keeps the codes an earlier campaign gave a creator', async () => {
+    const store = creatorStore({'creator-avery': avery});
+    const {admin} = mockAdmin(store);
+    const {creators} = await upsertCreators(admin, [{code: 'AVERYFALL', creator: 'Avery'}]);
+    expect(creators).toEqual([{...avery, codes: ['AVERY10', 'AVERYFALL']}]);
+  });
+
+  it('writes the same entry when the same creator is named twice', async () => {
+    const store = creatorStore();
+    const {admin} = mockAdmin(store);
+    const first = await upsertCreators(admin, [{code: 'AVERY10', creator: 'Avery'}]);
+    const second = await upsertCreators(admin, [{code: 'AVERY10', creator: 'Avery'}]);
+    expect(second.creators).toEqual(first.creators);
+    expect(store.entries.size).toBe(1);
+  });
+
+  it('round-trips the referenced creators through the entry', () => {
+    const campaign = campaignFromNode(node({id: 4210, creators: [avery]}));
+    expect(campaign.creators).toEqual([avery]);
+    expect(campaignFields({creators: campaign.creators})).toEqual([
+      {key: 'creators', value: '["gid://shopify/Metaobject/70"]'},
+    ]);
+  });
+
+  it('reads an entry stored before the creators field as having none', () => {
+    const entry = node({id: 4210});
+    entry.fields.push({key: 'creator_codes', jsonValue: [{code: 'OLD', creator: 'Old'}]});
+    expect(campaignFromNode(entry).creators).toEqual([]);
+  });
+
+  it('sanitizes codes a merchant edits in the admin', () => {
+    expect(creatorFromNode(creatorNode({...avery, codes: ["av'ery 10", '']})).codes).toEqual(['AVERY10']);
+  });
+});
+
+describe('ensureCampaign', () => {
+  const definition = objectDefinitions();
+  const seeding = () => ({
+    ObjectDefinition: definition,
+    CampaignList: listOf([]),
+    CreatorByHandle: () => ({data: {metaobjectByHandle: null}}),
+    UpsertCreator: ({handle, metaobject}) => {
+      const values = Object.fromEntries(metaobject.fields.map((field) => [field.key, field.value]));
+      return {
         data: {
           metaobjectUpsert: {
-            metaobject: node({gid: `gid-${handle.handle}`, handle: handle.handle, id: Number(handle.handle.split('-')[1])}),
+            metaobject: creatorNode({id: `gid-${handle.handle}`, handle: handle.handle, name: values.name, codes: JSON.parse(values.discount_codes)}),
             userErrors: [],
           },
         },
-      }),
-      SetCampaignMetafields: () => ({data: {metafieldsSet: {metafields: [], userErrors: []}}}),
-    });
+      };
+    },
+    UpsertCampaign: ({handle}) => ({
+      data: {
+        metaobjectUpsert: {
+          metaobject: node({gid: `gid-${handle.handle}`, handle: handle.handle, id: Number(handle.handle.split('-')[1])}),
+          userErrors: [],
+        },
+      },
+    }),
+    SetCampaignMetafields: () => ({data: {metafieldsSet: {metafields: [], userErrors: []}}}),
+  });
+
+  it('seeds two campaigns and spends both IDs on a new store', async () => {
+    const {admin, calls} = mockAdmin(seeding());
     const result = await ensureCampaign(admin);
     expect(result.userErrors).toEqual([]);
     expect(result.campaigns.map((campaign) => campaign.id)).toEqual([4210, 4211]);
     const upserts = calls.filter((call) => call.op === 'UpsertCampaign');
-    expect(upserts.map((call) => call.variables.handle.handle)).toEqual(['campaign-4210', 'campaign-4211']);
+    expect(upserts.map((call) => call.variables.handle.handle).sort()).toEqual(['campaign-4210', 'campaign-4211']);
     expect(calls.at(-1).variables.metafields[0]).toMatchObject({key: 'last_campaign_id', value: '4211'});
+  });
+
+  it('seeds the creators on fixed handles and references them from the campaign', async () => {
+    const {admin, calls} = mockAdmin(seeding());
+    await ensureCampaign(admin);
+    const creators = calls.filter((call) => call.op === 'UpsertCreator');
+    expect(creators.map((call) => [call.variables.handle, call.variables.metaobject.fields])).toEqual([
+      [
+        {type: 'campaign_dashboard_creator', handle: 'creator-avery'},
+        [{key: 'name', value: 'Avery'}, {key: 'discount_codes', value: '["AVERY10","AVERYSUMMER"]'}],
+      ],
+      [
+        {type: 'campaign_dashboard_creator', handle: 'creator-juno'},
+        [{key: 'name', value: 'Juno'}, {key: 'discount_codes', value: '["JUNO15"]'}],
+      ],
+    ]);
+    const summer = calls.find((call) => call.op === 'UpsertCampaign' && call.variables.handle.handle === 'campaign-4210');
+    expect(summer.variables.metaobject.fields).toContainEqual({key: 'creators', value: '["gid-creator-avery","gid-creator-juno"]'});
+    const school = calls.find((call) => call.op === 'UpsertCampaign' && call.variables.handle.handle === 'campaign-4211');
+    expect(school.variables.metaobject.fields.map((field) => field.key)).not.toContain('creators');
   });
 
   it('skips the seed once a high-water mark exists', async () => {
     const {admin, calls} = mockAdmin({
-      CampaignDefinition: definition,
+      ObjectDefinition: definition,
       CampaignList: listOf([], {value: '4211'}),
     });
     const result = await ensureCampaign(admin);
     expect(result.campaigns).toEqual([]);
-    expect(ops(calls)).toEqual(['CampaignDefinition', 'CampaignList']);
+    expect(ops(calls)).toEqual(['ObjectDefinition', 'ObjectDefinition', 'CampaignList']);
   });
 
   it('refuses to seed on a failed read', async () => {
     const {admin, calls} = mockAdmin({
-      CampaignDefinition: definition,
+      ObjectDefinition: definition,
       CampaignList: () => ({errors: [{message: 'Throttled'}], data: null}),
     });
     expect((await ensureCampaign(admin)).userErrors).toEqual([{message: 'Throttled'}]);
     expect(ops(calls)).not.toContain('UpsertCampaign');
+    expect(ops(calls)).not.toContain('UpsertCreator');
   });
 });
 

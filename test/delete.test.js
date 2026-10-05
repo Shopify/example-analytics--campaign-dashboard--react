@@ -33,4 +33,19 @@ describe('delete', () => {
     expect(response.headers.get('Location')).toBe('/app/campaigns');
     expect(canceled.mock.calls.find((call) => call.op === 'DeleteCampaign').variables).toEqual({id: 'gid://shopify/Metaobject/1'});
   });
+
+  it('leaves the creator entries for other campaigns', async () => {
+    const avery = {id: 'gid://shopify/Metaobject/70', handle: 'creator-avery', name: 'Avery', codes: ['AVERY10']};
+    const {mock, result} = run(
+      {
+        ...base(planned({status: 'canceled', creators: [avery]})),
+        DeleteCampaign: () => ({data: {metaobjectDelete: {deletedId: 'x', userErrors: []}}}),
+      },
+      {intent: 'delete'},
+    );
+    await result;
+    const deletes = mock.calls.filter((call) => call.op === 'DeleteCampaign');
+    expect(deletes.map((call) => call.variables.id)).toEqual(['gid://shopify/Metaobject/1']);
+    expect(ops(mock.calls).filter((op) => /Creator/.test(op))).toEqual([]);
+  });
 });

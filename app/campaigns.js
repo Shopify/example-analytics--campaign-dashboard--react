@@ -326,7 +326,11 @@ export function parseCreatorCodes(input) {
     .filter((pair) => pair.code && pair.creator);
 }
 
-export const creatorCodes = (campaign) => campaign.creatorCodes ?? [];
+// Each referenced creator entry lists its codes. The panels work code by code.
+export const creatorCodes = (campaign) =>
+  (campaign.creators ?? []).flatMap((creator) =>
+    creator.codes.map((code) => ({code, creator: creator.name})),
+  );
 
 // The codes as ShopifyQL sees them. Sanitized on the way in, leaving quoting as
 // the only job here.
