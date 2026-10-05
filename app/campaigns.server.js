@@ -92,8 +92,8 @@ export const CAMPAIGN_FIELDS = [
     validations: [{name: 'list.max', value: '5'}],
     description: 'Each one gets a reference back to this campaign at activation.',
   },
-  // IDs as text. A reference field would validate against the QR code type, and
-  // Shopify drops that field when an uninstall deletes the type.
+  // IDs as text. A reference field validates against the QR code definition's ID, and
+  // a reinstall recreates the `$app:qrcode` definition with a new ID.
   {
     field: 'qrCodes',
     key: 'qr_code_ids',
