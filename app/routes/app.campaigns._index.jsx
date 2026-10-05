@@ -524,7 +524,7 @@ export default function CampaignsIndex() {
                 label="QR code target"
                 name="qrTarget"
                 placeholder="1000.00"
-                details="One target for each QR code. Assign QR codes from the campaign page before you activate."
+                details="One target for each QR code. Pick this campaign in each QR code's Campaign field before you activate."
               />
               <s-stack direction="inline" gap="base">
                 <s-button variant="primary" type="submit" loading={saving}>
@@ -534,6 +534,8 @@ export default function CampaignsIndex() {
             </s-stack>
           </s-section>
           {/* [END campaign-dashboard.spawn-targets] */}
+
+          <div style={{height: '12px'}} />
         </form>
       )}
 

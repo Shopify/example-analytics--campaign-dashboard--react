@@ -213,7 +213,7 @@ export async function action({ request, params }) {
 
   // [START campaign-dashboard.qr-campaign-assign]
   // The code's `campaign` field is the link, so a code has one campaign at most.
-  const lock = reassigned
+  const lock = moved
     ? await lockQRCodeMove(withReturnedErrors(admin), qrCodeId, campaign)
     : { release: async () => {} };
   if (lock.problems) {

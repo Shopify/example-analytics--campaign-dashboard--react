@@ -404,10 +404,10 @@ async function withQRCodes(admin, campaigns) {
         liveOn: node.liveOn?.value ?? '',
       });
     }
-    if (!connection?.pageInfo?.hasNextPage) break;
+    if (!connection?.pageInfo?.hasNextPage) return [];
     after = connection.pageInfo.endCursor;
   }
-  return [];
+  return [{message: 'This store has more than 5,000 QR codes. The campaign dashboard reads up to 5,000.'}];
 }
 
 // Returns this app's ID alongside the records. The namespace derives from it.
@@ -429,6 +429,7 @@ export async function readCampaigns(admin) {
     campaigns.push(...(connection?.nodes ?? []).map(campaignFromNode));
     if (!connection?.pageInfo?.hasNextPage) break;
     after = connection.pageInfo.endCursor;
+    if (page === 19) failed = [{message: 'This store has more than 5,000 campaigns. The campaign dashboard reads up to 5,000.'}];
   }
 
   if (!failed.length && campaigns.length) failed = await withQRCodes(admin, campaigns);
@@ -647,20 +648,29 @@ export async function lockQRCodeMove(admin, qrCodeId, campaignGid) {
 
   // The form loaded before the lock. A campaign activated since then keeps its codes.
   const {campaigns, failed} = await readCampaigns(admin);
+  const now = campaignOf(campaigns, qrCodeId);
+  const drifted = now && !touched.some((t) => t.gid === now.gid);
   const started = campaigns.find(
     (campaign) =>
       touched.some((t) => t.gid === campaign.gid) && campaign.status !== 'planned',
   );
   const problems = failed.length
     ? failed
-    : started
+    : drifted
       ? [
           {
-            code: 'NOT_PLANNED',
-            message: `${started.title} is ${statusLabel(started.status).toLowerCase()}. QR codes move only between planned campaigns.`,
+            code: 'STALE',
+            message: 'This QR code changed while you were working. Reload the page and try again.',
           },
         ]
-      : [];
+      : started
+        ? [
+            {
+              code: 'NOT_PLANNED',
+              message: `${started.title} is ${statusLabel(started.status).toLowerCase()}. QR codes move only between planned campaigns.`,
+            },
+          ]
+        : [];
   if (problems.length) {
     await lock.release();
     return {problems};

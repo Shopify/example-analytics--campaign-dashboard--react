@@ -256,6 +256,24 @@ describe('QR code save', () => {
     expect(ops(mock.calls)).not.toContain('UpdateCampaign');
   });
 
+  it('refuses a live date change when the campaign leaves planning after the form loaded', async () => {
+    const entries = (status) => [planned({gid: 'g1', id: 4210, title: 'Fall', status, qrCodes: [{id: 'gid://shopify/Metaobject/50', handle: 'hat-front'}]})];
+    const mock = mockAdmin(
+      qrHandlers(entries('planned'), {
+        CampaignList: (variables, seen) =>
+          listOf(entries(seen.filter((call) => call.op === 'CampaignList').length > 2 ? 'running' : 'planned'))(variables),
+      }),
+    );
+    session.admin = mock.raw;
+    const response = await qrAction({
+      request: post('/app/qrcodes/hat-front', {...form('g1'), initialCampaign: 'g1', liveOn: '2026-09-20'}),
+      params: {id: 'hat-front'},
+    });
+    expect(response.status).toBe(422);
+    expect(await response.json()).toEqual({errors: {campaign: 'Fall is active. QR codes move only between planned campaigns.'}});
+    expect(ops(mock.calls)).not.toContain('UpsertQRCode');
+  });
+
   it('keeps the stored live date when the form leaves it unchanged', async () => {
     const mock = mockAdmin(qrHandlers([planned({gid: 'g1'})]));
     session.admin = mock.raw;

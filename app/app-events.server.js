@@ -238,7 +238,7 @@ function stageTimestamp(start, day, hour, index) {
 
 // [START campaign-dashboard.app-events-send]
 async function sendEvent({token, shopId, stage, campaignId, start, index}) {
-  const response = await fetch('https://api.shopify.com/app/unstable/events', {
+  const response = await fetch('https://api.shopify.com/app/2027-01/events', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

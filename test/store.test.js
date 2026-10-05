@@ -126,6 +126,31 @@ describe('field mapping', () => {
     expect(calls.filter((call) => call.op === 'CampaignQRCodes').map((call) => call.variables)).toEqual([{after: null}, {after: 'c1'}]);
   });
 
+  it('fails the read past 20 pages of QR codes', async () => {
+    const {admin} = mockAdmin({
+      CampaignList: listOf([node({gid: 'g1', id: 4210})]),
+      CampaignQRCodes: () => ({data: {metaobjects: {nodes: [], pageInfo: {hasNextPage: true, endCursor: 'more'}}}}),
+    });
+    expect(await readCampaigns(admin)).toMatchObject({
+      failed: [{message: 'This store has more than 5,000 QR codes. The campaign dashboard reads up to 5,000.'}],
+      campaigns: [],
+    });
+  });
+
+  it('fails the read past 20 pages of campaigns', async () => {
+    const {admin, calls} = mockAdmin({
+      CampaignList: () => {
+        const body = listOf([node({gid: 'g1', id: 4210})])();
+        body.data.metaobjects.pageInfo = {hasNextPage: true, endCursor: 'more'};
+        return body;
+      },
+    });
+    expect((await readCampaigns(admin)).failed).toEqual([
+      {message: 'This store has more than 5,000 campaigns. The campaign dashboard reads up to 5,000.'},
+    ]);
+    expect(ops(calls).filter((op) => op === 'CampaignList')).toHaveLength(20);
+  });
+
   it('fails the read when the QR code list fails', async () => {
     const {admin} = mockAdmin({
       CampaignList: listOf([node({id: 4210})]),
@@ -578,13 +603,20 @@ describe('campaign lock', () => {
 });
 
 describe('QR code moves under the lock', () => {
-  const moving = (before, after) => {
+  const moving = (before, after, codeAfter = 'g1') => {
     const locks = lockStore();
     const mock = mockAdmin({
       ...locks,
       CampaignList: (variables, seen) =>
         listOf(seen.filter((call) => call.op === 'CampaignList').length > 1 ? after : before)(variables),
-      CampaignQRCodes: qrCodeList([qrCodeNode({id: 'gid://shopify/Metaobject/901', handle: 'a', campaign: 'g1'})]),
+      CampaignQRCodes: (variables, seen) =>
+        qrCodeList([
+          qrCodeNode({
+            id: 'gid://shopify/Metaobject/901',
+            handle: 'a',
+            campaign: seen.filter((call) => call.op === 'CampaignQRCodes').length > 1 ? codeAfter : 'g1',
+          }),
+        ])(variables),
     });
     return {...mock, locks};
   };
@@ -608,6 +640,15 @@ describe('QR code moves under the lock', () => {
     );
     expect((await lockQRCodeMove(admin, 'gid://shopify/Metaobject/901', 'g2')).problems).toEqual([
       {code: 'NOT_PLANNED', message: 'Fall is active. QR codes move only between planned campaigns.'},
+    ]);
+    expect(locks.held.size).toBe(0);
+  });
+
+  it('refuses when another request moved the code to an unlocked campaign', async () => {
+    const entries = [node({gid: 'g1', id: 4210}), node({gid: 'g2', id: 4211}), node({gid: 'g3', id: 4212})];
+    const {admin, locks} = moving(entries, entries, 'g3');
+    expect((await lockQRCodeMove(admin, 'gid://shopify/Metaobject/901', 'g2')).problems).toEqual([
+      {code: 'STALE', message: 'This QR code changed while you were working. Reload the page and try again.'},
     ]);
     expect(locks.held.size).toBe(0);
   });
