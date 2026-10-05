@@ -18,7 +18,7 @@ export function node({gid = 'gid://shopify/Metaobject/1', handle, updatedAt, pro
 // The API hands back JSON for lists and json fields, a number for integers, strings otherwise.
 function decode(key, value) {
   if (value === '') return null;
-  if (['channels', 'products', 'qr_code_ids', 'creator_codes', 'markers', 'targets'].includes(key)) {
+  if (['channels', 'products', 'qr_code_ids', 'members', 'creator_codes', 'markers', 'targets'].includes(key)) {
     return JSON.parse(value);
   }
   if (key === 'campaign_id' || key === 'sent_events') return Number(value);

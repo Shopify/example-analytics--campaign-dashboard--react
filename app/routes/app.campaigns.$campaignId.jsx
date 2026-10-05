@@ -461,11 +461,12 @@ export async function action({request, params}) {
     }
 
     const unstamped = await stampProducts(admin, campaign);
-    const untiered = await stampTier(admin, campaign);
+    const {members, userErrors: untiered} = await stampTier(admin, campaign, campaigns);
     const {userErrors} = await updateCampaign(admin, campaign, {
       status: 'running',
       markers,
       targets,
+      members,
     });
     if (userErrors.length) {
       return {problems: userErrors.map((error) => error.message)};

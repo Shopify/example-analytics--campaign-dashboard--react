@@ -1,8 +1,8 @@
 import {authenticate} from '../shopify.server';
 import {forgetCustomer} from '../campaigns.server';
 
-// Activating a targeted campaign writes a tier metafield on each customer in the tier.
-// Redaction deletes it.
+// Activating a targeted campaign writes a tier metafield on each customer in the tier
+// and lists them on the campaign entry. Redaction deletes both.
 export const action = async ({request}) => {
   const {admin, shop, topic, payload} = await authenticate.webhook(request);
 

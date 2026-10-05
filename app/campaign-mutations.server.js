@@ -3,15 +3,13 @@ import {
   ANNOTATION_DELETE,
   ANNOTATION_UPDATE,
   BUNDLE_QUERY,
-  ID_NAMESPACE,
+  CUSTOMER_TIERS,
   METAFIELDS_DELETE,
   METAFIELDS_SET,
   ORDER_PAGE_SIZE,
   RECORDED_ANNOTATIONS,
-  ROSTER_KEY,
   TARGET_CREATE,
   TARGET_UPDATE,
-  TIER_ROSTER,
   appEventsQuery,
   bounceQuery,
   measureQuery,
@@ -343,11 +341,11 @@ export async function stampProducts(admin, campaign) {
 // [END campaign-dashboard.product-metafield]
 
 // [START campaign-dashboard.stamp-tier]
-// A re-rank moves customers out of the tier. The roster says who held it, so their
-// stamps come off and the tier stays the size it says.
-export async function stampTier(admin, campaign) {
+// A re-rank moves customers out of the tier. Earlier campaigns in the tier list who
+// held it, so their stamps come off and the tier matches this campaign's members.
+export async function stampTier(admin, campaign, campaigns) {
   const tier = AUDIENCE_TIERS.find((entry) => entry.value === campaign.audience);
-  if (!tier?.size) return [];
+  if (!tier?.size) return {members: [], userErrors: []};
 
   const body = await (await admin.graphql(tierRankQuery(tier))).json();
   // A failed rank read finds no customers. Returning no errors would read as a tier
@@ -356,19 +354,13 @@ export async function stampTier(admin, campaign) {
     ...transportErrors(body),
     ...(body.data?.shopifyqlQuery?.parseErrors ?? []).map((message) => ({message})),
   ];
-  if (unranked.length) return unranked;
+  if (unranked.length) return {members: [], userErrors: unranked};
 
   // GROUP BY returns a numeric ID. Every mutation below wants a GID.
   const ids = (body.data?.shopifyqlQuery?.tableData?.rows ?? [])
     .map((row) => row.customer_id)
     .filter(Boolean)
     .map((id) => `gid://shopify/Customer/${id}`);
-
-  const read = await (await admin.graphql(TIER_ROSTER)).json();
-  const unread = transportErrors(read);
-  if (unread.length) return unread;
-  const installation = read.data?.currentAppInstallation;
-  const roster = installation?.roster?.jsonValue ?? {};
 
   if (ids.length) {
     const stamped = await (
@@ -388,58 +380,47 @@ export async function stampTier(admin, campaign) {
       ...transportErrors(stamped),
       ...(stamped.data?.metafieldsSet?.userErrors ?? []),
     ];
-    if (unstamped.length) return unstamped;
+    if (unstamped.length) return {members: [], userErrors: unstamped};
   }
 
-  const dropped = Object.keys(roster).filter(
-    (id) => roster[id] === campaign.audience && !ids.includes(id),
-  );
-  const userErrors = [];
-  if (dropped.length) {
-    const cleared = await (
-      await admin.graphql(METAFIELDS_DELETE, {
-        variables: {
-          metafields: dropped.map((id) => ({
-            ownerId: id,
-            namespace: DIMENSION_NAMESPACE,
-            key: TIER_METAFIELD.key,
-          })),
-        },
-      })
-    ).json();
-    userErrors.push(
-      ...transportErrors(cleared),
-      ...(cleared.data?.metafieldsDelete?.userErrors ?? []),
-    );
-  }
+  const earlier = [
+    ...new Set(
+      campaigns
+        .filter((other) => other.gid !== campaign.gid && other.audience === campaign.audience)
+        .flatMap((other) => other.members),
+    ),
+  ].filter((id) => !ids.includes(id));
+  if (!earlier.length) return {members: ids, userErrors: []};
 
-  // A failed clear keeps the dropped customers listed. The next stamp retries them.
-  const kept = Object.fromEntries(
-    Object.entries(roster).filter(([id]) => userErrors.length || !dropped.includes(id)),
-  );
-  const saved = await (
-    await admin.graphql(METAFIELDS_SET, {
+  const read = await (
+    await admin.graphql(CUSTOMER_TIERS, {variables: {ids: earlier}})
+  ).json();
+  const unread = transportErrors(read);
+  if (unread.length) return {members: ids, userErrors: unread};
+  const dropped = (read.data?.nodes ?? [])
+    .filter((customer) => customer?.tier?.value === campaign.audience)
+    .map((customer) => customer.id);
+  if (!dropped.length) return {members: ids, userErrors: []};
+
+  // A failed clear leaves the earlier campaigns listing them. The next stamp retries.
+  const cleared = await (
+    await admin.graphql(METAFIELDS_DELETE, {
       variables: {
-        metafields: [
-          {
-            ownerId: installation?.id,
-            namespace: ID_NAMESPACE,
-            key: ROSTER_KEY,
-            type: 'json',
-            value: JSON.stringify({
-              ...kept,
-              ...Object.fromEntries(ids.map((id) => [id, campaign.audience])),
-            }),
-          },
-        ],
+        metafields: dropped.map((id) => ({
+          ownerId: id,
+          namespace: DIMENSION_NAMESPACE,
+          key: TIER_METAFIELD.key,
+        })),
       },
     })
   ).json();
-  return [
-    ...userErrors,
-    ...transportErrors(saved),
-    ...(saved.data?.metafieldsSet?.userErrors ?? []),
-  ];
+  return {
+    members: ids,
+    userErrors: [
+      ...transportErrors(cleared),
+      ...(cleared.data?.metafieldsDelete?.userErrors ?? []),
+    ],
+  };
 }
 // [END campaign-dashboard.stamp-tier]
 
@@ -559,8 +540,23 @@ export async function markMilestone(admin, target, markedAt, money) {
 
 // [START campaign-dashboard.record-mark]
 // Milestones and incidents repeat. Their keys hold what makes them distinct.
-export const recordMark = (admin, campaign, key, id) =>
-  id ? rememberMarkers(admin, campaign, {[key]: id}) : null;
+// An ID the record doesn't hold is an annotation nothing can find again.
+export async function recordMark(admin, campaign, key, id) {
+  if (!id) return null;
+  const saved = await rememberMarkers(admin, campaign, {[key]: id});
+  if (!saved.userErrors.length) return saved;
+  const deleted = await (
+    await admin.graphql(ANNOTATION_DELETE, {variables: {id}})
+  ).json();
+  return {
+    campaign: null,
+    userErrors: [
+      ...saved.userErrors,
+      ...transportErrors(deleted),
+      ...(deleted.data?.analyticsAnnotationDelete?.userErrors ?? []),
+    ],
+  };
+}
 // [END campaign-dashboard.record-mark]
 
 // [START campaign-dashboard.flag-incident]

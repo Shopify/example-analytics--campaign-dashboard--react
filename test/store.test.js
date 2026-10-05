@@ -320,14 +320,25 @@ describe('entry writes', () => {
     expect(ops(calls)).not.toContain('UpdateCampaign');
   });
 
-  it('deletes a redacted customer\'s tier metafield', async () => {
+  it('deletes a redacted customer\'s tier metafield and member listings', async () => {
     const {admin, calls} = mockAdmin({
       DeleteCustomerTier: () => ({data: {metafieldsDelete: {deletedMetafields: [{key: 'tier'}], userErrors: []}}}),
+      CampaignList: listOf([
+        node({gid: 'g1', id: 4210, members: ['gid://shopify/Customer/5', 'gid://shopify/Customer/6']}),
+        node({gid: 'g2', id: 4211, members: ['gid://shopify/Customer/7']}),
+      ]),
+      UpdateCampaign: updated,
     });
     expect(await forgetCustomer(admin, 'gid://shopify/Customer/5')).toEqual([]);
     expect(calls[0].variables.metafields).toEqual([
       {ownerId: 'gid://shopify/Customer/5', namespace: '$app:campaign_dashboard', key: 'tier'},
     ]);
+    const updates = calls.filter((call) => call.op === 'UpdateCampaign');
+    expect(updates).toHaveLength(1);
+    expect(updates[0].variables).toEqual({
+      id: 'g1',
+      metaobject: {fields: [{key: 'members', value: '["gid://shopify/Customer/6"]'}]},
+    });
   });
 
   it('adds a QR code to its new campaign, then drops it from every other', async () => {

@@ -1,5 +1,6 @@
 import {describe, expect, it, vi} from 'vitest';
 import {mockAdmin} from './helpers/admin';
+import {listOf, node} from './helpers/campaign';
 
 const hook = {value: null};
 vi.mock('../app/shopify.server', () => ({
@@ -12,6 +13,7 @@ describe('customers/redact', () => {
     vi.spyOn(console, 'log').mockImplementation(() => {});
     const mock = mockAdmin({
       DeleteCustomerTier: () => ({data: {metafieldsDelete: {deletedMetafields: [], userErrors: []}}}),
+      CampaignList: listOf([]),
     });
     hook.value = {admin: mock.admin, shop: 'example.test', topic: 'CUSTOMERS_REDACT', payload: {customer: {id: 5}}};
     const response = await action({request: new Request('https://app.test/webhooks', {method: 'POST'})});
@@ -34,10 +36,12 @@ describe('customers/data_request', () => {
     const log = vi.spyOn(console, 'log').mockImplementation(() => {});
     const mock = mockAdmin({
       CustomerTier: () => ({data: {customer: {tier: {value: 'vip'}}}}),
+      CampaignList: listOf([node({id: 4210, title: 'Summer launch', members: ['gid://shopify/Customer/5']})]),
     });
     hook.value = {admin: mock.admin, shop: 'example.test', topic: 'CUSTOMERS_DATA_REQUEST', payload: {customer: {id: 5}}};
     const response = await dataRequest.action({request: new Request('https://app.test/webhooks', {method: 'POST'})});
     expect(response.status).toBe(200);
-    expect(log).toHaveBeenLastCalledWith('Customer 5 holds tier "vip" from this app');
+    expect(log).toHaveBeenCalledWith('Customer 5 holds tier "vip" from this app');
+    expect(log).toHaveBeenLastCalledWith('Campaigns listing customer 5: Summer launch');
   });
 });

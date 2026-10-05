@@ -111,6 +111,13 @@ export const CAMPAIGN_FIELDS = [
     description: 'Tier value written onto each targeted customer at activation.',
   },
   {
+    field: 'members',
+    key: 'members',
+    name: 'Tier members',
+    type: 'list.customer_reference',
+    description: 'Customers who got the tier metafield at activation. Redaction removes them.',
+  },
+  {
     field: 'creatorCodes',
     key: 'creator_codes',
     name: 'Creator codes',
@@ -293,6 +300,7 @@ export function campaignFromNode(node) {
       .filter((id) => /^gid:\/\/shopify\/Metaobject\/\d+$/.test(id))
       .map((id) => ({id, handle: null, title: '', liveOn: ''})),
     audience: values.audience ?? 'everyone',
+    members: listOf(values.members),
     // Entries are editable in the admin. Codes reach ShopifyQL filters.
     creatorCodes: listOf(values.creator_codes)
       .filter((pair) => isRecord(pair) && pair.creator)
@@ -472,15 +480,19 @@ export async function deleteCampaign(admin, campaign) {
 }
 
 // [START campaign-dashboard.customer-data]
-// The tier metafield is the only customer data this app writes. A data request reads it,
-// and a redaction deletes it.
+// The tier metafield and the member lists are the only customer data this app writes.
+// A data request reads both, and a redaction deletes both.
 export async function customerTier(admin, customerId) {
-  const body = await (
-    await admin.graphql(CUSTOMER_TIER, {variables: {id: customerId}})
-  ).json();
+  const [body, {campaigns, failed}] = await Promise.all([
+    admin.graphql(CUSTOMER_TIER, {variables: {id: customerId}}).then((response) => response.json()),
+    readCampaigns(admin),
+  ]);
   return {
     tier: body.data?.customer?.tier?.value ?? null,
-    userErrors: transportErrors(body),
+    campaigns: campaigns
+      .filter((campaign) => campaign.members.includes(customerId))
+      .map((campaign) => campaign.title),
+    userErrors: [...transportErrors(body), ...failed],
   };
 }
 
@@ -492,7 +504,18 @@ export async function forgetCustomer(admin, customerId) {
       },
     })
   ).json();
-  return [...transportErrors(body), ...(body.data?.metafieldsDelete?.userErrors ?? [])];
+  const userErrors = [...transportErrors(body), ...(body.data?.metafieldsDelete?.userErrors ?? [])];
+
+  const {campaigns, failed} = await readCampaigns(admin);
+  if (failed.length) return [...userErrors, ...failed];
+  for (const campaign of campaigns) {
+    if (!campaign.members.includes(customerId)) continue;
+    const result = await updateCampaign(admin, campaign, {
+      members: campaign.members.filter((member) => member !== customerId),
+    });
+    userErrors.push(...result.userErrors);
+  }
+  return userErrors;
 }
 // [END campaign-dashboard.customer-data]
 

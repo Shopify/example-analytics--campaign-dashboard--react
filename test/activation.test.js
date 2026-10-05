@@ -4,10 +4,12 @@ import {
   createQrTargets,
   createStoreTarget,
   stampProducts,
+  recordMark,
   stampTier,
   writeMarks,
 } from '../app/campaign-mutations.server';
 import {mockAdmin} from './helpers/admin';
+import {node} from './helpers/campaign';
 
 const campaign = (overrides = {}) => ({
   gid: 'gid://shopify/Metaobject/1',
@@ -19,6 +21,7 @@ const campaign = (overrides = {}) => ({
   products: [],
   qrCodes: [],
   audience: 'everyone',
+  members: [],
   creatorCodes: [],
   markers: {},
   targets: {},
@@ -123,39 +126,86 @@ describe('stampTier', () => {
   const ranked = (...ids) => () => ({
     data: {shopifyqlQuery: {tableData: {rows: ids.map((id) => ({customer_id: id}))}, parseErrors: []}},
   });
-  const roster = (value) => () => ({
-    data: {currentAppInstallation: {id: 'gid://shopify/AppInstallation/1', roster: value ? {jsonValue: value} : null}},
+  const customer = (id) => `gid://shopify/Customer/${id}`;
+  const stamps = (tiers) => ({ids}) => ({
+    data: {nodes: ids.map((id) => ({id, tier: tiers[id] ? {value: tiers[id]} : null}))},
   });
+  const earlier = [
+    campaign({gid: 'g0', audience: 'vip', members: [customer(1), customer(2)]}),
+    campaign({gid: 'g5', audience: 'vip', members: [customer(4), customer(8)]}),
+    campaign({gid: 'g6', audience: 'regulars', members: [customer(7)]}),
+  ];
 
-  it('clears the customers who dropped out of the tier', async () => {
+  it('clears the earlier members who dropped out of the tier', async () => {
     const {admin, calls} = mockAdmin({
       AudienceRanking: ranked('2', '3'),
-      TierRoster: roster({
-        'gid://shopify/Customer/1': 'vip',
-        'gid://shopify/Customer/2': 'vip',
-        'gid://shopify/Customer/9': 'regulars',
-      }),
       SetCampaignMetafields: () => ({data: {metafieldsSet: {userErrors: []}}}),
+      // 4 joined a later regulars campaign. 8's stamp is already gone.
+      CustomerTiers: stamps({[customer(1)]: 'vip', [customer(4)]: 'regulars'}),
       DeleteCustomerTier: () => ({data: {metafieldsDelete: {userErrors: []}}}),
     });
-    expect(await stampTier(admin, campaign({audience: 'vip'}))).toEqual([]);
-    const cleared = calls.find((call) => call.op === 'DeleteCustomerTier');
-    expect(cleared.variables.metafields).toEqual([
-      {ownerId: 'gid://shopify/Customer/1', namespace: '$app:campaign_dashboard', key: 'tier'},
-    ]);
-    const saved = calls.filter((call) => call.op === 'SetCampaignMetafields').at(-1).variables.metafields[0];
-    expect(JSON.parse(saved.value)).toEqual({
-      'gid://shopify/Customer/2': 'vip',
-      'gid://shopify/Customer/3': 'vip',
-      'gid://shopify/Customer/9': 'regulars',
+    const vip = campaign({audience: 'vip'});
+    expect(await stampTier(admin, vip, [vip, ...earlier])).toEqual({
+      members: [customer(2), customer(3)],
+      userErrors: [],
     });
+    expect(calls.find((call) => call.op === 'CustomerTiers').variables.ids).toEqual([
+      customer(1),
+      customer(4),
+      customer(8),
+    ]);
+    expect(calls.find((call) => call.op === 'DeleteCustomerTier').variables.metafields).toEqual([
+      {ownerId: customer(1), namespace: '$app:campaign_dashboard', key: 'tier'},
+    ]);
+  });
+
+  it('leaves every vip stamp on a customer the new rank holds', async () => {
+    const {admin, calls} = mockAdmin({
+      AudienceRanking: ranked('1', '2', '4', '8'),
+      SetCampaignMetafields: () => ({data: {metafieldsSet: {userErrors: []}}}),
+    });
+    const vip = campaign({audience: 'vip'});
+    const {members} = await stampTier(admin, vip, [vip, ...earlier]);
+    expect(members).toHaveLength(4);
+    expect(calls.map((call) => call.op)).toEqual(['AudienceRanking', 'SetCampaignMetafields']);
+  });
+
+  it('keeps the earlier campaigns listing customers whose stamps failed to clear', async () => {
+    const {admin} = mockAdmin({
+      AudienceRanking: ranked('3'),
+      SetCampaignMetafields: () => ({data: {metafieldsSet: {userErrors: []}}}),
+      CustomerTiers: stamps({[customer(1)]: 'vip'}),
+      DeleteCustomerTier: () => ({data: {metafieldsDelete: {userErrors: [{message: 'Throttled'}]}}}),
+    });
+    const vip = campaign({audience: 'vip'});
+    const result = await stampTier(admin, vip, [vip, ...earlier]);
+    expect(result).toEqual({members: [customer(3)], userErrors: [{message: 'Throttled'}]});
+    expect(earlier[0].members).toContain(customer(1));
   });
 
   it('stamps nobody on a ranking that does not parse', async () => {
     const {admin, calls} = mockAdmin({
       AudienceRanking: () => ({data: {shopifyqlQuery: {tableData: null, parseErrors: ['Bad query']}}}),
     });
-    expect(await stampTier(admin, campaign({audience: 'vip'}))).toEqual([{message: 'Bad query'}]);
+    expect(await stampTier(admin, campaign({audience: 'vip'}), earlier)).toEqual({
+      members: [],
+      userErrors: [{message: 'Bad query'}],
+    });
     expect(calls).toHaveLength(1);
+  });
+});
+
+describe('recordMark', () => {
+  it('deletes the annotation it created when saving its ID fails', async () => {
+    const {admin, calls} = mockAdmin({
+      CampaignById: () => ({data: {metaobject: node({id: 4210, updatedAt: '2026-09-20T10:05:00Z'})}}),
+      DeleteCampaignAnnotation: () => ({data: {analyticsAnnotationDelete: {userErrors: []}}}),
+    });
+    const stale = campaign({updatedAt: '2026-09-20T10:00:00Z'});
+    const {userErrors} = await recordMark(admin, stale, 'milestone:2026-09-20', 'gid://shopify/AnalyticsAnnotation/5');
+    expect(userErrors.map((error) => error.code)).toEqual(['STALE']);
+    expect(calls.find((call) => call.op === 'DeleteCampaignAnnotation').variables).toEqual({
+      id: 'gid://shopify/AnalyticsAnnotation/5',
+    });
   });
 });

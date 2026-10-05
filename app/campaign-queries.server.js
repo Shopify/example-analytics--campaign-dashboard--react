@@ -707,14 +707,15 @@ export const promotedByQuery = (campaign, dimension) => `
   }
 `;
 
-// Which tier each stamped customer holds. Nothing lists a metafield's owners back.
-export const ROSTER_KEY = 'tier_roster';
-export const TIER_ROSTER = `
-  query TierRoster {
-    currentAppInstallation {
-      id
-      roster: metafield(namespace: "${ID_NAMESPACE}", key: "${ROSTER_KEY}") {
-        jsonValue
+// Each earlier member's current stamp. A later campaign in another tier may hold it.
+export const CUSTOMER_TIERS = `
+  query CustomerTiers($ids: [ID!]!) {
+    nodes(ids: $ids) {
+      ... on Customer {
+        id
+        tier: metafield(namespace: "${DIMENSION_NAMESPACE}", key: "${TIER_METAFIELD.key}") {
+          value
+        }
       }
     }
   }

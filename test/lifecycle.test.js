@@ -1,6 +1,7 @@
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {STALE_MESSAGE} from '../app/campaigns.server';
 import {ops} from './helpers/admin';
+import {listOf, node} from './helpers/campaign';
 import {base, lastUpdate, marking, planned, resetTargets, runWith, targeting} from './helpers/routes';
 
 vi.mock('../app/shopify.server', async () => (await import('./helpers/routes')).shopifyServer);
@@ -110,6 +111,28 @@ describe('activate', () => {
     expect(await result).toEqual({problems: ['Too big']});
     expect(mock.calls.find((call) => call.op === 'DeleteCampaignTargets').variables.ids).toEqual(['gid://shopify/AnalyticsTarget/1']);
     expect(updates).toBeGreaterThan(0);
+  });
+
+  it('saves the new vip members and unstamps the earlier vip campaign\'s dropouts', async () => {
+    const entry = planned({audience: 'vip'});
+    const earlier = node({gid: 'g0', id: 4200, audience: 'vip', status: 'closed', members: ['gid://shopify/Customer/1', 'gid://shopify/Customer/2']});
+    const {mock, result} = run(
+      {
+        ...base(entry),
+        ...marking,
+        CampaignList: listOf([earlier, entry]),
+        AudienceRanking: () => ({data: {shopifyqlQuery: {tableData: {rows: [{customer_id: '2'}, {customer_id: '3'}]}, parseErrors: []}}}),
+        SetCampaignMetafields: () => ({data: {metafieldsSet: {userErrors: []}}}),
+        CustomerTiers: ({ids}) => ({data: {nodes: ids.map((id) => ({id, tier: {value: 'vip'}}))}}),
+        DeleteCustomerTier: () => ({data: {metafieldsDelete: {userErrors: []}}}),
+      },
+      {intent: 'activate'},
+    );
+    expect(await result).toEqual({ok: true});
+    expect(mock.calls.find((call) => call.op === 'DeleteCustomerTier').variables.metafields.map((field) => field.ownerId)).toEqual([
+      'gid://shopify/Customer/1',
+    ]);
+    expect(JSON.parse(lastUpdate(mock.calls).members)).toEqual(['gid://shopify/Customer/2', 'gid://shopify/Customer/3']);
   });
 
   it('rejects a campaign that already runs', async () => {
