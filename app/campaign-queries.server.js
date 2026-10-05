@@ -24,12 +24,12 @@ export const CAMPAIGN_TYPE = 'campaign_dashboard_campaign';
 // `$app:` type gets a new ID on reinstall, and the validation can never change.
 export const CREATOR_TYPE = 'campaign_dashboard_creator';
 
-// A campaign stores its QR code IDs as text. Each code's handle is its utm_campaign,
-// and its title names it on the chart.
-export const QR_CODE_HANDLES = `
-  query QRCodeHandles($ids: [ID!]!) {
-    nodes(ids: $ids) {
-      ... on Metaobject {
+// Each code's `campaign` field holds its campaign's entry ID. Each code's handle is its
+// utm_campaign, and its title names it on the chart.
+export const QR_CODE_CAMPAIGNS = `
+  query CampaignQRCodes($after: String) {
+    metaobjects(type: "$app:qrcode", first: 250, after: $after) {
+      nodes {
         id
         handle
         title: field(key: "title") {
@@ -38,6 +38,13 @@ export const QR_CODE_HANDLES = `
         liveOn: field(key: "live_on") {
           value
         }
+        campaign: field(key: "campaign") {
+          value
+        }
+      }
+      pageInfo {
+        hasNextPage
+        endCursor
       }
     }
   }

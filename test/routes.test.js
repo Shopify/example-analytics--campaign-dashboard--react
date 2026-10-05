@@ -2,7 +2,7 @@ import {createElement} from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {lockStore, mockAdmin, ops} from './helpers/admin';
-import {creatorNode, handlesFor, listOf, node} from './helpers/campaign';
+import {creatorNode, qrCodesFor, listOf, node} from './helpers/campaign';
 import {planned, post, resetTargets, session} from './helpers/routes';
 
 vi.mock('../app/shopify.server', async () => (await import('./helpers/routes')).shopifyServer);
@@ -147,7 +147,7 @@ describe('QR code save', () => {
   const qrHandlers = (campaigns, extra = {}) => ({
     ...lockStore(),
     CampaignList: listOf(campaigns),
-    QRCodeHandles: handlesFor(campaigns),
+    CampaignQRCodes: qrCodesFor(campaigns),
     UpdateCampaign: () => ({data: {metaobjectUpdate: {metaobject: null, userErrors: []}}}),
     UpsertQRCode: () => ({data: {metaobjectUpsert: {metaobject: {id: 'gid://shopify/Metaobject/50', handle: 'hat-front'}, userErrors: []}}}),
     QRCodeId: () => ({data: {metaobjectByHandle: {id: 'gid://shopify/Metaobject/50'}}}),
@@ -274,19 +274,52 @@ describe('QR code save', () => {
       params: {id: 'hat-front'},
     }).catch((error) => error);
     expect(upsertedFields(mock.calls)).toContainEqual({key: 'live_on', value: ''});
-    expect(ops(mock.calls)).toContain('UpdateCampaign');
+    expect(upsertedFields(mock.calls)).toContainEqual({key: 'campaign', value: ''});
+    expect(ops(mock.calls)).not.toContain('UpdateCampaign');
   });
 
-  it('saves the code and lands on its page when the assignment fails', async () => {
+  it("writes the chosen campaign on the code and leaves every campaign entry alone", async () => {
+    const locks = lockStore();
+    const mock = mockAdmin({
+      ...qrHandlers([planned({gid: 'g1', id: 4210, qrCodes: [{id: 'gid://shopify/Metaobject/50', handle: 'hat-front'}]}), planned({gid: 'g2', id: 4211})]),
+      ...locks,
+    });
+    session.admin = mock.raw;
+    const response = await qrAction({request: post('/app/qrcodes/hat-front', {...form('g2'), initialCampaign: 'g1'}), params: {id: 'hat-front'}}).catch((error) => error);
+    expect(response.headers.get('Location')).toBe('/app/qrcodes/hat-front');
+    expect(upsertedFields(mock.calls)).toContainEqual({key: 'campaign', value: 'g2'});
+    expect(ops(mock.calls)).not.toContain('UpdateCampaign');
+    expect(ops(mock.calls).filter((op) => op === 'TakeCampaignLock')).toHaveLength(2);
+    expect(locks.held.size).toBe(0);
+  });
+
+  it('leaves the campaign field out when the picker is unchanged', async () => {
+    const mock = mockAdmin(qrHandlers([planned({gid: 'g1'})]));
+    session.admin = mock.raw;
+    await qrAction({request: post('/app/qrcodes/hat-front', {...form('g1'), initialCampaign: 'g1'}), params: {id: 'hat-front'}}).catch((error) => error);
+    expect(upsertedFields(mock.calls).map((field) => field.key)).not.toContain('campaign');
+  });
+
+  it.each([
+    ['the new campaign', 'g2', 'Winter'],
+    ['the old campaign', 'g1', 'Fall'],
+  ])('refuses the move when %s leaves planning after the form loaded', async (_, started, title) => {
+    const entries = (running) => [
+      planned({gid: 'g1', id: 4210, title: 'Fall', status: running === 'g1' ? 'running' : 'planned', qrCodes: [{id: 'gid://shopify/Metaobject/50', handle: 'hat-front'}]}),
+      planned({gid: 'g2', id: 4211, title: 'Winter', status: running === 'g2' ? 'running' : 'planned'}),
+    ];
+    // The form check and the pre-lock read see both planned. The read under the lock doesn't.
     const mock = mockAdmin(
-      qrHandlers([planned({gid: 'g1'})], {
-        UpdateCampaign: () => ({data: {metaobjectUpdate: {metaobject: null, userErrors: [{message: 'Throttled'}]}}}),
+      qrHandlers(entries(null), {
+        CampaignList: (variables, seen) =>
+          listOf(entries(seen.filter((call) => call.op === 'CampaignList').length > 2 ? started : null))(variables),
       }),
     );
     session.admin = mock.raw;
-    const response = await qrAction({request: post('/app/qrcodes/hat-front', form('g1')), params: {id: 'hat-front'}}).catch((error) => error);
-    expect(ops(mock.calls)).toContain('UpsertQRCode');
-    expect(response.headers.get('Location')).toBe('/app/qrcodes/hat-front?campaign=unsaved');
+    const response = await qrAction({request: post('/app/qrcodes/hat-front', {...form('g2'), initialCampaign: 'g1'}), params: {id: 'hat-front'}});
+    expect(response.status).toBe(422);
+    expect(await response.json()).toEqual({errors: {campaign: `${title} is active. QR codes move only between planned campaigns.`}});
+    expect(ops(mock.calls)).not.toContain('UpsertQRCode');
   });
 });
 
@@ -307,7 +340,7 @@ describe('QR code pages', () => {
 
   it('picks the campaign a campaign page links with', async () => {
     const entries = [planned({gid: 'g1'}), planned({gid: 'g-closed', id: 4211, status: 'closed'})];
-    session.admin = mockAdmin({CampaignList: listOf(entries), QRCodeHandles: handlesFor(entries)}).admin;
+    session.admin = mockAdmin({CampaignList: listOf(entries), CampaignQRCodes: qrCodesFor(entries)}).admin;
     const picked = await qrLoader({request: get('/app/qrcodes/new?campaign=g1'), params: {id: 'new'}});
     const closed = await qrLoader({request: get('/app/qrcodes/new?campaign=g-closed'), params: {id: 'new'}});
     expect(picked.campaign).toBe('g1');
@@ -319,7 +352,7 @@ describe('QR code pages', () => {
     session.admin = mockAdmin({
       GetQRCodes: () => ({data: {metaobjects: {nodes: [qrNode, {...qrNode, id: 'gid://shopify/Metaobject/51', handle: 'hat-back'}]}}}),
       CampaignList: listOf(entries),
-      QRCodeHandles: handlesFor(entries),
+      CampaignQRCodes: qrCodesFor(entries),
     }).admin;
     const {qrCodes} = await qrListLoader({request: get('/app/qrcodes')});
     expect(qrCodes.map((qrCode) => [qrCode.handle, qrCode.campaign])).toEqual([

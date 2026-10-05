@@ -34,7 +34,7 @@ describe('activate', () => {
       products: [{id: 'gid://shopify/Product/1', title: 'Hat'}],
       qrCodes: [
         {id: 'gid://shopify/Metaobject/901', handle: 'hat-front'},
-        {id: 'gid://shopify/Metaobject/902', handle: 'hat-back', title: {value: 'Hat back'}, liveOn: {value: '2026-09-25'}},
+        {id: 'gid://shopify/Metaobject/902', handle: 'hat-back', title: 'Hat back', liveOn: '2026-09-25'},
       ],
       revenueTarget: '10000',
       productTarget: '4000',

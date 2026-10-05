@@ -19,10 +19,10 @@ import {
   generateHandle,
 } from "../models/QRCode.server";
 import {
-  assignQRCode,
   campaignOf,
   readCampaigns,
   lockCampaigns,
+  lockQRCodeMove,
   withReturnedErrors,
 } from "../campaigns.server";
 import { isCalendarDate, shortDate, statusLabel } from "../campaigns";
@@ -101,7 +101,6 @@ export async function loader({ request, params }) {
     admin,
     qrCode?.id,
   );
-  const unsaved = new URL(request.url).searchParams.get("campaign");
   return {
     ...qrCode,
     campaign: current?.gid ?? "",
@@ -109,13 +108,7 @@ export async function loader({ request, params }) {
     campaigns,
     campaignLocked: locked,
     campaignsFailed: failed.length > 0,
-    campaignError: failed.length
-      ? CAMPAIGNS_FAILED
-      : unsaved === "started"
-        ? "The code saved, but its campaign didn't change. One of the campaigns left planning after this page loaded."
-        : unsaved === "unsaved"
-          ? "The code saved, but the campaign didn't. Select it again and save."
-          : null,
+    campaignError: failed.length ? CAMPAIGNS_FAILED : null,
     shop: session.shop,
   };
   // [END data]
@@ -154,8 +147,7 @@ export async function action({ request, params }) {
           `Only a planned campaign's codes can be deleted. This code's campaign is ${statusLabel(choices.current.status).toLowerCase()}.`,
         );
       }
-      // A failed delete leaves the code and its campaign as they were. The campaign's
-      // reference to a deleted code drops out when `readCampaigns` resolves the handles.
+      // A failed delete leaves the code and its campaign as they were.
       try {
         await deleteQRCode(qrCodeId, admin.graphql);
       } catch (error) {
@@ -219,20 +211,30 @@ export async function action({ request, params }) {
   const handle =
     params.id === "new" ? generateHandle(data.title) : params.id;
 
-  const metaobject = await saveQRCode(
-    handle,
-    { ...data, liveOn: moved ? liveOn : undefined },
-    admin.graphql,
-  );
-
   // [START campaign-dashboard.qr-campaign-assign]
-  // The campaign entry holds the link. Assigning drops the code from any other campaign.
-  // The code saved already. A failure lands on its page, where a resave can't duplicate it.
-  const unassigned = reassigned
-    ? await assignQRCode(withReturnedErrors(admin), metaobject.id, campaign)
-    : [];
-  if (unassigned.length) {
-    console.error("Could not assign the QR code", unassigned);
+  // The code's `campaign` field is the link, so a code has one campaign at most.
+  const lock = reassigned
+    ? await lockQRCodeMove(withReturnedErrors(admin), qrCodeId, campaign)
+    : { release: async () => {} };
+  if (lock.problems) {
+    return new Response(
+      JSON.stringify({ errors: { campaign: lock.problems[0].message } }),
+      { status: 422, headers: { "Content-Type": "application/json" } },
+    );
+  }
+  let metaobject;
+  try {
+    metaobject = await saveQRCode(
+      handle,
+      {
+        ...data,
+        campaign: reassigned ? campaign ?? "" : undefined,
+        liveOn: moved ? liveOn : undefined,
+      },
+      admin.graphql,
+    );
+  } finally {
+    await lock.release();
   }
   // [END campaign-dashboard.qr-campaign-assign]
 
@@ -250,12 +252,7 @@ export async function action({ request, params }) {
   }
   // [END qr-marketing.save-activity]
 
-  const flag = unassigned.some((error) => error.code === "NOT_PLANNED")
-    ? "?campaign=started"
-    : unassigned.length
-      ? "?campaign=unsaved"
-      : "";
-  return redirect(`/app/qrcodes/${metaobject.handle}${flag}`);
+  return redirect(`/app/qrcodes/${metaobject.handle}`);
 }
 // [END action]
 

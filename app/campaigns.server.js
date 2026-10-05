@@ -19,7 +19,7 @@ import {
   OBJECT_DEFINITION_CREATE,
   OBJECT_DEFINITION_QUERY,
   OBJECT_FIELDS_ADD,
-  QR_CODE_HANDLES,
+  QR_CODE_CAMPAIGNS,
 } from './campaign-queries.server';
 import {CHANNELS} from './channels';
 import {DIMENSION_NAMESPACE, sanitizeCode, statusLabel} from './campaigns';
@@ -94,16 +94,6 @@ export const CAMPAIGN_FIELDS = [
     type: 'list.product_reference',
     validations: [{name: 'list.max', value: '5'}],
     description: 'Each one gets a reference back to this campaign at activation.',
-  },
-  // IDs as text. A reference field validates against the QR code definition's ID, and
-  // a reinstall recreates the `$app:qrcode` definition with a new ID.
-  {
-    field: 'qrCodes',
-    key: 'qr_code_ids',
-    name: 'QR code IDs',
-    type: 'list.single_line_text_field',
-    validations: [{name: 'list.max', value: '50'}],
-    description: 'The codes assigned to this campaign. A code belongs to one campaign.',
   },
   {
     field: 'audience',
@@ -361,10 +351,8 @@ export function campaignFromNode(node) {
     products: listOf(values.products)
       .filter((id) => titles.has(id))
       .map((id) => ({id, title: titles.get(id) ?? ''})),
-    // readCampaigns looks up each code's handle, title, and live date.
-    qrCodes: listOf(values.qr_code_ids)
-      .filter((id) => /^gid:\/\/shopify\/Metaobject\/\d+$/.test(id))
-      .map((id) => ({id, handle: null, title: '', liveOn: ''})),
+    // Each code names its campaign. readCampaigns fills this in from the codes.
+    qrCodes: [],
     audience: values.audience ?? 'everyone',
     members: listOf(values.members),
     // An entry from before the `creators` field has no references and no creators.
@@ -395,30 +383,29 @@ export function creatorFromNode(node) {
   };
 }
 
-// A deleted code's ID resolves to null, and the campaign drops it.
-async function withQRHandles(admin, campaigns) {
-  const ids = [...new Set(campaigns.flatMap((campaign) => campaign.qrCodes.map((qrCode) => qrCode.id)))];
-  const handles = new Map();
-  for (let start = 0; start < ids.length; start += 250) {
+// A code whose `campaign` names no stored campaign belongs to none.
+async function withQRCodes(admin, campaigns) {
+  const byGid = new Map(campaigns.map((campaign) => [campaign.gid, campaign]));
+  let after = null;
+  for (let page = 0; page < 20; page += 1) {
     const body = await (
-      await admin.graphql(QR_CODE_HANDLES, {variables: {ids: ids.slice(start, start + 250)}})
+      await admin.graphql(QR_CODE_CAMPAIGNS, {variables: {after}})
     ).json();
     const failed = transportErrors(body);
     if (failed.length) return failed;
-    for (const node of body.data?.nodes ?? []) {
-      if (node?.handle) {
-        handles.set(node.id, {
-          handle: node.handle,
-          title: node.title?.value ?? '',
-          liveOn: node.liveOn?.value ?? '',
-        });
-      }
+    const connection = body.data?.metaobjects;
+    for (const node of connection?.nodes ?? []) {
+      const campaign = node?.handle && byGid.get(node.campaign?.value);
+      if (!campaign) continue;
+      campaign.qrCodes.push({
+        id: node.id,
+        handle: node.handle,
+        title: node.title?.value ?? '',
+        liveOn: node.liveOn?.value ?? '',
+      });
     }
-  }
-  for (const campaign of campaigns) {
-    campaign.qrCodes = campaign.qrCodes
-      .filter((qrCode) => handles.has(qrCode.id))
-      .map((qrCode) => ({id: qrCode.id, ...handles.get(qrCode.id)}));
+    if (!connection?.pageInfo?.hasNextPage) break;
+    after = connection.pageInfo.endCursor;
   }
   return [];
 }
@@ -444,7 +431,7 @@ export async function readCampaigns(admin) {
     after = connection.pageInfo.endCursor;
   }
 
-  if (!failed.length) failed = await withQRHandles(admin, campaigns);
+  if (!failed.length && campaigns.length) failed = await withQRCodes(admin, campaigns);
 
   return {
     // An empty list from a failed read is indistinguishable from a store with no
@@ -469,7 +456,7 @@ export const findCampaign = (campaigns, campaignId) =>
 function fieldValue(definition, value) {
   if (value === null || value === undefined || value === '') return '';
   if (definition.type === 'json') return JSON.stringify(value);
-  // Products and QR codes travel as records. The field stores their IDs.
+  // Products and creators travel as records. The field stores their IDs.
   if (definition.type.startsWith('list.')) {
     return JSON.stringify(value.map((item) => (isRecord(item) ? item.id : item)));
   }
@@ -645,55 +632,40 @@ export async function forgetCustomer(admin, customerId) {
 // [END campaign-dashboard.customer-data]
 
 // [START campaign-dashboard.qr-assign]
-// A code belongs to one campaign. Assigning it drops it from every other campaign.
-export async function assignQRCode(admin, qrCodeId, campaignGid) {
+// A code moves only between planned campaigns. The locks keep both campaigns planned
+// until the caller saves the code's `campaign` field and releases them.
+export async function lockQRCodeMove(admin, qrCodeId, campaignGid) {
   const before = await readCampaigns(admin);
-  if (before.failed.length) return before.failed;
+  if (before.failed.length) return {problems: before.failed};
   const touched = before.campaigns.filter(
     (campaign) =>
       campaign.gid === campaignGid ||
       campaign.qrCodes.some((qrCode) => qrCode.id === qrCodeId),
   );
   const lock = await lockCampaigns(admin, touched.map((campaign) => campaign.id));
-  if (lock.problems) return lock.problems;
-  try {
-    // The form loaded before the lock. A campaign activated since then keeps its codes.
-    const {campaigns, failed} = await readCampaigns(admin);
-    if (failed.length) return failed;
-    const current = campaigns.filter((campaign) => touched.some((t) => t.gid === campaign.gid));
-    const started = current.find((campaign) => campaign.status !== 'planned');
-    if (started) {
-      return [
-        {
-          code: 'NOT_PLANNED',
-          message: `${started.title} is ${statusLabel(started.status).toLowerCase()}. QR codes move only between planned campaigns.`,
-        },
-      ];
-    }
+  if (lock.problems) return lock;
 
-    // The new campaign first. If that write fails, the code stays where it was. A later
-    // failure leaves the code on two campaigns, not none.
-    const ordered = [...current].sort(
-      (a, b) => (b.gid === campaignGid) - (a.gid === campaignGid),
-    );
-    const userErrors = [];
-    for (const campaign of ordered) {
-      const has = campaign.qrCodes.some((qrCode) => qrCode.id === qrCodeId);
-      const wants = campaign.gid === campaignGid;
-      if (has === wants) continue;
-      const qrCodes = wants
-        ? has
-          ? campaign.qrCodes
-          : [...campaign.qrCodes, {id: qrCodeId}]
-        : campaign.qrCodes.filter((qrCode) => qrCode.id !== qrCodeId);
-      const result = await updateCampaign(admin, campaign, {qrCodes});
-      userErrors.push(...result.userErrors);
-      if (wants && result.userErrors.length) break;
-    }
-    return userErrors;
-  } finally {
+  // The form loaded before the lock. A campaign activated since then keeps its codes.
+  const {campaigns, failed} = await readCampaigns(admin);
+  const started = campaigns.find(
+    (campaign) =>
+      touched.some((t) => t.gid === campaign.gid) && campaign.status !== 'planned',
+  );
+  const problems = failed.length
+    ? failed
+    : started
+      ? [
+          {
+            code: 'NOT_PLANNED',
+            message: `${started.title} is ${statusLabel(started.status).toLowerCase()}. QR codes move only between planned campaigns.`,
+          },
+        ]
+      : [];
+  if (problems.length) {
     await lock.release();
+    return {problems};
   }
+  return lock;
 }
 
 export const campaignOf = (campaigns, qrCodeId) =>

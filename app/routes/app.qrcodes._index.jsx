@@ -14,7 +14,7 @@ export async function loader({ request }) {
   ]);
 
   // [START campaign-dashboard.qr-list-campaign]
-  // The campaign entry holds the link. A failed read lists every code without one.
+  // Each code's `campaign` field holds the link. A failed read lists every code without one.
   return {
     qrCodes: qrCodes.map((qrCode) => {
       const campaign = campaignOf(campaigns, qrCode.id);

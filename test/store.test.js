@@ -1,7 +1,6 @@
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {
   FIRST_CAMPAIGN_ID,
-  assignQRCode,
   campaignFields,
   campaignFromNode,
   createCampaign,
@@ -10,6 +9,7 @@ import {
   ensureDefinition,
   forgetCustomer,
   lockCampaign,
+  lockQRCodeMove,
   nextCampaignId,
   readCampaigns,
   rememberMarkers,
@@ -18,7 +18,7 @@ import {
   withReturnedErrors,
 } from '../app/campaigns.server';
 import {lockStore, mockAdmin, ops} from './helpers/admin';
-import {ALL_FIELDS, creatorNode, listOf, node, objectDefinitions, qrCodeHandles} from './helpers/campaign';
+import {ALL_FIELDS, creatorNode, listOf, node, objectDefinitions, qrCodeList, qrCodeNode} from './helpers/campaign';
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -48,7 +48,6 @@ describe('field mapping', () => {
         endDate: '2026-10-07',
         channels: ['email'],
         products: [{id: 'gid://shopify/Product/1', title: 'Hat'}],
-        qrCodes: [{id: 'gid://shopify/Metaobject/9', handle: 'summer-hat'}],
         audience: 'vip',
         revenueTarget: '100.0',
         status: 'running',
@@ -62,7 +61,7 @@ describe('field mapping', () => {
       handle: 'campaign-4210',
       id: 4210,
       products: [{id: 'gid://shopify/Product/1', title: 'Hat'}],
-      qrCodes: [{id: 'gid://shopify/Metaobject/9', handle: null, title: ''}],
+      qrCodes: [],
       revenueTarget: '100.0',
       productTarget: '',
       qrTarget: '',
@@ -92,26 +91,58 @@ describe('field mapping', () => {
     expect(campaignFromNode(entry).products).toEqual([]);
   });
 
-  it('looks up QR code handles and drops a deleted code', async () => {
-    const {admin, calls} = mockAdmin({
-      CampaignList: listOf([node({id: 4210, qrCodes: [{id: 'gid://shopify/Metaobject/901'}, {id: 'gid://shopify/Metaobject/909'}, {id: 'not-a-gid'}]})]),
-      QRCodeHandles: qrCodeHandles([{id: 'gid://shopify/Metaobject/901', handle: 'summer-hat', title: {value: 'Summer hat'}}]),
+  it("groups QR codes by each code's campaign field and leaves an unknown campaign out", async () => {
+    const code = (id, campaign) => qrCodeNode({id: `gid://shopify/Metaobject/${id}`, handle: `code-${id}`, campaign});
+    const {admin} = mockAdmin({
+      CampaignList: listOf([node({gid: 'g1', id: 4210}), node({gid: 'g2', id: 4211})]),
+      CampaignQRCodes: qrCodeList([
+        {...code(901, 'g2'), title: {value: 'Summer hat'}},
+        code(902, 'g1'),
+        code(903, 'g2'),
+        code(904, 'gid://shopify/Metaobject/404'),
+        code(905, null),
+      ]),
     });
     const {campaigns, failed} = await readCampaigns(admin);
     expect(failed).toEqual([]);
-    expect(campaigns[0].qrCodes).toEqual([{id: 'gid://shopify/Metaobject/901', handle: 'summer-hat', title: 'Summer hat', liveOn: ''}]);
-    expect(calls[1].variables).toEqual({ids: ['gid://shopify/Metaobject/901', 'gid://shopify/Metaobject/909']});
+    expect(campaigns.map((campaign) => campaign.qrCodes.map((qrCode) => qrCode.handle))).toEqual([
+      ['code-902'],
+      ['code-901', 'code-903'],
+    ]);
+    expect(campaigns[1].qrCodes[0]).toEqual({id: 'gid://shopify/Metaobject/901', handle: 'code-901', title: 'Summer hat', liveOn: ''});
   });
 
-  it('skips the handle lookup without QR codes', async () => {
-    const {admin, calls} = mockAdmin({CampaignList: listOf([node({id: 4210})])});
+  it('reads every page of QR codes', async () => {
+    const page = (nodes, endCursor) => ({data: {metaobjects: {nodes, pageInfo: {hasNextPage: Boolean(endCursor), endCursor}}}});
+    const {admin, calls} = mockAdmin({
+      CampaignList: listOf([node({gid: 'g1', id: 4210})]),
+      CampaignQRCodes: ({after}) =>
+        after
+          ? page([qrCodeNode({id: 'q2', handle: 'b', campaign: 'g1'})], null)
+          : page([qrCodeNode({id: 'q1', handle: 'a', campaign: 'g1'})], 'c1'),
+    });
+    const {campaigns} = await readCampaigns(admin);
+    expect(campaigns[0].qrCodes.map((qrCode) => qrCode.id)).toEqual(['q1', 'q2']);
+    expect(calls.filter((call) => call.op === 'CampaignQRCodes').map((call) => call.variables)).toEqual([{after: null}, {after: 'c1'}]);
+  });
+
+  it('fails the read when the QR code list fails', async () => {
+    const {admin} = mockAdmin({
+      CampaignList: listOf([node({id: 4210})]),
+      CampaignQRCodes: () => ({errors: [{message: 'Throttled'}], data: null}),
+    });
+    expect(await readCampaigns(admin)).toMatchObject({failed: [{message: 'Throttled'}], campaigns: []});
+  });
+
+  it('skips the QR code list without campaigns', async () => {
+    const {admin, calls} = mockAdmin({CampaignList: listOf([])});
     await readCampaigns(admin);
     expect(ops(calls)).toEqual(['CampaignList']);
   });
 
   it('writes only the keys in the change, and an empty value clears', () => {
-    expect(campaignFields({revenueTarget: '', qrCodes: [{id: 'gid://shopify/Metaobject/901'}], markers: {a: 'b'}})).toEqual([
-      {key: 'qr_code_ids', value: '["gid://shopify/Metaobject/901"]'},
+    expect(campaignFields({revenueTarget: '', products: [{id: 'gid://shopify/Product/1'}], markers: {a: 'b'}})).toEqual([
+      {key: 'products', value: '["gid://shopify/Product/1"]'},
       {key: 'revenue_target', value: ''},
       {key: 'markers', value: '{"a":"b"}'},
     ]);
@@ -174,24 +205,22 @@ describe('ensureDefinition', () => {
     const added = calls.find((call) => call.op === 'AddObjectFields');
     expect(added.variables.id).toBe('def');
     const fields = added.variables.definition.fieldDefinitions.map(({create}) => create);
-    expect(fields.map((field) => field.key)).toContain('qr_code_ids');
+    expect(fields.map((field) => field.key)).toContain('creators');
     expect(fields.map((field) => field.key)).not.toContain('title');
     expect(fields.find((field) => field.key === 'creators').validations).toEqual([
       {name: 'metaobject_definition_id', value: 'creator-def'},
     ]);
   });
 
-  it('stores QR code IDs as text that an uninstall leaves in place', async () => {
+  it('leaves the QR codes off the Campaign definition', async () => {
     const {admin, calls} = mockAdmin({
       ObjectDefinition: objectDefinitions({campaign: null}),
       CreateObjectDefinition: created('def'),
     });
     expect((await ensureDefinition(admin)).definitionId).toBe('def');
     const {definition} = calls.find((call) => call.op === 'CreateObjectDefinition').variables;
-    expect(definition.fieldDefinitions.find((field) => field.key === 'qr_code_ids')).toMatchObject({
-      type: 'list.single_line_text_field',
-      validations: [{name: 'list.max', value: '50'}],
-    });
+    expect(definition.fieldDefinitions.filter((field) => /qr_code/.test(field.key))).toEqual([]);
+    expect(campaignFields({qrCodes: [{id: 'gid://shopify/Metaobject/901'}]})).toEqual([]);
     expect(definition.fieldDefinitions.every((field) => !('field' in field))).toBe(true);
   });
 
@@ -377,8 +406,8 @@ describe('createCampaign', () => {
     const {campaign, userErrors} = await createCampaign(admin, {title: 'Fall'});
     expect(userErrors).toEqual([]);
     expect(campaign.id).toBe(4213);
-    expect(ops(calls)).toEqual(['CampaignList', 'SetCampaignMetafields', 'CreateCampaign']);
-    const fields = Object.fromEntries(calls[2].variables.metaobject.fields.map((field) => [field.key, field.value]));
+    expect(ops(calls)).toEqual(['CampaignList', 'CampaignQRCodes', 'SetCampaignMetafields', 'CreateCampaign']);
+    const fields = Object.fromEntries(calls[3].variables.metaobject.fields.map((field) => [field.key, field.value]));
     expect(fields).toMatchObject({campaign_id: '4213', status: 'planned', audience: 'everyone', title: 'Fall'});
   });
 
@@ -494,68 +523,13 @@ describe('entry writes', () => {
     });
   });
 
-  it('adds a QR code to its new campaign, then drops it from every other', async () => {
-    const {admin, calls} = mockAdmin({
-      ...lockStore(),
-      CampaignList: listOf([
-        node({gid: 'g1', id: 4210, qrCodes: [{id: 'gid://shopify/Metaobject/901', handle: 'a'}]}),
-        node({gid: 'g2', id: 4211, qrCodes: [{id: 'gid://shopify/Metaobject/902', handle: 'b'}]}),
-        node({gid: 'g3', id: 4212}),
-      ]),
-      QRCodeHandles: qrCodeHandles([{id: 'gid://shopify/Metaobject/901', handle: 'a'}, {id: 'gid://shopify/Metaobject/902', handle: 'b'}]),
-      UpdateCampaign: updated,
-    });
-    await assignQRCode(admin, 'gid://shopify/Metaobject/901', 'g2');
-    const updates = calls.filter((call) => call.op === 'UpdateCampaign').map((call) => call.variables);
-    expect(updates).toEqual([
-      {id: 'g2', metaobject: {fields: [{key: 'qr_code_ids', value: '["gid://shopify/Metaobject/902","gid://shopify/Metaobject/901"]'}]}},
-      {id: 'g1', metaobject: {fields: [{key: 'qr_code_ids', value: '[]'}]}},
-    ]);
-  });
-
-  it('leaves the code on its old campaign when the new one fails to save', async () => {
-    const {admin, calls} = mockAdmin({
-      ...lockStore(),
-      CampaignList: listOf([
-        node({gid: 'g1', id: 4210, qrCodes: [{id: 'gid://shopify/Metaobject/901', handle: 'a'}]}),
-        node({gid: 'g2', id: 4211}),
-      ]),
-      QRCodeHandles: qrCodeHandles([{id: 'gid://shopify/Metaobject/901', handle: 'a'}]),
-      UpdateCampaign: () => ({data: {metaobjectUpdate: {metaobject: null, userErrors: [{message: 'Nope'}]}}}),
-    });
-    expect(await assignQRCode(admin, 'gid://shopify/Metaobject/901', 'g2')).toEqual([{message: 'Nope'}]);
-    expect(calls.filter((call) => call.op === 'UpdateCampaign').map((call) => call.variables.id)).toEqual(['g2']);
-  });
-
-  it('leaves the campaigns alone when the code stays put', async () => {
-    const {admin, calls} = mockAdmin({
-      ...lockStore(),
-      CampaignList: listOf([node({gid: 'g1', id: 4210, qrCodes: [{id: 'gid://shopify/Metaobject/901', handle: 'a'}]})]),
-      QRCodeHandles: qrCodeHandles([{id: 'gid://shopify/Metaobject/901', handle: 'a'}]),
-      UpdateCampaign: updated,
-    });
-    await assignQRCode(admin, 'gid://shopify/Metaobject/901', 'g1');
-    expect(calls.filter((call) => call.op === 'UpdateCampaign')).toHaveLength(0);
-  });
-
   it("reads each code's live date from the code", async () => {
     const {admin} = mockAdmin({
-      CampaignList: listOf([node({gid: 'g1', id: 4210, qrCodes: [{id: 'gid://shopify/Metaobject/901', handle: 'a'}]})]),
-      QRCodeHandles: qrCodeHandles([{id: 'gid://shopify/Metaobject/901', handle: 'a', liveOn: {value: '2026-09-20'}}]),
+      CampaignList: listOf([node({gid: 'g1', id: 4210})]),
+      CampaignQRCodes: qrCodeList([qrCodeNode({id: 'gid://shopify/Metaobject/901', handle: 'a', liveOn: '2026-09-20', campaign: 'g1'})]),
     });
     const {campaigns} = await readCampaigns(admin);
     expect(campaigns[0].qrCodes).toEqual([{id: 'gid://shopify/Metaobject/901', handle: 'a', title: '', liveOn: '2026-09-20'}]);
-  });
-
-  it('unassigns a QR code with no campaign', async () => {
-    const {admin, calls} = mockAdmin({
-      ...lockStore(),
-      CampaignList: listOf([node({gid: 'g1', id: 4210, qrCodes: [{id: 'gid://shopify/Metaobject/901', handle: 'a'}]})]),
-      QRCodeHandles: qrCodeHandles([{id: 'gid://shopify/Metaobject/901', handle: 'a'}]),
-      UpdateCampaign: updated,
-    });
-    await assignQRCode(admin, 'gid://shopify/Metaobject/901', null);
-    expect(calls.filter((call) => call.op === 'UpdateCampaign')).toHaveLength(1);
   });
 });
 
@@ -604,20 +578,47 @@ describe('campaign lock', () => {
 });
 
 describe('QR code moves under the lock', () => {
-  it('refuses a campaign activated after the form loaded', async () => {
-    const before = [node({gid: 'g1', id: 4210, title: 'Fall'})];
-    const after = [node({gid: 'g1', id: 4210, title: 'Fall', status: 'running'})];
+  const moving = (before, after) => {
     const locks = lockStore();
-    const {admin, calls} = mockAdmin({
+    const mock = mockAdmin({
       ...locks,
       CampaignList: (variables, seen) =>
         listOf(seen.filter((call) => call.op === 'CampaignList').length > 1 ? after : before)(variables),
-      QRCodeHandles: qrCodeHandles([]),
+      CampaignQRCodes: qrCodeList([qrCodeNode({id: 'gid://shopify/Metaobject/901', handle: 'a', campaign: 'g1'})]),
     });
-    expect(await assignQRCode(admin, 'gid://shopify/Metaobject/901', 'g1')).toEqual([
+    return {...mock, locks};
+  };
+
+  it('refuses a campaign activated after the form loaded', async () => {
+    const {admin, calls, locks} = moving(
+      [node({gid: 'g1', id: 4210, title: 'Fall'})],
+      [node({gid: 'g1', id: 4210, title: 'Fall', status: 'running'})],
+    );
+    expect(await lockQRCodeMove(admin, 'gid://shopify/Metaobject/902', 'g1')).toEqual({
+      problems: [{code: 'NOT_PLANNED', message: 'Fall is active. QR codes move only between planned campaigns.'}],
+    });
+    expect(ops(calls)).not.toContain('UpdateCampaign');
+    expect(locks.held.size).toBe(0);
+  });
+
+  it("refuses when the code's old campaign left planning", async () => {
+    const {admin, locks} = moving(
+      [node({gid: 'g1', id: 4210, title: 'Fall'}), node({gid: 'g2', id: 4211, title: 'Winter'})],
+      [node({gid: 'g1', id: 4210, title: 'Fall', status: 'running'}), node({gid: 'g2', id: 4211, title: 'Winter'})],
+    );
+    expect((await lockQRCodeMove(admin, 'gid://shopify/Metaobject/901', 'g2')).problems).toEqual([
       {code: 'NOT_PLANNED', message: 'Fall is active. QR codes move only between planned campaigns.'},
     ]);
-    expect(ops(calls)).not.toContain('UpdateCampaign');
+    expect(locks.held.size).toBe(0);
+  });
+
+  it('holds the old and new campaigns until the release', async () => {
+    const entries = [node({gid: 'g1', id: 4210}), node({gid: 'g2', id: 4211}), node({gid: 'g3', id: 4212})];
+    const {admin, locks} = moving(entries, entries);
+    const lock = await lockQRCodeMove(admin, 'gid://shopify/Metaobject/901', 'g2');
+    expect(lock.problems).toBeUndefined();
+    expect([...locks.held.keys()]).toEqual(['lock_4210', 'lock_4211']);
+    await lock.release();
     expect(locks.held.size).toBe(0);
   });
 });

@@ -526,17 +526,14 @@ export default function CampaignsIndex() {
                 placeholder="1000.00"
                 details="One target for each QR code. Assign QR codes from the campaign page before you activate."
               />
+              <s-stack direction="inline" gap="base">
+                <s-button variant="primary" type="submit" loading={saving}>
+                  Create campaign
+                </s-button>
+              </s-stack>
             </s-stack>
           </s-section>
           {/* [END campaign-dashboard.spawn-targets] */}
-
-          <div style={{height: '12px'}} />
-          <s-stack direction="inline" gap="base">
-            <s-button variant="primary" type="submit" loading={saving}>
-              Create campaign
-            </s-button>
-          </s-stack>
-          <div style={{height: '12px'}} />
         </form>
       )}
 

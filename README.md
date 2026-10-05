@@ -171,7 +171,7 @@ The QR code routes come from that tutorial. `/app/qrcodes` lists the codes, `/ap
 
 GraphQL documents are in `app/campaign-queries.server.js`, campaign entries in `app/campaigns.server.js`, and the App Events client and send plan in `app/app-events.server.js`. Each group of panels is a separate module under `app/panels/`. Event declarations are in `extensions/app-events/shopify.extension.toml`. `shopify.app.toml` holds no credentials.
 
-Each campaign is an entry of the `campaign_dashboard_campaign` metaobject type. `ensureDefinition` creates the type at runtime, because analytics joins only types without the `$app:` prefix. The `qr_code_ids` field holds QR code IDs as text, and an uninstall leaves every entry in place. `CAMPAIGN_FIELDS` documents the shape field by field.
+Each campaign is an entry of the `campaign_dashboard_campaign` metaobject type. `ensureDefinition` creates the type at runtime, because analytics joins only types without the `$app:` prefix. Each QR code's `campaign` field holds its campaign entry's ID as text, because a field in `shopify.app.toml` can't reference a type the app creates at runtime. An uninstall leaves every campaign entry in place. `CAMPAIGN_FIELDS` documents the shape field by field.
 
 Creators are entries of the `campaign_dashboard_creator` type, and `ensureDefinition` creates that type first. The Campaign `creators` field validates against the Creator definition's ID, and a metaobject reference validation can't change after the field exists. A runtime type keeps one ID for the life of the store. `CREATOR_FIELDS` documents the Creator shape.
 

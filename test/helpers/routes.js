@@ -1,5 +1,5 @@
 import {lockStore, mockAdmin} from './admin';
-import {handlesFor, listOf, node} from './campaign';
+import {qrCodesFor, listOf, node} from './campaign';
 
 // The mocked `authenticate.admin` hands each route the admin a test installs here.
 export const session = {admin: null};
@@ -37,7 +37,7 @@ export const planned = (overrides = {}) =>
 export const base = (entry) => ({
   ...lockStore(),
   CampaignList: listOf([entry]),
-  QRCodeHandles: handlesFor([entry]),
+  CampaignQRCodes: qrCodesFor([entry]),
   CampaignShop: () => ({data: {shop: {id: 'gid://shopify/Shop/1', ianaTimezone: 'Etc/UTC', currencyCode: 'USD'}}}),
   AppMetafieldDefinitions: () => ({data: {products: {nodes: []}, customers: {nodes: []}, orders: {nodes: []}}}),
   UpdateCampaign: () => ({data: {metaobjectUpdate: {metaobject: null, userErrors: []}}}),

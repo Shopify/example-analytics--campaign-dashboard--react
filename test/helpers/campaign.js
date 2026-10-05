@@ -8,10 +8,10 @@ export function node({gid = 'gid://shopify/Metaobject/1', handle, updatedAt, pro
     id: gid,
     updatedAt,
     handle: handle ?? `campaign-${fields.id}`,
-    fields: campaignFields({...fields, products, qrCodes, ...(creators && {creators})}).map(({key, value}) => ({key, jsonValue: decode(key, value)})),
+    fields: campaignFields({...fields, products, ...(creators && {creators})}).map(({key, value}) => ({key, jsonValue: decode(key, value)})),
     products: {references: {nodes: products}},
     creators: creators && {references: {nodes: creators.map(creatorNode)}},
-    // The handle lookup answers from these. The entry stores only the IDs.
+    // The QR code list answers from these. Each code names the entry in its own field.
     qrCodeNodes: qrCodes,
   };
 }
@@ -19,19 +19,30 @@ export function node({gid = 'gid://shopify/Metaobject/1', handle, updatedAt, pro
 // The API hands back JSON for lists and json fields, a number for integers, strings otherwise.
 function decode(key, value) {
   if (value === '') return null;
-  if (['channels', 'products', 'qr_code_ids', 'members', 'creators', 'markers', 'targets'].includes(key)) {
+  if (['channels', 'products', 'members', 'creators', 'markers', 'targets'].includes(key)) {
     return JSON.parse(value);
   }
   if (key === 'campaign_id' || key === 'sent_events') return Number(value);
   return value;
 }
 
-// Answers the handle lookup for the given codes. An unknown ID resolves to null.
-export const qrCodeHandles = (codes) => ({ids}) => ({
-  data: {nodes: ids.map((id) => codes.find((code) => code.id === id) ?? null)},
+// A QR code entry as the list read returns it. `campaign` is the GID its field holds.
+export const qrCodeNode = ({id, handle, title, liveOn, campaign}) => ({
+  id,
+  handle,
+  title: title ? {value: title} : null,
+  liveOn: liveOn ? {value: liveOn} : null,
+  campaign: campaign ? {value: campaign} : null,
 });
 
-export const handlesFor = (entries) => qrCodeHandles(entries.flatMap((entry) => entry.qrCodeNodes ?? []));
+// Answers the QR code list read with the given code entries, one page.
+export const qrCodeList = (nodes) => () => ({
+  data: {metaobjects: {nodes, pageInfo: {hasNextPage: false, endCursor: null}}},
+});
+
+// Each entry's codes, with the `campaign` field pointing back at the entry.
+export const qrCodesFor = (entries) =>
+  qrCodeList(entries.flatMap((entry) => (entry.qrCodeNodes ?? []).map((code) => qrCodeNode({...code, campaign: entry.id}))));
 
 // A Creator entry as a reference list or a handle lookup returns it.
 export const creatorNode = ({id, handle, name, codes = []}) => ({

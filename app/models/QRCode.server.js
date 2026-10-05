@@ -201,7 +201,10 @@ export async function saveQRCode(handle, data, graphql) {
             { key: "product", value: data.productId },
             { key: "product_variant", value: data.productVariantId },
             { key: "destination", value: data.destination },
-            // Left out, the upsert keeps the stored day. Blank clears it.
+            // Left out, the upsert keeps the stored value. Blank clears it.
+            ...(data.campaign === undefined
+              ? []
+              : [{ key: "campaign", value: data.campaign }]),
             ...(data.liveOn === undefined
               ? []
               : [{ key: "live_on", value: data.liveOn }]),
