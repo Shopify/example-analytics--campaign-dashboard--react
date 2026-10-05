@@ -45,15 +45,24 @@ import {AUDIENCE_TIERS, TIER_METAFIELD, isTargetedTier, tierLabel} from './audie
 const NO_TARGET = {id: null, userErrors: []};
 
 // [START campaign-dashboard.store-target]
-// Metric, dates, and filters identify a target. Creating this twice is a user error.
-async function createTarget(admin, input) {
+// Metric, dates, and filters identify a target. A duplicate returns TAKEN with the
+// existing target, and that target belongs to someone else. Keep no ID beside an error.
+async function createTarget(admin, input, measures) {
   const body = await (
     await admin.graphql(TARGET_CREATE, {variables: {input}})
   ).json();
   const created = body.data?.analyticsTargetCreate;
+  const userErrors = [
+    ...transportErrors(body),
+    ...(created?.userErrors ?? []).map((error) =>
+      error.code === 'TAKEN'
+        ? {...error, message: `This campaign has no ${measures} target. Another target on the same dates already measures the same sales, and Shopify identifies a target by its metric, dates, and filters.`}
+        : error,
+    ),
+  ];
   return {
-    id: created?.analyticsTarget?.id ?? null,
-    userErrors: [...transportErrors(body), ...(created?.userErrors ?? [])],
+    id: userErrors.length ? null : created?.analyticsTarget?.id ?? null,
+    userErrors,
   };
 }
 
@@ -66,7 +75,7 @@ export const createStoreTarget = (admin, campaign) =>
         expectedValue: campaign.revenueTarget,
         startDate: campaign.startDate,
         endDate: campaign.endDate,
-      })
+      }, 'store-wide sales')
     : NO_TARGET;
 // [END campaign-dashboard.store-target]
 
@@ -82,7 +91,7 @@ export async function createProductTarget(admin, campaign) {
     startDate: campaign.startDate,
     endDate: campaign.endDate,
     filters,
-  });
+  }, 'promoted products');
 }
 // [END campaign-dashboard.product-target]
 
@@ -100,7 +109,7 @@ export async function createAudienceTarget(admin, campaign, definition) {
     startDate: campaign.startDate,
     endDate: campaign.endDate,
     filters: `${definition.dimension} = '${campaign.audience}'`,
-  });
+  }, `${tierLabel(campaign.audience)} segment`);
 }
 // [END campaign-dashboard.audience-target]
 
@@ -121,7 +130,7 @@ export async function createQrTargets(admin, campaign) {
       startDate: qrLiveOn(campaign, handle),
       endDate: campaign.endDate,
       filters: `utm_campaign = '${handle}'`,
-    });
+    }, `${qrTitle(campaign, handle)} QR code`);
     if (result.id) targets[`${QR_MARK_PREFIX}${handle}`] = result.id;
     userErrors.push(...result.userErrors);
   }
@@ -155,6 +164,7 @@ export async function raiseTarget(admin, target) {
 export async function endTargetsOn(admin, campaign, day) {
   const read = await readTargets(admin, campaign);
   const problems = [...transportErrors(read)];
+  const warnings = [];
   for (const target of problems.length ? [] : targetNodes(read)) {
     const endDate = target.startDate > day ? target.startDate : day;
     const body = await (
@@ -162,12 +172,20 @@ export async function endTargetsOn(admin, campaign, day) {
         variables: {id: target.id, input: {endDate}},
       })
     ).json();
-    problems.push(
-      ...transportErrors(body),
-      ...(body.data?.analyticsTargetUpdate?.userErrors ?? []),
-    );
+    const failed = transportErrors(body);
+    const userErrors = body.data?.analyticsTargetUpdate?.userErrors ?? [];
+    // TAKEN means another target already has this metric, start, end, and filters.
+    // The target keeps its end date, and the close goes on without it.
+    const taken = userErrors.length && userErrors.every((error) => error.code === 'TAKEN');
+    if (!failed.length && taken) {
+      warnings.push({
+        message: `${target.name} keeps its end date of ${target.endDate}. Another target already measures the same sales from ${target.startDate} to ${endDate}.`,
+      });
+      continue;
+    }
+    problems.push(...failed, ...userErrors);
   }
-  return problems;
+  return {problems, warnings};
 }
 
 // Every name above ends in what the target measures. The title in front can change.

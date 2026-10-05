@@ -1,4 +1,4 @@
-import {mockAdmin} from './admin';
+import {lockStore, mockAdmin} from './admin';
 import {handlesFor, listOf, node} from './campaign';
 
 // The mocked `authenticate.admin` hands each route the admin a test installs here.
@@ -34,14 +34,8 @@ export const planned = (overrides = {}) =>
   });
 
 // Every read the campaign action makes before it reaches an intent.
-export const locking = {
-  CampaignLock: () => ({data: {currentAppInstallation: {id: 'gid://shopify/AppInstallation/1', metafield: null}}}),
-  TakeCampaignLock: () => ({data: {metafieldsSet: {userErrors: []}}}),
-  ReleaseCampaignLock: () => ({data: {metafieldsDelete: {userErrors: []}}}),
-};
-
 export const base = (entry) => ({
-  ...locking,
+  ...lockStore(),
   CampaignList: listOf([entry]),
   QRCodeHandles: handlesFor([entry]),
   CampaignShop: () => ({data: {shop: {id: 'gid://shopify/Shop/1', ianaTimezone: 'Etc/UTC', currencyCode: 'USD'}}}),

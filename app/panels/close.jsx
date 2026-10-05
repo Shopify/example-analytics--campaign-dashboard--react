@@ -10,6 +10,7 @@ export function CampaignLifecycle({
   busy,
   submit,
   shortDate,
+  stampsOrders,
   children,
 }) {
   // A closed campaign gates out every control below. A planned one offers
@@ -24,9 +25,10 @@ export function CampaignLifecycle({
           <s-paragraph>
             Closing ends the <s-text>{openCampaign.title}</s-text> annotation on{' '}
             {shortDate(closesOn)}. The annotation title then shows the campaign
-            result. If the order dimension exists, each order placed after a
-            campaign touch gets a metafield with the last touch before the
-            order. Order attribution fills in after you close.
+            result.{' '}
+            {stampsOrders
+              ? 'Each order placed after a campaign touch gets a metafield with the last touch before the order. Order attribution fills in after you close.'
+              : 'Closing records no order attribution. Make the order dimension queryable before you close to record it.'}
           </s-paragraph>
         )}
         {campaign.status === 'canceled' && (
@@ -41,7 +43,11 @@ export function CampaignLifecycle({
               variant="primary"
               label="Close campaign"
               heading="Close this campaign?"
-              body={`The campaign ends on ${shortDate(closesOn)} and records each order's last campaign touch. You can't reopen it.`}
+              body={
+                stampsOrders
+                  ? `The campaign ends on ${shortDate(closesOn)} and records each order's last campaign touch. You can't reopen it.`
+                  : `The campaign ends on ${shortDate(closesOn)}. You can't reopen it.`
+              }
               confirmLabel="Close campaign"
               loading={busy === 'close'}
               disabled={Boolean(busy)}

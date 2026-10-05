@@ -254,10 +254,10 @@ export function SalesAndOrders({
                 </s-paragraph>
               </s-banner>
             )}
-            {markNote && <s-text color="subdued">{markNote}</s-text>}
+            {/* The note already says what a rewrite replaces. One line, not two. */}
             <s-text color="subdued">
-              Rewriting replaces this app's earlier annotations with the current{' '}
-              {marks.length}.
+              {markNote ??
+                `Rewriting replaces this app's earlier annotations with the current ${marks.length}.`}
             </s-text>
             <s-stack direction="inline">
               <s-button

@@ -6,8 +6,8 @@ The app sends a marketing funnel with [App Events](https://shopify.dev/docs/apps
 
 This repository is the finished app. It starts from the app that [Build a Shopify app using React Router](https://shopify.dev/docs/apps/build/build) produces, and a three-part tutorial series builds the dashboard inside that app, one capability per part.
 
-1. [Configure an app and query a campaign's sales](https://shopify.dev/docs/apps/build/analytics/campaign-dashboard-sales) covers the scopes, the ShopifyQL sales queries, and the dimensions your app owns.
-2. [Set campaign targets and annotations](https://shopify.dev/docs/apps/build/analytics/campaign-dashboard-targets-and-annotations) sets a revenue target and marks the campaign on the store's analytics timeline.
+1. [Query campaign sales](https://shopify.dev/docs/apps/build/analytics/campaign-dashboard-sales) covers the scopes, the ShopifyQL sales queries, and the dimensions your app owns.
+2. [Add targets and annotations](https://shopify.dev/docs/apps/build/analytics/campaign-dashboard-targets-and-annotations) sets a revenue target and marks the campaign on the store's analytics timeline.
 3. [Report on a campaign with App Events](https://shopify.dev/docs/apps/build/analytics/campaign-dashboard-app-events) reports your app's marketing events, then queries the funnel beside the sales.
 
 ## Setup
@@ -25,7 +25,7 @@ You'll need Node 20.19+ or 22.12+, [app development permissions](https://shopify
    ```shell
    git clone https://github.com/shopify-playground/example-analytics--campaign-dashboard--react.git
    cd example-analytics--campaign-dashboard--react
-   npm install
+   npm ci
    ```
 
 3. Create the app record and link this directory to it:
@@ -84,7 +84,7 @@ An early-access program. [Request access with this form](https://forms.gle/2yLka
 
 ## API version
 
-Two files pin version `2026-10`, the first version with annotations and targets. `shopify.app.toml` sets `api_version` for webhooks, and `app/shopify.server.js` sets `apiVersion` for every Admin API call. Don't lower either one.
+Two files pin version `2026-10`, the first GraphQL Admin API version with analytics annotations and targets. Earlier versions have neither the queries nor the create mutations. `shopify.app.toml` sets `api_version` for webhooks, and `app/shopify.server.js` sets `apiVersion` for every Admin API call. Don't lower either one.
 
 ShopifyQL resolves Campaign metaobject columns only on the release-candidate API version, `2027-01`, for now. Until `2026-10` supports them, set `apiVersion` to `2027-01` in both places in `app/shopify.server.js`. Otherwise the product dimension never reads **Queryable** and **Promoted product sales** stays empty.
 
@@ -165,6 +165,13 @@ GraphQL documents are in `app/campaign-queries.server.js`, campaign entries in `
 Each campaign is an entry of the `campaign_dashboard_campaign` metaobject type. `ensureDefinition` creates the type at runtime, because analytics joins only types without the `$app:` prefix. The `qr_code_ids` field holds QR code IDs as text, and an uninstall leaves every entry in place. `CAMPAIGN_FIELDS` documents the shape field by field.
 
 For a smaller starting point covering only the ShopifyQL half, see [Build a sales dashboard with the GraphQL Admin API](https://shopify.dev/docs/apps/build/shopifyql/graphql-admin-api/build-a-sales-dashboard) and [`example-shopifyql--sales-dashboard--react`](https://github.com/Shopify/example-shopifyql--sales-dashboard--react).
+
+Run the unit tests, and check that every `[START]` tag the tutorials excerpt still has its `[END]` tag:
+
+```shell
+npm test
+npm run check:markers
+```
 
 ## Contributions
 

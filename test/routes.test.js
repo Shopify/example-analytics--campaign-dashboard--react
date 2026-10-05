@@ -1,5 +1,5 @@
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
-import {mockAdmin, ops} from './helpers/admin';
+import {lockStore, mockAdmin, ops} from './helpers/admin';
 import {handlesFor, listOf, node} from './helpers/campaign';
 import {planned, post, resetTargets, session} from './helpers/routes';
 
@@ -60,6 +60,7 @@ describe('create', () => {
 
 describe('QR code save', () => {
   const qrHandlers = (campaigns, extra = {}) => ({
+    ...lockStore(),
     CampaignList: listOf(campaigns),
     QRCodeHandles: handlesFor(campaigns),
     UpdateCampaign: () => ({data: {metaobjectUpdate: {metaobject: null, userErrors: []}}}),
@@ -139,7 +140,14 @@ describe('QR code save', () => {
     session.admin = mock.raw;
     const response = await qrAction({request: post('/app/qrcodes/hat-front', {action: 'delete'}), params: {id: 'hat-front'}});
     expect(response.status).toBe(302);
-    expect(ops(mock.calls).slice(-2)).toEqual(['DeleteQRCode', 'EndQRCodeMarketingActivity']);
+    expect(ops(mock.calls).filter((op) => /Lock|^DeleteQRCode|^EndQRCode/.test(op))).toEqual([
+      'CampaignLock',
+      'TakeCampaignLock',
+      'DeleteQRCode',
+      'CampaignLock',
+      'ReleaseCampaignLock',
+      'EndQRCodeMarketingActivity',
+    ]);
     vi.unstubAllEnvs();
   });
 

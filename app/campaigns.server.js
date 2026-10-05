@@ -19,7 +19,7 @@ import {
   QR_CODE_HANDLES,
 } from './campaign-queries.server';
 import {CHANNELS} from './channels';
-import {DIMENSION_NAMESPACE, sanitizeCode} from './campaigns';
+import {DIMENSION_NAMESPACE, sanitizeCode, statusLabel} from './campaigns';
 
 // [START campaign-dashboard.campaign-ids]
 // IDs stay spent. No endpoint deletes an event, and a reused ID inherits its funnel.
@@ -262,9 +262,8 @@ export async function ensureDefinition(admin) {
 // [END campaign-dashboard.campaign-definition]
 
 // [START campaign-dashboard.campaign-read]
-// `admin.graphql` throws on a response with top-level `errors`, a throttle included.
-// A throw halfway through a write skips the cleanup after it. This client returns the
-// errors in the body instead. Each route wraps its `admin` once.
+// `admin.graphql` throws on top-level `errors` and on any HTTP error status. A throw halfway
+// through a write skips the cleanup after it. This client returns those errors in the body.
 export function withReturnedErrors(admin) {
   return {
     ...admin,
@@ -272,8 +271,12 @@ export function withReturnedErrors(admin) {
       try {
         return await admin.graphql(query, options);
       } catch (error) {
-        // An expired session throws a redirect to reauthorize. Let it through.
-        if (error instanceof Response) throw error;
+        if (error instanceof Response) {
+          // A redirect or a 401 sends the merchant to reauthorize. Let both through.
+          if ((error.status >= 300 && error.status < 400) || error.status === 401) throw error;
+          const message = `Shopify returned HTTP ${error.status}. Try again.`;
+          return new Response(JSON.stringify({data: null, errors: [{message}]}));
+        }
         const errors = error.body?.errors?.graphQLErrors ?? [{message: error.message}];
         return new Response(JSON.stringify({data: error.body?.data ?? null, errors}));
       }
@@ -542,29 +545,53 @@ export async function forgetCustomer(admin, customerId) {
 // [START campaign-dashboard.qr-assign]
 // A code belongs to one campaign. Assigning it drops it from every other campaign.
 export async function assignQRCode(admin, qrCodeId, campaignGid) {
-  const {campaigns, failed} = await readCampaigns(admin);
-  if (failed.length) return failed;
-
-  // The new campaign first. If that write fails, the code stays where it was. A later
-  // failure leaves the code on two campaigns, not none.
-  const ordered = [...campaigns].sort(
-    (a, b) => (b.gid === campaignGid) - (a.gid === campaignGid),
+  const before = await readCampaigns(admin);
+  if (before.failed.length) return before.failed;
+  const touched = before.campaigns.filter(
+    (campaign) =>
+      campaign.gid === campaignGid ||
+      campaign.qrCodes.some((qrCode) => qrCode.id === qrCodeId),
   );
-  const userErrors = [];
-  for (const campaign of ordered) {
-    const has = campaign.qrCodes.some((qrCode) => qrCode.id === qrCodeId);
-    const wants = campaign.gid === campaignGid;
-    if (has === wants) continue;
-    const qrCodes = wants
-      ? has
-        ? campaign.qrCodes
-        : [...campaign.qrCodes, {id: qrCodeId}]
-      : campaign.qrCodes.filter((qrCode) => qrCode.id !== qrCodeId);
-    const result = await updateCampaign(admin, campaign, {qrCodes});
-    userErrors.push(...result.userErrors);
-    if (wants && result.userErrors.length) break;
+  const lock = await lockCampaigns(admin, touched.map((campaign) => campaign.id));
+  if (lock.problems) return lock.problems;
+  try {
+    // The form loaded before the lock. A campaign activated since then keeps its codes.
+    const {campaigns, failed} = await readCampaigns(admin);
+    if (failed.length) return failed;
+    const current = campaigns.filter((campaign) => touched.some((t) => t.gid === campaign.gid));
+    const started = current.find((campaign) => campaign.status !== 'planned');
+    if (started) {
+      return [
+        {
+          code: 'NOT_PLANNED',
+          message: `${started.title} is ${statusLabel(started.status).toLowerCase()}. QR codes move only between planned campaigns.`,
+        },
+      ];
+    }
+
+    // The new campaign first. If that write fails, the code stays where it was. A later
+    // failure leaves the code on two campaigns, not none.
+    const ordered = [...current].sort(
+      (a, b) => (b.gid === campaignGid) - (a.gid === campaignGid),
+    );
+    const userErrors = [];
+    for (const campaign of ordered) {
+      const has = campaign.qrCodes.some((qrCode) => qrCode.id === qrCodeId);
+      const wants = campaign.gid === campaignGid;
+      if (has === wants) continue;
+      const qrCodes = wants
+        ? has
+          ? campaign.qrCodes
+          : [...campaign.qrCodes, {id: qrCodeId}]
+        : campaign.qrCodes.filter((qrCode) => qrCode.id !== qrCodeId);
+      const result = await updateCampaign(admin, campaign, {qrCodes});
+      userErrors.push(...result.userErrors);
+      if (wants && result.userErrors.length) break;
+    }
+    return userErrors;
+  } finally {
+    await lock.release();
   }
-  return userErrors;
 }
 
 export const campaignOf = (campaigns, qrCodeId) =>
@@ -634,6 +661,8 @@ const LOCK_RELEASE = `
 // after five minutes.
 const LOCK_TTL_MS = 5 * 60 * 1000;
 const HELD = 'Another change to this campaign is in progress. Reload in a moment.';
+// A digest mismatch means another request set the lock between this read and this write.
+const LOST_RACE = new Set(['STALE_OBJECT', 'INVALID_COMPARE_DIGEST']);
 
 export async function lockCampaign(admin, campaignId) {
   const key = `lock_${Number.parseInt(campaignId, 10) || 0}`;
@@ -644,10 +673,12 @@ export async function lockCampaign(admin, campaignId) {
     return {problems: failed.length ? failed : [{message: "Couldn't read the app installation. Try again."}]};
   }
   const held = installation.metafield;
-  if (held && Date.now() - Date.parse(held.value) < LOCK_TTL_MS) {
+  // The value holds when the lock was taken and which request took it.
+  if (held && Date.now() - Date.parse(held.value.split('|')[0]) < LOCK_TTL_MS) {
     return {problems: [{message: HELD}]};
   }
 
+  const owner = `${new Date().toISOString()}|${crypto.randomUUID()}`;
   // A null digest fails if another request set the lock after this read. A stale lock's
   // digest fails the same way if another request took it over first.
   const taken = await (
@@ -659,7 +690,7 @@ export async function lockCampaign(admin, campaignId) {
             namespace: ID_NAMESPACE,
             key,
             type: 'single_line_text_field',
-            value: new Date().toISOString(),
+            value: owner,
             compareDigest: held?.compareDigest ?? null,
           },
         ],
@@ -668,14 +699,46 @@ export async function lockCampaign(admin, campaignId) {
   ).json();
   const failed = transportErrors(taken);
   if (failed.length) return {problems: failed};
-  if (taken.data?.metafieldsSet?.userErrors?.length) return {problems: [{message: HELD}]};
+  const userErrors = taken.data?.metafieldsSet?.userErrors ?? [];
+  if (userErrors.some((error) => LOST_RACE.has(error.code))) return {problems: [{message: HELD}]};
+  if (userErrors.length) return {problems: userErrors.map((error) => ({message: error.message}))};
 
+  // Compare-then-delete narrows a takeover race to one round trip and doesn't close it.
+  // A failed release logs and returns. The write it guarded has already answered.
   const release = async () => {
-    await admin.graphql(LOCK_RELEASE, {
-      variables: {metafields: [{ownerId: installation.id, namespace: ID_NAMESPACE, key}]},
-    });
+    try {
+      const now = await (await admin.graphql(LOCK_QUERY, {variables: {key}})).json();
+      if (now.data?.currentAppInstallation?.metafield?.value !== owner) return;
+      const done = await (
+        await admin.graphql(LOCK_RELEASE, {
+          variables: {metafields: [{ownerId: installation.id, namespace: ID_NAMESPACE, key}]},
+        })
+      ).json();
+      const left = [...transportErrors(done), ...(done.data?.metafieldsDelete?.userErrors ?? [])];
+      if (left.length) console.error('Could not release the campaign lock', left);
+    } catch (error) {
+      console.error('Could not release the campaign lock', error);
+    }
   };
   return {release};
+}
+
+// Takes each campaign's lock in turn. One held lock releases the rest and refuses.
+export async function lockCampaigns(admin, campaignIds) {
+  const locks = [];
+  for (const id of [...new Set(campaignIds)]) {
+    const lock = await lockCampaign(admin, id);
+    if (lock.problems) {
+      for (const taken of locks) await taken.release();
+      return {problems: lock.problems};
+    }
+    locks.push(lock);
+  }
+  return {
+    release: async () => {
+      for (const lock of locks) await lock.release();
+    },
+  };
 }
 // [END campaign-dashboard.campaign-lock]
 

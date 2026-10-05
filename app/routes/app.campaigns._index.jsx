@@ -250,7 +250,10 @@ export default function CampaignsIndex() {
   const [channels, setChannels] = useState(CHANNEL_KEYS);
   const [audience, setAudience] = useState('everyone');
   const [composing, setComposing] = useState(false);
-  const problems = fetcher.data?.problems ?? [];
+  // A fetcher keeps its last result. Cancel marks that result as read.
+  const [discarded, setDiscarded] = useState(null);
+  const problems =
+    fetcher.data && fetcher.data !== discarded ? fetcher.data.problems ?? [] : [];
   const saving = fetcher.state !== 'idle';
   const integer = (value) => new Intl.NumberFormat(locale).format(value ?? 0);
 
@@ -321,6 +324,7 @@ export default function CampaignsIndex() {
     setProducts([]);
     setChannels(CHANNEL_KEYS);
     setAudience('everyone');
+    setDiscarded(fetcher.data);
     setComposing(false);
   }
 
@@ -382,6 +386,7 @@ export default function CampaignsIndex() {
               <s-select
                 label="Customer segment"
                 name="audience"
+                value={audience}
                 onChange={(event) => setAudience(event.currentTarget.value)}
                 details="Activation writes the segment to a metafield on each customer in the segment. The customer segment target measures sales to the segment."
               >

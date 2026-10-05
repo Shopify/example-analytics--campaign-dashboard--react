@@ -22,6 +22,7 @@ import {
   assignQRCode,
   campaignOf,
   readCampaigns,
+  lockCampaigns,
   withReturnedErrors,
 } from "../campaigns.server";
 import { isCalendarDate, shortDate, statusLabel } from "../campaigns";
@@ -100,7 +101,7 @@ export async function loader({ request, params }) {
     admin,
     qrCode?.id,
   );
-  const unsaved = new URL(request.url).searchParams.get("campaign") === "unsaved";
+  const unsaved = new URL(request.url).searchParams.get("campaign");
   return {
     ...qrCode,
     campaign: current?.gid ?? "",
@@ -110,9 +111,11 @@ export async function loader({ request, params }) {
     campaignsFailed: failed.length > 0,
     campaignError: failed.length
       ? CAMPAIGNS_FAILED
-      : unsaved
-        ? "The code saved, but the campaign didn't. Select it again and save."
-        : null,
+      : unsaved === "started"
+        ? "The code saved, but its campaign didn't change. A campaign it touched left planning after this page loaded."
+        : unsaved === "unsaved"
+          ? "The code saved, but the campaign didn't. Select it again and save."
+          : null,
     shop: session.shop,
   };
   // [END data]
@@ -130,31 +133,37 @@ export async function action({ request, params }) {
 
   if (data.action === "delete") {
     if (!qrCodeId) return redirect("/app/qrcodes");
-    // An active or closed campaign reports on its codes, and a canceled one replans with
-    // them. Deleting one would change it.
-    const choices = await campaignChoices(admin, qrCodeId);
-    if (choices.failed.length || choices.locked) {
-      return new Response(
-        JSON.stringify({
-          errors: {
-            campaign: choices.failed.length
-              ? "Couldn't load campaigns. Try again."
-              : `Only a planned campaign's codes can be deleted. This code's campaign is ${statusLabel(choices.current.status).toLowerCase()}.`,
-          },
-        }),
-        { status: 422, headers: { "Content-Type": "application/json" } },
-      );
-    }
-    // A failed delete leaves the code and its campaign as they were. The campaign's
-    // reference to a deleted code drops out when `readCampaigns` resolves the handles.
+    const refuse = (campaign) =>
+      new Response(JSON.stringify({ errors: { campaign } }), {
+        status: 422,
+        headers: { "Content-Type": "application/json" },
+      });
+    const before = await campaignChoices(admin, qrCodeId);
+    if (before.failed.length) return refuse("Couldn't load campaigns. Try again.");
+    const lock = before.current
+      ? await lockCampaigns(withReturnedErrors(admin), [before.current.id])
+      : { release: async () => {} };
+    if (lock.problems) return refuse(lock.problems[0].message);
     try {
-      await deleteQRCode(qrCodeId, admin.graphql);
-    } catch (error) {
-      console.error("Could not delete the QR code", error);
-      return new Response(
-        JSON.stringify({ errors: { campaign: "Couldn't delete the code. Try again." } }),
-        { status: 422, headers: { "Content-Type": "application/json" } },
-      );
+      // An active or closed campaign reports on its codes, and a canceled one replans with
+      // them. The lock holds the status this check reads.
+      const choices = await campaignChoices(admin, qrCodeId);
+      if (choices.failed.length) return refuse("Couldn't load campaigns. Try again.");
+      if (choices.locked) {
+        return refuse(
+          `Only a planned campaign's codes can be deleted. This code's campaign is ${statusLabel(choices.current.status).toLowerCase()}.`,
+        );
+      }
+      // A failed delete leaves the code and its campaign as they were. The campaign's
+      // reference to a deleted code drops out when `readCampaigns` resolves the handles.
+      try {
+        await deleteQRCode(qrCodeId, admin.graphql);
+      } catch (error) {
+        console.error("Could not delete the QR code", error);
+        return refuse("Couldn't delete the code. Try again.");
+      }
+    } finally {
+      await lock.release();
     }
     try {
       // On this page params.id is the code's handle, the activity's remoteId.
@@ -241,9 +250,12 @@ export async function action({ request, params }) {
   }
   // [END qr-marketing.save-activity]
 
-  return redirect(
-    `/app/qrcodes/${metaobject.handle}${unassigned.length ? "?campaign=unsaved" : ""}`,
-  );
+  const flag = unassigned.some((error) => error.code === "NOT_PLANNED")
+    ? "?campaign=started"
+    : unassigned.length
+      ? "?campaign=unsaved"
+      : "";
+  return redirect(`/app/qrcodes/${metaobject.handle}${flag}`);
 }
 // [END action]
 
@@ -383,7 +395,12 @@ export default function QRCodeForm() {
             QR codes
           </s-link>
           {initialFormState.handle &&
-            <s-button slot="secondary-actions" commandFor="delete-qr-code" command="--show">
+            <s-button
+              slot="secondary-actions"
+              commandFor="delete-qr-code"
+              command="--show"
+              disabled={loaderData.campaignLocked}
+            >
               Delete
             </s-button>}
           {initialFormState.handle &&
@@ -459,7 +476,7 @@ export default function QRCodeForm() {
                 label="Campaign"
                 details={
                   loaderData.campaignLocked
-                    ? "QR codes move only between planned campaigns."
+                    ? "QR codes move only between planned campaigns. A code whose campaign has left planning can't be deleted."
                     : "The campaign page reports this code's attributed sales."
                 }
                 disabled={loaderData.campaignLocked || loaderData.campaignsFailed}

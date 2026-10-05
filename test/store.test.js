@@ -8,12 +8,14 @@ import {
   ensureCampaign,
   ensureDefinition,
   forgetCustomer,
+  lockCampaign,
   nextCampaignId,
   readCampaigns,
   rememberMarkers,
   updateCampaign,
+  withReturnedErrors,
 } from '../app/campaigns.server';
-import {mockAdmin, ops} from './helpers/admin';
+import {lockStore, mockAdmin, ops} from './helpers/admin';
 import {ALL_FIELDS, listOf, node, qrCodeHandles} from './helpers/campaign';
 
 beforeEach(() => {
@@ -343,6 +345,7 @@ describe('entry writes', () => {
 
   it('adds a QR code to its new campaign, then drops it from every other', async () => {
     const {admin, calls} = mockAdmin({
+      ...lockStore(),
       CampaignList: listOf([
         node({gid: 'g1', id: 4210, qrCodes: [{id: 'gid://shopify/Metaobject/901', handle: 'a'}]}),
         node({gid: 'g2', id: 4211, qrCodes: [{id: 'gid://shopify/Metaobject/902', handle: 'b'}]}),
@@ -361,6 +364,7 @@ describe('entry writes', () => {
 
   it('leaves the code on its old campaign when the new one fails to save', async () => {
     const {admin, calls} = mockAdmin({
+      ...lockStore(),
       CampaignList: listOf([
         node({gid: 'g1', id: 4210, qrCodes: [{id: 'gid://shopify/Metaobject/901', handle: 'a'}]}),
         node({gid: 'g2', id: 4211}),
@@ -374,6 +378,7 @@ describe('entry writes', () => {
 
   it('leaves the campaigns alone when the code stays put', async () => {
     const {admin, calls} = mockAdmin({
+      ...lockStore(),
       CampaignList: listOf([node({gid: 'g1', id: 4210, qrCodes: [{id: 'gid://shopify/Metaobject/901', handle: 'a'}]})]),
       QRCodeHandles: qrCodeHandles([{id: 'gid://shopify/Metaobject/901', handle: 'a'}]),
       UpdateCampaign: updated,
@@ -393,11 +398,75 @@ describe('entry writes', () => {
 
   it('unassigns a QR code with no campaign', async () => {
     const {admin, calls} = mockAdmin({
+      ...lockStore(),
       CampaignList: listOf([node({gid: 'g1', id: 4210, qrCodes: [{id: 'gid://shopify/Metaobject/901', handle: 'a'}]})]),
       QRCodeHandles: qrCodeHandles([{id: 'gid://shopify/Metaobject/901', handle: 'a'}]),
       UpdateCampaign: updated,
     });
     await assignQRCode(admin, 'gid://shopify/Metaobject/901', null);
     expect(calls.filter((call) => call.op === 'UpdateCampaign')).toHaveLength(1);
+  });
+});
+
+describe('returned errors', () => {
+  const answering = (status) => mockAdmin({Probe: () => new Response('{}', {status})});
+  const probe = (admin) => admin.graphql('query Probe { shop { id } }');
+
+  it.each([429, 503])('returns HTTP %s as errors in the body', async (status) => {
+    const body = await (await probe(answering(status).admin)).json();
+    expect(body).toEqual({data: null, errors: [{message: `Shopify returned HTTP ${status}. Try again.`}]});
+  });
+
+  it.each([302, 401])('lets HTTP %s through to reauthorize', async (status) => {
+    const thrown = await probe(answering(status).admin).catch((error) => error);
+    expect(thrown).toBeInstanceOf(Response);
+    expect(thrown.status).toBe(status);
+  });
+});
+
+describe('campaign lock', () => {
+  it("leaves a lock alone once another request takes it over", async () => {
+    const locks = lockStore();
+    const {admin, calls} = mockAdmin(locks);
+    const lock = await lockCampaign(admin, 4210);
+    locks.held.set('lock_4210', '2026-09-30T12:06:00.000Z|other');
+    await lock.release();
+    expect(locks.held.get('lock_4210')).toBe('2026-09-30T12:06:00.000Z|other');
+    expect(ops(calls)).not.toContain('ReleaseCampaignLock');
+  });
+
+  it('names a refusal other than a lost race', async () => {
+    const {admin} = mockAdmin({
+      ...lockStore(),
+      TakeCampaignLock: () => ({data: {metafieldsSet: {userErrors: [{code: 'INVALID', message: 'Value is too long.'}]}}}),
+    });
+    expect(await lockCampaign(admin, 4210)).toEqual({problems: [{message: 'Value is too long.'}]});
+  });
+
+  it('logs a failed release and returns', async () => {
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const {admin} = mockAdmin({...lockStore(), ReleaseCampaignLock: () => new Response(null, {status: 401})});
+    const lock = await lockCampaign(admin, 4210);
+    await expect(lock.release()).resolves.toBeUndefined();
+    expect(logged).toHaveBeenCalled();
+  });
+});
+
+describe('QR code moves under the lock', () => {
+  it('refuses a campaign activated after the form loaded', async () => {
+    const before = [node({gid: 'g1', id: 4210, title: 'Fall'})];
+    const after = [node({gid: 'g1', id: 4210, title: 'Fall', status: 'running'})];
+    const locks = lockStore();
+    const {admin, calls} = mockAdmin({
+      ...locks,
+      CampaignList: (variables, seen) =>
+        listOf(seen.filter((call) => call.op === 'CampaignList').length > 1 ? after : before)(variables),
+      QRCodeHandles: qrCodeHandles([]),
+    });
+    expect(await assignQRCode(admin, 'gid://shopify/Metaobject/901', 'g1')).toEqual([
+      {code: 'NOT_PLANNED', message: 'Fall is active. QR codes move only between planned campaigns.'},
+    ]);
+    expect(ops(calls)).not.toContain('UpdateCampaign');
+    expect(locks.held.size).toBe(0);
   });
 });

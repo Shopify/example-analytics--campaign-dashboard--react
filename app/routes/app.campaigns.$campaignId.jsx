@@ -399,19 +399,22 @@ async function runIntent(admin, request, params) {
     // Record what landed before reporting failures. Idempotency keys replay for
     // only 24 hours, and an unrecorded partial send would leave this gate open to
     // a duplicate run after they expire. A partial send closes the gate.
+    const landed = sent
+      ? [
+          `Shopify accepted ${sent} of ${eventTotal(campaign.channels)} events. The funnel reports those, and a second send would count them twice.`,
+        ]
+      : [];
     if (sent > 0) {
       const {userErrors} = await updateCampaign(admin, campaign, {sentEvents: sent});
       if (userErrors.length) {
-        return {problems: [...failures, ...userErrors.map((error) => error.message)]};
+        return {
+          heading: "Events sent, but the campaign didn't record them",
+          problems: [...landed, ...failures, ...userErrors.map((error) => error.message)],
+        };
       }
     }
     if (failures.length > 0) {
-      const landed = sent
-        ? [
-            `Shopify accepted ${sent} of ${eventTotal(campaign.channels)} events. The funnel reports those, and a second send would count them twice.`,
-          ]
-        : [];
-      return {problems: [...landed, ...failures]};
+      return {heading: sent ? "Some events didn't send" : undefined, problems: [...landed, ...failures]};
     }
     return {ok: true};
   }
@@ -642,15 +645,16 @@ async function runIntent(admin, request, params) {
     // Shorten the targets first. A target left on its original end date keeps
     // measuring days the campaign didn't run, and Shopify rebuilds the query it
     // measures with from the dates.
-    if (closedOn < campaign.endDate) {
-      const stillOpen = await endTargetsOn(admin, campaign, closedOn);
-      if (stillOpen.length) {
-        return {problems: stillOpen.map((error) => error.message)};
-      }
+    // A target that can't move keeps its end date. The close still lands and says so.
+    const {problems: stillOpen, warnings: kept} =
+      closedOn < campaign.endDate
+        ? await endTargetsOn(admin, campaign, closedOn)
+        : {problems: [], warnings: []};
+    if (stillOpen.length) {
+      return {problems: stillOpen.map((error) => error.message)};
     }
 
-    const [funnel, sequenceTable, targetsBody] = await Promise.all([
-      runOptional(admin, appEventsQuery(closing, appName)),
+    const [sequenceTable, targetsBody] = await Promise.all([
       runOptional(admin, sequenceQuery(closing, appName)),
       readTargets(admin, closing),
     ]);
@@ -735,7 +739,9 @@ async function runIntent(admin, request, params) {
     if (userErrors.length) {
       return {problems: userErrors.map((error) => error.message)};
     }
-    return {ok: true, funnelRows: funnel.tableData.rows.length};
+    return kept.length
+      ? {ok: true, problems: kept.map((error) => error.message)}
+      : {ok: true};
   }
 
   if (intent === 'cancel') {
@@ -858,7 +864,6 @@ const DONE = {
   'set-audience': 'Customer segment saved',
   'set-targets': 'Targets saved',
   'send-events': 'Events sent. Reload in a few minutes.',
-  'rewrite-marks': 'Annotations written',
   'raise-target': 'Target raised',
   milestone: 'Milestone marked',
   'flag-incident': 'Incident flagged',
@@ -876,6 +881,8 @@ export default function CampaignDashboard() {
   const problems = fetcher.data?.problems ?? [];
   // Problems alongside `ok` mean the action landed with something rejected inside it.
   const partial = Boolean(fetcher.data?.ok);
+  // An action that landed part of its work names that in the heading.
+  const landedHeading = fetcher.data?.heading;
   // The intent in flight, so only its button spins while the rest wait.
   const busy = fetcher.state === 'idle' ? null : (fetcher.formData?.get('intent') ?? 'pending');
   const pending = useRef(null);
@@ -887,6 +894,15 @@ export default function CampaignDashboard() {
     const message = DONE[pending.current];
     if (message) shopify.toast.show(message);
   }, [fetcher.state, fetcher.data]);
+  // The select keeps the value picked in it. A rejected save puts the saved one back.
+  const audienceSelect = useRef(null);
+  const savedAudience = data.campaign?.audience;
+  useEffect(() => {
+    if (fetcher.state !== 'idle' || pending.current !== 'set-audience') return;
+    if (fetcher.data?.problems?.length && audienceSelect.current) {
+      audienceSelect.current.value = savedAudience;
+    }
+  }, [fetcher.state, fetcher.data, savedAudience]);
 
   const {campaign, locale, fatal, fatalHeading} = data;
 
@@ -1146,11 +1162,13 @@ export default function CampaignDashboard() {
       {problems.length > 0 && (
         <s-section>
           <s-banner
-            tone={partial ? 'warning' : 'critical'}
+            tone={partial || landedHeading ? 'warning' : 'critical'}
             heading={
-              partial
-                ? 'Completed with warnings'
-                : 'Action failed'
+              landedHeading
+                ? landedHeading
+                : partial
+                  ? 'Completed with warnings'
+                  : 'Action failed'
             }
           >
             <s-unordered-list>
@@ -1203,8 +1221,8 @@ export default function CampaignDashboard() {
             <s-paragraph>Activation creates:</s-paragraph>
             <s-unordered-list>
               <s-list-item>
-                {marks.length} annotations. One covers the full campaign
-                dates.
+                {marks.length} {marks.length === 1 ? 'annotation' : 'annotations'}.
+                One covers the full campaign dates.
               </s-list-item>
               <s-list-item>
                 {plannedTargetCount} analytics{' '}
@@ -1241,21 +1259,22 @@ export default function CampaignDashboard() {
                     ? 'Change products'
                     : 'Select products'}
                 </s-button>
-                <s-select
-                  label="Customer segment"
-                  value={campaign.audience}
-                  disabled={Boolean(busy)}
-                  onChange={(event) =>
-                    submit('set-audience', {audience: event.currentTarget.value})
-                  }
-                >
-                  {AUDIENCE_TIERS.map((tier) => (
-                    <s-option key={tier.value} value={tier.value}>
-                      {tier.label}
-                    </s-option>
-                  ))}
-                </s-select>
               </s-stack>
+              <s-select
+                ref={audienceSelect}
+                label="Customer segment"
+                value={campaign.audience}
+                disabled={Boolean(busy)}
+                onChange={(event) =>
+                  submit('set-audience', {audience: event.currentTarget.value})
+                }
+              >
+                {AUDIENCE_TIERS.map((tier) => (
+                  <s-option key={tier.value} value={tier.value}>
+                    {tier.label}
+                  </s-option>
+                ))}
+              </s-select>
             </s-stack>
           </s-section>
 
@@ -1536,6 +1555,7 @@ export default function CampaignDashboard() {
         busy={busy}
         submit={submit}
         shortDate={shortDate}
+        stampsOrders={dimensions.order.enabled}
       >
         {campaign.status === 'canceled' && (
           <ConfirmButton

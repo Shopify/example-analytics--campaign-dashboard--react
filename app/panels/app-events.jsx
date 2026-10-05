@@ -2,6 +2,7 @@ import {Fragment} from 'react';
 
 import {CHANNELS} from '../channels';
 
+import {ConfirmButton} from './confirm';
 import {PanelHeader} from './shared';
 
 // [START campaign-dashboard.funnel-totals]
@@ -137,13 +138,16 @@ export function SendEventsPanel({
             Channel metrics appear a few minutes after sending. Reload the page to
             see them.
           </s-paragraph>
-          <s-button
+          <ConfirmButton
+            id="send-events-modal"
+            label="Send events"
+            heading="Send this campaign's events?"
+            body={`Shopify keeps all ${eventTotal} events, and no endpoint deletes them. The campaign can send only once.`}
+            confirmLabel="Send events"
             loading={busy === 'send-events'}
             disabled={Boolean(busy || blocked)}
-            onClick={() => submit('send-events')}
-          >
-            Send events
-          </s-button>
+            onConfirm={() => submit('send-events')}
+          />
           {blocked && <s-paragraph color="subdued">{blocked}</s-paragraph>}
         </Fragment>
       )}

@@ -80,6 +80,41 @@ describe('targets', () => {
     const result = await createQrTargets(admin, campaign({qrCodes: codes('a', 'b'), qrTarget: '5'}));
     expect(result).toEqual({targets: {'qr:b': 't2'}, userErrors: [{message: 'Duplicate'}]});
   });
+
+  // Shopify returns TAKEN with the target that already has the metric, dates, and filters.
+  const taken = () => ({
+    data: {
+      analyticsTargetCreate: {
+        analyticsTarget: {id: 'gid://shopify/AnalyticsTarget/1'},
+        userErrors: [{field: ['input'], code: 'TAKEN', message: 'Target already exists'}],
+      },
+    },
+  });
+
+  it("keeps no ID from a TAKEN store target and names what's missing", async () => {
+    const {admin} = mockAdmin({CreateCampaignTarget: taken});
+    const result = await createStoreTarget(admin, campaign({revenueTarget: '1000'}));
+    expect(result.id).toBeNull();
+    expect(result.userErrors).toEqual([
+      expect.objectContaining({
+        code: 'TAKEN',
+        message:
+          'This campaign has no store-wide sales target. Another target on the same dates already measures the same sales, and Shopify identifies a target by its metric, dates, and filters.',
+      }),
+    ]);
+  });
+
+  it('keeps no ID from a TAKEN product or QR code target', async () => {
+    const {admin} = mockAdmin({CreateCampaignTarget: taken});
+    const product = await createProductTarget(
+      admin,
+      campaign({products: [{id: 'gid://shopify/Product/1', title: 'Hat'}], productTarget: '400'}),
+    );
+    expect(product.id).toBeNull();
+    const qr = await createQrTargets(admin, campaign({qrCodes: codes('a'), qrTarget: '5'}));
+    expect(qr.targets).toEqual({});
+    expect(qr.userErrors[0].message).toMatch(/^This campaign has no a QR code target\./);
+  });
 });
 
 describe('writeMarks', () => {

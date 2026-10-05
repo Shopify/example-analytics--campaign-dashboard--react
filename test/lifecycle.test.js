@@ -113,6 +113,33 @@ describe('activate', () => {
     expect(updates).toBeGreaterThan(0);
   });
 
+  it("warns on a TAKEN store target and doesn't record another campaign's ID", async () => {
+    const {mock, result} = run(
+      {
+        ...base(planned({revenueTarget: '100'})),
+        ...marking,
+        CreateCampaignTarget: () => ({
+          data: {
+            analyticsTargetCreate: {
+              analyticsTarget: {id: 'gid://shopify/AnalyticsTarget/50'},
+              userErrors: [{field: ['input'], code: 'TAKEN', message: 'Target already exists'}],
+            },
+          },
+        }),
+      },
+      {intent: 'activate'},
+    );
+    expect(await result).toEqual({
+      ok: true,
+      problems: [
+        'This campaign has no store-wide sales target. Another target on the same dates already measures the same sales, and Shopify identifies a target by its metric, dates, and filters.',
+      ],
+    });
+    expect(lastUpdate(mock.calls)).toMatchObject({status: 'running', targets: '{}'});
+    const writes = mock.calls.filter((call) => call.op === 'UpdateCampaign');
+    expect(JSON.stringify(writes)).not.toContain('AnalyticsTarget/50');
+  });
+
   it('saves the new vip members and unstamps the earlier vip campaign\'s dropouts', async () => {
     const entry = planned({audience: 'vip'});
     const earlier = node({gid: 'g0', id: 4200, audience: 'vip', status: 'closed', members: ['gid://shopify/Customer/1', 'gid://shopify/Customer/2']});
@@ -208,6 +235,17 @@ describe('lock', () => {
     );
     expect(await result).toEqual({problems: ['Throttled']});
     expect(ops(mock.calls).at(-1)).toBe('ReleaseCampaignLock');
+  });
+});
+
+describe('lock release', () => {
+  it("keeps the write's result when the release fails", async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const {result} = run(
+      {...base(planned()), ReleaseCampaignLock: () => new Response(null, {status: 401})},
+      {intent: 'set-targets', revenueTarget: '100'},
+    );
+    expect(await result).toEqual({ok: true});
   });
 });
 
@@ -335,6 +373,44 @@ describe('close', () => {
       .filter((call) => call.op === 'RaiseCampaignTarget')
       .map((call) => [call.variables.id, call.variables.input.endDate]);
     expect(ends).toEqual([[store.id, '2026-09-30'], [later.id, '2026-10-03']]);
+  });
+
+  it('closes with a warning when another target already has the shortened dates', async () => {
+    vi.setSystemTime(new Date('2026-09-20T12:00:00Z'));
+    const store = {id: 'gid://shopify/AnalyticsTarget/3', name: 'Summer launch: store-wide sales', startDate: '2026-09-10', endDate: '2026-10-07', expectedValue: '2000', shopifyqlQuery: 'FROM sales SHOW total_sales'};
+    const product = {id: 'gid://shopify/AnalyticsTarget/4', name: 'Summer launch: promoted products', startDate: '2026-09-10', endDate: '2026-10-07', expectedValue: '500', shopifyqlQuery: 'FROM sales SHOW total_sales'};
+    const {mock, result} = run(
+      {
+        ...closing(running({targets: {store: store.id, product: product.id}}), [store, product], () => ({
+          data: {shopifyqlQuery: {tableData: {rows: [{total_sales: '1000'}]}, parseErrors: []}},
+        })),
+        RaiseCampaignTarget: ({id}) => ({
+          data: {analyticsTargetUpdate: {userErrors: id === store.id ? [{field: ['input'], code: 'TAKEN', message: 'Target already exists'}] : []}},
+        }),
+      },
+      {intent: 'close'},
+    );
+    expect(await result).toEqual({
+      ok: true,
+      problems: ['Summer launch: store-wide sales keeps its end date of 2026-10-07. Another target already measures the same sales from 2026-09-10 to 2026-09-20.'],
+    });
+    const ends = mock.calls.filter((call) => call.op === 'RaiseCampaignTarget').map((call) => call.variables.id);
+    expect(ends).toEqual([store.id, product.id]);
+    expect(lastUpdate(mock.calls)).toEqual({end_date: '2026-09-20', status: 'closed'});
+  });
+
+  it('still blocks the close on any other target error', async () => {
+    vi.setSystemTime(new Date('2026-09-20T12:00:00Z'));
+    const store = {id: 'gid://shopify/AnalyticsTarget/3', name: 'Summer launch: store-wide sales', startDate: '2026-09-10', endDate: '2026-10-07'};
+    const {mock, result} = run(
+      {
+        ...closing(running({targets: {store: store.id}}), [store], () => ({})),
+        RaiseCampaignTarget: () => ({data: {analyticsTargetUpdate: {userErrors: [{code: 'INVALID', message: 'End date is invalid'}]}}}),
+      },
+      {intent: 'close'},
+    );
+    expect(await result).toEqual({problems: ['End date is invalid']});
+    expect(ops(mock.calls)).not.toContain('CloseCampaignAnnotation');
   });
 
   it("refuses to close a campaign that hasn't started", async () => {
