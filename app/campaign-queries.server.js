@@ -49,7 +49,9 @@ export const QR_CODE_CAMPAIGNS = `
     }
   }
 `;
+// [END campaign-dashboard.metafield-state]
 
+// [START campaign-dashboard.campaign-list-query]
 // The highest ID ever handed out, on the app installation. A deleted campaign's ID stays spent.
 export const ID_NAMESPACE = 'campaign_dashboard';
 export const ID_KEY = 'last_campaign_id';
@@ -133,6 +135,7 @@ export const CAMPAIGN_VERSION = `
     }
   }
 `;
+// [END campaign-dashboard.campaign-list-query]
 
 export const CUSTOMER_TIER = `
   query CustomerTier($id: ID!) {
@@ -174,7 +177,6 @@ export const METAFIELDS_SET = `
     }
   }
 `;
-// [END campaign-dashboard.metafield-state]
 
 // [START campaign-dashboard.query]
 // TIMESERIES buckets by the shop's timezone. Each COMPARE TO period adds its own columns.

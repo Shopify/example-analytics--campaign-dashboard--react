@@ -32,7 +32,9 @@ export const qrHandleFilter = (campaign) => {
   const handles = qrHandles(campaign).map((handle) => `'${handle}'`);
   return handles.length ? `utm_campaign IN (${handles.join(', ')})` : null;
 };
+// [END campaign-dashboard.qr-handles]
 
+// [START campaign-dashboard.qr-marks]
 // The key holds the handle. A rewrite finds the mark of a code that moved away.
 export const QR_MARK_PREFIX = 'qr:';
 
@@ -40,6 +42,7 @@ const qrCodeOf = (campaign, handle) =>
   (campaign.qrCodes ?? []).find((qrCode) => qrCode.handle === handle);
 
 export const qrTitle = (campaign, handle) => qrCodeOf(campaign, handle)?.title || handle;
+// [END campaign-dashboard.qr-marks]
 
 // [START campaign-dashboard.qr-live-on]
 // A code can go live after the campaign starts. A day outside the window falls back
@@ -52,7 +55,6 @@ export function qrLiveOn(campaign, handle) {
 export const inWindow = (campaign, day) =>
   isCalendarDate(day) && day >= campaign.startDate && day <= campaign.endDate;
 // [END campaign-dashboard.qr-live-on]
-// [END campaign-dashboard.qr-handles]
 
 const STATUS_LABELS = {
   planned: 'Planned',
