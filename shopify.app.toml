@@ -19,7 +19,7 @@ embedded_app_direct_api_access = true
 # [END campaign-dashboard.direct-api]
 
 [webhooks]
-api_version = "2026-10"
+api_version = "2027-01"
 
   # Handled by: /app/routes/webhooks.app.uninstalled.jsx
   [[webhooks.subscriptions]]

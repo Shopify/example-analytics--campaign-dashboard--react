@@ -93,9 +93,9 @@ An early-access program. [Request access with this form](https://forms.gle/2yLka
 
 ## API version
 
-Two files pin version `2026-10`, the first GraphQL Admin API version with analytics annotations and targets. Earlier versions have neither the queries nor the create mutations. `shopify.app.toml` sets `api_version` for webhooks, and `app/shopify.server.js` sets `apiVersion` for every Admin API call. Don't lower either one.
+Two files pin version `2027-01`. `shopify.app.toml` sets `api_version` for webhooks, and `app/shopify.server.js` sets `apiVersion` for every Admin API call. Don't lower either one.
 
-ShopifyQL resolves Campaign metaobject columns only on the release-candidate API version, `2027-01`, for now. Until `2026-10` supports them, set `apiVersion` to `2027-01` in both places in `app/shopify.server.js`. Otherwise the product dimension never reads **Queryable** and **Promoted product sales** stays empty.
+ShopifyQL resolves Campaign metaobject columns starting with `2027-01`. On an earlier version, the product dimension never reads **Queryable** and **Promoted product sales** stays empty.
 
 ## Credentials
 
@@ -152,7 +152,7 @@ The [tutorial series](https://shopify.dev/docs/apps/build/analytics) walks throu
 | `This store can't query App Events yet` | Either `npm run deploy` hasn't propagated, or the organization doesn't have App Events access. |
 | `Column Not Found` on an `app_events` query | The declaration hasn't reached the store. Don't send events until it clears. |
 | **Creator revenue** doesn't appear | No sale has one of the three codes. A discount added in the admin has no code for analytics to group on. |
-| **Promoted product sales** is empty | Analytics is off for the Campaign type, or the setting changed under a minute ago. Turn it on from the product row under **Analytics dimensions**. On API version `2026-10`, see [API version](#api-version). |
+| **Promoted product sales** is empty | Analytics is off for the Campaign type, or the setting changed under a minute ago. Turn it on from the product row under **Analytics dimensions**. |
 | A segment panel is empty | The dimension isn't queryable yet. Create it from **Analytics dimensions**. |
 | **Order attribution** is missing after a close | Analytics takes a few minutes to index the order metafields the close wrote. Reload after that. |
 | Two campaigns share a product or an order, and one loses its credit | Each product holds one `campaign` reference and each order holds one `campaign_touch` value. The campaign that activates or closes last overwrites the other. Run one campaign per product at a time. |
