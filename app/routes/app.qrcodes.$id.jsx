@@ -22,6 +22,7 @@ import {
   assignQRCode,
   campaignOf,
   readCampaigns,
+  withReturnedErrors,
 } from "../campaigns.server";
 import { isCalendarDate, shortDate, statusLabel } from "../campaigns";
 
@@ -31,7 +32,7 @@ import { isCalendarDate, shortDate, statusLabel } from "../campaigns";
 const assignable = (campaign) => campaign.status === "planned";
 
 async function campaignChoices(admin, qrCodeId) {
-  const { campaigns, failed } = await readCampaigns(admin);
+  const { campaigns, failed } = await readCampaigns(withReturnedErrors(admin));
   const current = qrCodeId ? campaignOf(campaigns, qrCodeId) : null;
   return {
     failed,
@@ -144,13 +145,14 @@ export async function action({ request, params }) {
         { status: 422, headers: { "Content-Type": "application/json" } },
       );
     }
-    // Drop the code from its campaign first. The campaign keeps reporting its other codes.
-    const unassigned = await assignQRCode(admin, qrCodeId, null);
-    if (unassigned.length) {
+    // A failed delete leaves the code and its campaign as they were. The campaign's
+    // reference to a deleted code drops out when `readCampaigns` resolves the handles.
+    try {
+      await deleteQRCode(qrCodeId, admin.graphql);
+    } catch (error) {
+      console.error("Could not delete the QR code", error);
       return new Response(
-        JSON.stringify({
-          errors: { campaign: "Couldn't remove the code from its campaign. Try again." },
-        }),
+        JSON.stringify({ errors: { campaign: "Couldn't delete the code. Try again." } }),
         { status: 422, headers: { "Content-Type": "application/json" } },
       );
     }
@@ -160,7 +162,6 @@ export async function action({ request, params }) {
     } catch (error) {
       console.error("Could not end the marketing activity", error);
     }
-    await deleteQRCode(qrCodeId, admin.graphql);
     return redirect("/app/qrcodes");
   }
 
@@ -219,7 +220,7 @@ export async function action({ request, params }) {
   // The campaign entry holds the link. Assigning drops the code from any other campaign.
   // The code saved already. A failure lands on its page, where a resave can't duplicate it.
   const unassigned = reassigned
-    ? await assignQRCode(admin, metaobject.id, campaign)
+    ? await assignQRCode(withReturnedErrors(admin), metaobject.id, campaign)
     : [];
   if (unassigned.length) {
     console.error("Could not assign the QR code", unassigned);

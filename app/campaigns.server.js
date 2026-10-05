@@ -22,7 +22,7 @@ import {CHANNELS} from './channels';
 import {DIMENSION_NAMESPACE, sanitizeCode} from './campaigns';
 
 // [START campaign-dashboard.campaign-ids]
-// IDs stay spent. Event data can't be deleted, and a reused ID inherits its funnel.
+// IDs stay spent. No endpoint deletes an event, and a reused ID inherits its funnel.
 export const FIRST_CAMPAIGN_ID = 4210;
 
 // The handle is the entry's lookup key. The integer is what App Events filters on.
@@ -262,6 +262,25 @@ export async function ensureDefinition(admin) {
 // [END campaign-dashboard.campaign-definition]
 
 // [START campaign-dashboard.campaign-read]
+// `admin.graphql` throws on a response with top-level `errors`, a throttle included.
+// A throw halfway through a write skips the cleanup after it. This client returns the
+// errors in the body instead. Each route wraps its `admin` once.
+export function withReturnedErrors(admin) {
+  return {
+    ...admin,
+    graphql: async (query, options) => {
+      try {
+        return await admin.graphql(query, options);
+      } catch (error) {
+        // An expired session throws a redirect to reauthorize. Let it through.
+        if (error instanceof Response) throw error;
+        const errors = error.body?.errors?.graphQLErrors ?? [{message: error.message}];
+        return new Response(JSON.stringify({data: error.body?.data ?? null, errors}));
+      }
+    },
+  };
+}
+
 // A throttled or rejected request answers with `errors` and a null `data`. There are no
 // nested `userErrors` to find, and an unchecked call reads as a clean one.
 export const transportErrors = (body) =>
@@ -418,8 +437,9 @@ const entryResult = (body, name) => {
 };
 
 // A write touches one entry. Two writes to different campaigns never collide.
-// Two writes to the same campaign can, and metaobjectUpdate has no version check.
-// Re-reading the version narrows that window to one round trip.
+// Two writes to the same campaign can race, and metaobjectUpdate has no version check.
+// Re-reading the version narrows that window to one round trip. `updatedAt` counts whole
+// seconds, and the action's lock covers two writes inside one.
 export async function updateCampaign(admin, campaign, change) {
   if (campaign.updatedAt) {
     const version = await (
@@ -573,6 +593,91 @@ async function setHighWater(admin, installationId, id) {
   if (failed.length) return failed;
   return body.data?.metafieldsSet?.userErrors ?? [];
 }
+
+// [START campaign-dashboard.campaign-lock]
+// Two requests can read one campaign as planned and both activate it. `updatedAt` counts
+// whole seconds and misses the second write. A lock metafield holds the campaign instead.
+const LOCK_QUERY = `
+  query CampaignLock($key: String!) {
+    currentAppInstallation {
+      id
+      metafield(namespace: "${ID_NAMESPACE}", key: $key) {
+        value
+        compareDigest
+      }
+    }
+  }
+`;
+
+const LOCK_TAKE = `
+  mutation TakeCampaignLock($metafields: [MetafieldsSetInput!]!) {
+    metafieldsSet(metafields: $metafields) {
+      userErrors {
+        code
+        message
+      }
+    }
+  }
+`;
+
+const LOCK_RELEASE = `
+  mutation ReleaseCampaignLock($metafields: [MetafieldIdentifierInput!]!) {
+    metafieldsDelete(metafields: $metafields) {
+      userErrors {
+        message
+      }
+    }
+  }
+`;
+
+// A request that dies holding the lock leaves it behind. The next request takes it over
+// after five minutes.
+const LOCK_TTL_MS = 5 * 60 * 1000;
+const HELD = 'Another change to this campaign is in progress. Reload in a moment.';
+
+export async function lockCampaign(admin, campaignId) {
+  const key = `lock_${Number.parseInt(campaignId, 10) || 0}`;
+  const body = await (await admin.graphql(LOCK_QUERY, {variables: {key}})).json();
+  const installation = body.data?.currentAppInstallation;
+  if (!installation) {
+    const failed = transportErrors(body);
+    return {problems: failed.length ? failed : [{message: "Couldn't read the app installation. Try again."}]};
+  }
+  const held = installation.metafield;
+  if (held && Date.now() - Date.parse(held.value) < LOCK_TTL_MS) {
+    return {problems: [{message: HELD}]};
+  }
+
+  // A null digest fails if another request set the lock after this read. A stale lock's
+  // digest fails the same way if another request took it over first.
+  const taken = await (
+    await admin.graphql(LOCK_TAKE, {
+      variables: {
+        metafields: [
+          {
+            ownerId: installation.id,
+            namespace: ID_NAMESPACE,
+            key,
+            type: 'single_line_text_field',
+            value: new Date().toISOString(),
+            compareDigest: held?.compareDigest ?? null,
+          },
+        ],
+      },
+    })
+  ).json();
+  const failed = transportErrors(taken);
+  if (failed.length) return {problems: failed};
+  if (taken.data?.metafieldsSet?.userErrors?.length) return {problems: [{message: HELD}]};
+
+  const release = async () => {
+    await admin.graphql(LOCK_RELEASE, {
+      variables: {metafields: [{ownerId: installation.id, namespace: ID_NAMESPACE, key}]},
+    });
+  };
+  return {release};
+}
+// [END campaign-dashboard.campaign-lock]
 
 // [START campaign-dashboard.seed-campaign]
 // Both start planned. One starts mid-flight with targets, the other weeks out without.

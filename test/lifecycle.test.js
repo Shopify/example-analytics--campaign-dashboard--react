@@ -137,8 +137,77 @@ describe('activate', () => {
 
   it('rejects a campaign that already runs', async () => {
     const {mock, result} = run({...base(planned({status: 'running'}))}, {intent: 'activate'});
-    expect(await result).toEqual({problems: ['This campaign is already active.']});
+    expect(await result).toEqual({problems: ['This campaign is active. Only a planned campaign can be activated.']});
     expect(ops(mock.calls)).not.toContain('CreateCampaignAnnotation');
+  });
+
+  it('deletes the new targets when saving their IDs is throttled', async () => {
+    const {mock, result} = run(
+      {
+        ...base(planned({revenueTarget: '100'})),
+        ...marking,
+        ...targeting,
+        UpdateCampaign: ({metaobject}) =>
+          metaobject.fields.some((field) => field.key === 'targets')
+            ? {errors: [{message: 'Throttled'}], data: null}
+            : {data: {metaobjectUpdate: {metaobject: null, userErrors: []}}},
+      },
+      {intent: 'activate'},
+    );
+    expect(await result).toEqual({problems: ['Throttled']});
+    expect(mock.calls.find((call) => call.op === 'DeleteCampaignTargets').variables.ids).toEqual(['gid://shopify/AnalyticsTarget/1']);
+  });
+});
+
+describe('lock', () => {
+  it('refuses a write while another request holds the campaign', async () => {
+    const {mock, result} = run(
+      {
+        ...base(planned()),
+        CampaignLock: () => ({
+          data: {currentAppInstallation: {id: 'gid://shopify/AppInstallation/1', metafield: {value: '2026-09-30T11:59:00Z', compareDigest: 'd1'}}},
+        }),
+      },
+      {intent: 'activate'},
+    );
+    expect(await result).toEqual({problems: ['Another change to this campaign is in progress. Reload in a moment.']});
+    expect(ops(mock.calls)).toEqual(['CampaignLock']);
+  });
+
+  it('takes over a lock older than five minutes with its digest', async () => {
+    const {mock, result} = run(
+      {
+        ...base(planned({status: 'running'})),
+        CampaignLock: () => ({
+          data: {currentAppInstallation: {id: 'gid://shopify/AppInstallation/1', metafield: {value: '2026-09-30T11:50:00Z', compareDigest: 'd1'}}},
+        }),
+      },
+      {intent: 'activate'},
+    );
+    await result;
+    expect(mock.calls.find((call) => call.op === 'TakeCampaignLock').variables.metafields[0].compareDigest).toBe('d1');
+  });
+
+  it('refuses when another request takes the lock first', async () => {
+    const {mock, result} = run(
+      {
+        ...base(planned()),
+        TakeCampaignLock: () => ({data: {metafieldsSet: {userErrors: [{code: 'STALE_OBJECT', message: 'The resource has been updated since it was loaded.'}]}}}),
+      },
+      {intent: 'activate'},
+    );
+    expect(await result).toEqual({problems: ['Another change to this campaign is in progress. Reload in a moment.']});
+    expect(ops(mock.calls)).not.toContain('CampaignList');
+    expect(mock.calls[1].variables.metafields[0].compareDigest).toBeNull();
+  });
+
+  it('releases the lock after a write that fails partway', async () => {
+    const {mock, result} = run(
+      {...base(planned()), ...marking, CreateCampaignAnnotation: () => ({errors: [{message: 'Throttled'}], data: null})},
+      {intent: 'activate'},
+    );
+    expect(await result).toEqual({problems: ['Throttled']});
+    expect(ops(mock.calls).at(-1)).toBe('ReleaseCampaignLock');
   });
 });
 
@@ -194,7 +263,7 @@ describe('close', () => {
     );
     const {mock, result} = run(
       {
-        ...closing(running({markers, products: [{id: 'gid://shopify/Product/1', title: 'Hat'}]}), [], () => ({data: {shopifyqlQuery: {tableData: {rows: [{total_sales: '10'}]}, parseErrors: []}}})),
+        ...closing(running({markers, audience: 'vip', products: [{id: 'gid://shopify/Product/1', title: 'Hat'}]}), [], () => ({data: {shopifyqlQuery: {tableData: {rows: [{total_sales: '10'}]}, parseErrors: []}}})),
         RecordedAnnotations: ({ids: asked}) => ({
           data: {annotations: asked.map((id) => ({id, createdByApp: {id: 'gid://shopify/App/7'}}))},
         }),
@@ -206,6 +275,29 @@ describe('close', () => {
     const deleted = mock.calls.filter((call) => call.op === 'DeleteCampaignAnnotation').map((call) => call.variables.id);
     expect(deleted).toEqual([markers.promo]);
     expect(JSON.parse(lastUpdate(mock.calls).markers)).toEqual({campaign: markers.campaign, vip: markers.vip});
+  });
+
+  it('removes a recorded mark the campaign no longer produces and keeps milestones', async () => {
+    vi.setSystemTime(new Date('2026-09-15T12:00:00Z'));
+    const markers = {
+      campaign: 'gid://shopify/AnalyticsAnnotation/9',
+      vip: 'gid://shopify/AnalyticsAnnotation/10',
+      'milestone:1:2026-09-12': 'gid://shopify/AnalyticsAnnotation/12',
+    };
+    const {mock, result} = run(
+      {
+        ...closing(running({markers}), [], () => ({data: {shopifyqlQuery: {tableData: {rows: [{total_sales: '10'}]}, parseErrors: []}}})),
+        RecordedAnnotations: ({ids: asked}) => ({
+          data: {annotations: asked.map((id) => ({id, createdByApp: {id: 'gid://shopify/App/7'}}))},
+        }),
+        DeleteCampaignAnnotation: () => ({data: {analyticsAnnotationDelete: {userErrors: []}}}),
+      },
+      {intent: 'close'},
+    );
+    expect(await result).toMatchObject({ok: true});
+    const deleted = mock.calls.filter((call) => call.op === 'DeleteCampaignAnnotation').map((call) => call.variables.id);
+    expect(deleted).toEqual([markers.vip]);
+    expect(Object.keys(JSON.parse(lastUpdate(mock.calls).markers))).toEqual(['campaign', 'milestone:1:2026-09-12']);
   });
 
   it('refuses to close on an unmeasured read', async () => {

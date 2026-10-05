@@ -192,14 +192,19 @@ export function campaignMarks(campaign) {
       // The only span. Everything else happened at an instant.
       ranged: true,
     },
-    {
-      key: 'launch',
-      // Defaults to a plain product. `resolveLaunchMark` upgrades it for a bundle.
-      type: 'product_launch',
-      title: `${campaign.title} products on sale`,
-      description: 'Promoted products go on sale.',
-      date: campaign.startDate,
-    },
+    // No products, nothing goes on sale.
+    ...(campaign.products?.length
+      ? [
+          {
+            key: 'launch',
+            // Defaults to a plain product. `resolveLaunchMark` upgrades it for a bundle.
+            type: 'product_launch',
+            title: `${campaign.title} products on sale`,
+            description: 'Promoted products go on sale.',
+            date: campaign.startDate,
+          },
+        ]
+      : []),
     // Early access goes to a tier. Everyone has no tier to let in first.
     ...(isTargetedTier(campaign.audience)
       ? [

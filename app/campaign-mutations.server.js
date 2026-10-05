@@ -238,18 +238,20 @@ export async function clearOwnMarks(admin, ids, appId) {
 // [END campaign-dashboard.clear-marks]
 
 // [START campaign-dashboard.write-marks]
+// Milestones and incidents each mark a day that happened. Every other key holds a mark
+// the campaign's fields produced.
+export const isPlannedMark = (key) =>
+  !key.startsWith('milestone:') && !key.startsWith('incident:');
+
 // Clear before writing. Activating and rewriting become the same operation.
 // Each ID persists as it lands. A retry or a cancel can then finish a partial write.
 export async function writeMarks(admin, campaign, appId, markedAt) {
-  // Separate keys hold milestones and incidents, and each marks a day that happened.
-  // A rewrite of the base marks keeps them.
+  // A rewrite keeps milestones and incidents. It clears every planned mark, including
+  // one whose field changed since the last write, like a reassigned code or removed products.
   const marks = campaignMarks(campaign);
-  // A code reassigned since the last write leaves a mark under its old key. Clear it too.
   const keys = new Set([
     ...marks.map((mark) => mark.key),
-    ...Object.keys(campaign.markers ?? {}).filter((key) =>
-      key.startsWith(QR_MARK_PREFIX),
-    ),
+    ...Object.keys(campaign.markers ?? {}).filter(isPlannedMark),
   ]);
   const stale = await clearOwnMarks(
     admin,
@@ -341,8 +343,8 @@ export async function stampProducts(admin, campaign) {
 // [END campaign-dashboard.product-metafield]
 
 // [START campaign-dashboard.stamp-tier]
-// A re-rank moves customers out of the tier. Earlier campaigns in the tier list who
-// held it, so their stamps come off and the tier matches this campaign's members.
+// A re-rank moves customers out of the tier. Earlier campaigns in the tier list the
+// customers who held it. Their stamps come off, and the tier matches this campaign's members.
 export async function stampTier(admin, campaign, campaigns) {
   const tier = AUDIENCE_TIERS.find((entry) => entry.value === campaign.audience);
   if (!tier?.size) return {members: [], userErrors: []};

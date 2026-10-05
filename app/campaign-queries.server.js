@@ -725,7 +725,7 @@ export const CUSTOMER_TIERS = `
 export const tierRankQuery = ({size, skip = 0}) => `
   query AudienceRanking {
     shopifyqlQuery(
-      query: "FROM sales SHOW total_sales GROUP BY customer_id SINCE -365d UNTIL today ORDER BY total_sales DESC LIMIT ${size}${skip > 0 ? ` OFFSET ${skip}` : ''}"
+      query: "FROM sales SHOW total_sales WHERE customer_id IS NOT NULL GROUP BY customer_id SINCE -365d UNTIL today ORDER BY total_sales DESC LIMIT ${size}${skip > 0 ? ` OFFSET ${skip}` : ''}"
     ) {
       tableData {
         rows

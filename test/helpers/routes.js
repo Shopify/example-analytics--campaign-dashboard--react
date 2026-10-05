@@ -34,7 +34,14 @@ export const planned = (overrides = {}) =>
   });
 
 // Every read the campaign action makes before it reaches an intent.
+export const locking = {
+  CampaignLock: () => ({data: {currentAppInstallation: {id: 'gid://shopify/AppInstallation/1', metafield: null}}}),
+  TakeCampaignLock: () => ({data: {metafieldsSet: {userErrors: []}}}),
+  ReleaseCampaignLock: () => ({data: {metafieldsDelete: {userErrors: []}}}),
+};
+
 export const base = (entry) => ({
+  ...locking,
   CampaignList: listOf([entry]),
   QRCodeHandles: handlesFor([entry]),
   CampaignShop: () => ({data: {shop: {id: 'gid://shopify/Shop/1', ianaTimezone: 'Etc/UTC', currencyCode: 'USD'}}}),
@@ -63,7 +70,7 @@ export const targeting = {
 
 export const runWith = (action) => (handlers, fields, path = '/app/campaigns/4210') => {
   const mock = mockAdmin(handlers);
-  session.admin = mock.admin;
+  session.admin = mock.raw;
   return {mock, result: action({request: post(path, fields), params: {campaignId: '4210'}})};
 };
 

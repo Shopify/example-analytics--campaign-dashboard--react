@@ -3,14 +3,14 @@ import { boundary } from "@shopify/shopify-app-react-router/server";
 
 import { authenticate } from "../shopify.server";
 import { getQRCodes } from "../models/QRCode.server";
-import { campaignOf, readCampaigns } from "../campaigns.server";
+import { campaignOf, readCampaigns, withReturnedErrors } from "../campaigns.server";
 
 // [START loader]
 export async function loader({ request }) {
   const { admin, session } = await authenticate.admin(request);
   const [qrCodes, { campaigns }] = await Promise.all([
     getQRCodes(admin.graphql, session.shop),
-    readCampaigns(admin),
+    readCampaigns(withReturnedErrors(admin)),
   ]);
 
   // [START campaign-dashboard.qr-list-campaign]

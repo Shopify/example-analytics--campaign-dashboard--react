@@ -10,9 +10,11 @@ import {
 import {
   deleteCampaign,
   findCampaign,
+  lockCampaign,
   readCampaigns,
   transportErrors,
   updateCampaign,
+  withReturnedErrors,
 } from '../campaigns.server';
 import {
   outcomeText,
@@ -79,6 +81,7 @@ import {
   endTargetsOn,
   flagIncident,
   isOwnTarget,
+  isPlannedMark,
   markMilestone,
   raiseTarget,
   recordMark,
@@ -123,7 +126,8 @@ export async function loader({request, params}) {
   // [START campaign-dashboard.campaign-load]
   // Redirect on a miss. A thrown response renders above this route's layout
   // and takes the app's navigation with it. The search params hold App Bridge's store and host.
-  const {admin, session} = await authenticate.admin(request);
+  const {admin: client, session} = await authenticate.admin(request);
+  const admin = withReturnedErrors(client);
   const {appId, appName, campaigns, failed} = await readCampaigns(admin);
   // A failed read isn't a deleted campaign. Report it instead of redirecting.
   if (failed.length) {
@@ -246,9 +250,21 @@ export async function loader({request, params}) {
 
 
 // [START campaign-dashboard.lifecycle]
-// One action for every write. Read the record, do what the intent names, write it back.
+// One action for every write. The lock holds off a second write to the campaign until
+// this one ends.
 export async function action({request, params}) {
-  const {admin} = await authenticate.admin(request);
+  const admin = withReturnedErrors((await authenticate.admin(request)).admin);
+  const lock = await lockCampaign(admin, params.campaignId);
+  if (lock.problems) return {problems: lock.problems.map((error) => error.message)};
+  try {
+    return await runIntent(admin, request, params);
+  } finally {
+    await lock.release();
+  }
+}
+
+// Read the record, do what the intent names, write it back.
+async function runIntent(admin, request, params) {
   const form = await request.formData();
   const intent = String(form.get('intent'));
 
@@ -354,10 +370,10 @@ export async function action({request, params}) {
     if (campaign.status !== 'running') {
       return {problems: ['Only active campaigns can send events.']};
     }
-    // Shopify never deletes an accepted event, and the funnel queries sum every
-    // event this app sent for the campaign. A second replay would sum both runs into one funnel and
-    // measure every rate against a doubled denominator. The record is the gate,
-    // because the funnel read behind the panel lags ingestion by minutes.
+    // No endpoint deletes an accepted event, and the funnel queries sum every event
+    // this app sent for the campaign. A second replay would sum both runs into one
+    // funnel and measure every rate against a doubled denominator. The record is the
+    // gate, because the funnel read behind the panel lags ingestion by minutes.
     if (campaign.sentEvents) {
       return {
         problems: [
@@ -382,15 +398,22 @@ export async function action({request, params}) {
     const sent = Object.values(accepted).reduce((total, n) => total + n, 0);
     // Record what landed before reporting failures. Idempotency keys replay for
     // only 24 hours, and an unrecorded partial send would leave this gate open to
-    // a duplicate run after they expire.
+    // a duplicate run after they expire. A partial send closes the gate.
     if (sent > 0) {
       const {userErrors} = await updateCampaign(admin, campaign, {sentEvents: sent});
       if (userErrors.length) {
         return {problems: [...failures, ...userErrors.map((error) => error.message)]};
       }
     }
-    if (failures.length > 0) return {problems: failures};
-    return {ok: true, sentEvents: sent};
+    if (failures.length > 0) {
+      const landed = sent
+        ? [
+            `Shopify accepted ${sent} of ${eventTotal(campaign.channels)} events. The funnel reports those, and a second send would count them twice.`,
+          ]
+        : [];
+      return {problems: [...landed, ...failures]};
+    }
+    return {ok: true};
   }
   // [END campaign-dashboard.send-events-action]
 
@@ -401,7 +424,11 @@ export async function action({request, params}) {
     // Gate on the record's status. A target the user set on the same date isn't
     // evidence that this campaign is active.
     if (campaign.status !== 'planned') {
-      return {problems: ['This campaign is already active.']};
+      return {
+        problems: [
+          `This campaign is ${statusLabel(campaign.status).toLowerCase()}. Only a planned campaign can be activated.`,
+        ],
+      };
     }
 
     const {markers, problems: unmarked} = await writeMarks(
@@ -499,7 +526,7 @@ export async function action({request, params}) {
     const {userErrors} = await updateCampaign(admin, campaign, {markers});
     return userErrors.length
       ? {problems: userErrors.map((error) => error.message)}
-      : {ok: true, rewrote: Object.keys(markers).length};
+      : {ok: true, rewrote: Object.keys(markers).filter(isPlannedMark).length};
   }
   // [END campaign-dashboard.rewrite-marks]
 
@@ -670,10 +697,16 @@ export async function action({request, params}) {
     );
     if (errors.length) return {problems: errors.map((error) => error.message)};
 
-    // An early close leaves the planned marks for days that never ran.
-    const unrun = campaignMarks(campaign)
-      .filter((mark) => mark.date > closedOn && campaign.markers?.[mark.key])
-      .map((mark) => mark.key);
+    // An early close leaves the planned marks for days that never ran. A recorded mark
+    // the campaign's fields no longer produce never runs either.
+    const ran = new Set(
+      campaignMarks(campaign)
+        .filter((mark) => mark.date <= closedOn)
+        .map((mark) => mark.key),
+    );
+    const unrun = Object.keys(campaign.markers ?? {}).filter(
+      (key) => isPlannedMark(key) && !ran.has(key),
+    );
     const markers = {...campaign.markers};
     if (unrun.length) {
       const left = await clearOwnMarks(
@@ -824,7 +857,7 @@ const DONE = {
   'set-products': 'Products saved',
   'set-audience': 'Customer segment saved',
   'set-targets': 'Targets saved',
-  'send-events': 'Events sent',
+  'send-events': 'Events sent. Reload in a few minutes.',
   'rewrite-marks': 'Annotations written',
   'raise-target': 'Target raised',
   milestone: 'Milestone marked',
@@ -838,6 +871,22 @@ export default function CampaignDashboard() {
   const cardReady = useMetricCardsReady();
 
   const [range, setRange] = useState('last30days');
+
+  // Hooks run before the early return below. React needs the same hooks on every render.
+  const problems = fetcher.data?.problems ?? [];
+  // Problems alongside `ok` mean the action landed with something rejected inside it.
+  const partial = Boolean(fetcher.data?.ok);
+  // The intent in flight, so only its button spins while the rest wait.
+  const busy = fetcher.state === 'idle' ? null : (fetcher.formData?.get('intent') ?? 'pending');
+  const pending = useRef(null);
+  useEffect(() => {
+    if (busy) pending.current = busy;
+  }, [busy]);
+  useEffect(() => {
+    if (fetcher.state !== 'idle' || !fetcher.data?.ok || fetcher.data.problems?.length) return;
+    const message = DONE[pending.current];
+    if (message) shopify.toast.show(message);
+  }, [fetcher.state, fetcher.data]);
 
   const {campaign, locale, fatal, fatalHeading} = data;
 
@@ -999,20 +1048,6 @@ export default function CampaignDashboard() {
     rate,
   });
 
-  const problems = fetcher.data?.problems ?? [];
-  // Problems alongside `ok` mean the action landed with something rejected inside it.
-  const partial = Boolean(fetcher.data?.ok);
-  // The intent in flight, so only its button spins while the rest wait.
-  const busy = fetcher.state === 'idle' ? null : (fetcher.formData?.get('intent') ?? 'pending');
-  const pending = useRef(null);
-  useEffect(() => {
-    if (busy) pending.current = busy;
-  }, [busy]);
-  useEffect(() => {
-    if (fetcher.state !== 'idle' || !fetcher.data?.ok || fetcher.data.problems?.length) return;
-    const message = DONE[pending.current];
-    if (message) shopify.toast.show(message);
-  }, [fetcher.state, fetcher.data]);
   const today = dayOf(Date.now());
   // Closing early ends it today. The action clamps the same.
   const closesOn = today < campaign.endDate ? today : campaign.endDate;
@@ -1209,6 +1244,7 @@ export default function CampaignDashboard() {
                 <s-select
                   label="Customer segment"
                   value={campaign.audience}
+                  disabled={Boolean(busy)}
                   onChange={(event) =>
                     submit('set-audience', {audience: event.currentTarget.value})
                   }
@@ -1397,8 +1433,6 @@ export default function CampaignDashboard() {
           eventTotal={eventTotal}
           alreadySent={Boolean(campaign.sentEvents)}
           blocked={sendBlocked}
-          sentEvents={fetcher.data?.sentEvents}
-          integer={integer}
           busy={busy}
           submit={submit}
         />

@@ -100,13 +100,35 @@ describe('writeMarks', () => {
       CampaignById: () => ({data: {metaobject: null}}),
       UpdateCampaign: () => ({data: {metaobjectUpdate: {metaobject: null, userErrors: []}}}),
     });
-    const moved = campaign({qrCodes: codes('kept'), markers: {'qr:moved': 'gid://shopify/AnalyticsAnnotation/1', milestone: 'm1'}});
+    const moved = campaign({qrCodes: codes('kept'), markers: {'qr:moved': 'gid://shopify/AnalyticsAnnotation/1', 'milestone:9:2026-09-12': 'm1', 'incident:2026-09-13': 'i1'}});
     const {markers, problems} = await writeMarks(admin, moved, appId, (date) => `${date}T09:00:00Z`);
     expect(problems).toEqual([]);
     expect(calls.filter((call) => call.op === 'DeleteCampaignAnnotation').map((call) => call.variables.id)).toEqual(['gid://shopify/AnalyticsAnnotation/1']);
     expect(markers).not.toHaveProperty('qr:moved');
     expect(markers).toHaveProperty('qr:kept');
-    expect(markers.milestone).toBe('m1');
+    expect(markers['milestone:9:2026-09-12']).toBe('m1');
+    expect(markers['incident:2026-09-13']).toBe('i1');
+  });
+
+  it('clears the promo mark once the products are gone', async () => {
+    const appId = 'gid://shopify/App/7';
+    const {admin, calls} = mockAdmin({
+      RecordedAnnotations: ({ids}) => ({data: {annotations: ids.map((id) => ({id, createdByApp: {id: appId}}))}}),
+      DeleteCampaignAnnotation: () => ({data: {analyticsAnnotationDelete: {userErrors: []}}}),
+      CreateCampaignAnnotation: () => ({
+        data: {analyticsAnnotationCreate: {analyticsAnnotation: {id: `a${calls.length}`}, userErrors: []}},
+      }),
+      CampaignById: () => ({data: {metaobject: null}}),
+      UpdateCampaign: () => ({data: {metaobjectUpdate: {metaobject: null, userErrors: []}}}),
+    });
+    const bare = campaign({markers: {promo: 'gid://shopify/AnalyticsAnnotation/5', launch: 'gid://shopify/AnalyticsAnnotation/6'}});
+    const {markers, problems} = await writeMarks(admin, bare, appId, (date) => `${date}T09:00:00Z`);
+    expect(problems).toEqual([]);
+    expect(calls.filter((call) => call.op === 'DeleteCampaignAnnotation').map((call) => call.variables.id)).toEqual([
+      'gid://shopify/AnalyticsAnnotation/5',
+      'gid://shopify/AnalyticsAnnotation/6',
+    ]);
+    expect(Object.keys(markers).sort()).toEqual(['campaign', 'email']);
   });
 });
 

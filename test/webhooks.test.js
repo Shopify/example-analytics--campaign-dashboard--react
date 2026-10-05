@@ -15,7 +15,7 @@ describe('customers/redact', () => {
       DeleteCustomerTier: () => ({data: {metafieldsDelete: {deletedMetafields: [], userErrors: []}}}),
       CampaignList: listOf([]),
     });
-    hook.value = {admin: mock.admin, shop: 'example.test', topic: 'CUSTOMERS_REDACT', payload: {customer: {id: 5}}};
+    hook.value = {admin: mock.raw, shop: 'example.test', topic: 'CUSTOMERS_REDACT', payload: {customer: {id: 5}}};
     const response = await action({request: new Request('https://app.test/webhooks', {method: 'POST'})});
     expect(response.status).toBe(200);
     expect(mock.calls[0].variables.metafields[0].ownerId).toBe('gid://shopify/Customer/5');
@@ -38,7 +38,7 @@ describe('customers/data_request', () => {
       CustomerTier: () => ({data: {customer: {tier: {value: 'vip'}}}}),
       CampaignList: listOf([node({id: 4210, title: 'Summer launch', members: ['gid://shopify/Customer/5']})]),
     });
-    hook.value = {admin: mock.admin, shop: 'example.test', topic: 'CUSTOMERS_DATA_REQUEST', payload: {customer: {id: 5}}};
+    hook.value = {admin: mock.raw, shop: 'example.test', topic: 'CUSTOMERS_DATA_REQUEST', payload: {customer: {id: 5}}};
     const response = await dataRequest.action({request: new Request('https://app.test/webhooks', {method: 'POST'})});
     expect(response.status).toBe(200);
     expect(log).toHaveBeenCalledWith('Customer 5 holds tier "vip" from this app');

@@ -96,13 +96,11 @@ export function SendEventsPanel({
   funnel,
   sendCount,
   eventTotal,
-  sentEvents,
-  integer,
   busy,
   submit,
 }) {
-  // The record is the gate, and a partial send leaves it unset. Retry stays available,
-  // because the deterministic idempotency key makes a replay of an accepted event a no-op.
+  // The record is the gate. A partial send closes it too, because idempotency keys
+  // expire after 24 hours and a later resend would count every accepted event twice.
   if (alreadySent || !running) return null;
 
   // An undeclared column fails on `parseErrors` while the request itself succeeds.
@@ -139,14 +137,6 @@ export function SendEventsPanel({
             Channel metrics appear a few minutes after sending. Reload the page to
             see them.
           </s-paragraph>
-          {typeof sentEvents === 'number' && (
-            <s-banner tone="success">
-              <s-paragraph>
-                {integer(sentEvents)} events sent. Reload in a few minutes to see
-                channel metrics.
-              </s-paragraph>
-            </s-banner>
-          )}
           <s-button
             loading={busy === 'send-events'}
             disabled={Boolean(busy || blocked)}

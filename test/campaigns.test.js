@@ -140,11 +140,10 @@ describe('campaignMarks', () => {
     expect(marks.filter((mark) => mark.ranged)).toHaveLength(1);
   });
 
-  it('skips the offer without products and early access without a tier', () => {
+  it('skips the launch and offer without products and early access without a tier', () => {
     const marks = campaignMarks(campaign({products: [], audience: 'everyone'}));
     expect(marks.map((mark) => mark.key)).toEqual([
       'campaign',
-      'launch',
       'email',
       'sms',
       'push',

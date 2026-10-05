@@ -11,7 +11,7 @@
     "config:use": "shopify app config use",
     "env": "shopify app env",
     "start": "react-router-serve ./build/server/index.js",
-    "setup": "prisma generate && prisma db push",
+    "setup": "prisma generate && prisma migrate deploy",
     "check:markers": "node scripts/check-markers.mjs",
     "test": "vitest run",
     "shopify": "shopify",

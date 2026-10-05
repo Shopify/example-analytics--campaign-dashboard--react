@@ -1,7 +1,7 @@
 import {Fragment, useEffect, useState} from 'react';
 import {redirect, useFetcher, useLoaderData, useRouteError} from 'react-router';
 import {authenticate} from '../shopify.server';
-import {createCampaign, ensureCampaign, readCampaigns} from '../campaigns.server';
+import {createCampaign, ensureCampaign, readCampaigns, withReturnedErrors} from '../campaigns.server';
 import {
   progressQuery,
   progressValue,
@@ -24,7 +24,7 @@ import {CHANNELS, CHANNEL_KEYS} from '../channels';
 
 // [START campaign-dashboard.overview-read]
 export const loader = async ({request}) => {
-  const {admin} = await authenticate.admin(request);
+  const admin = withReturnedErrors((await authenticate.admin(request)).admin);
   const {appId, campaigns, appName, userErrors} = await ensureCampaign(admin);
 
   const [dimensions, targetsBody, sends] = await Promise.all([
@@ -72,7 +72,7 @@ export const loader = async ({request}) => {
 
 // [START campaign-dashboard.spawn-action]
 export const action = async ({request}) => {
-  const {admin} = await authenticate.admin(request);
+  const admin = withReturnedErrors((await authenticate.admin(request)).admin);
   const form = await request.formData();
 
   // Setup for every campaign, sharing this route's action with the create form.
@@ -291,7 +291,8 @@ export default function CampaignsIndex() {
   const anySends = mix.some((row) => row.email + row.sms + row.push > 0);
   // [END campaign-dashboard.overview-graphics]
 
-  // The link needs a campaign to point at. Prefer an active one.
+  // The link needs a campaign to point at. Prefer one past planning. A planned campaign
+  // has no window of sales to report.
   const reported =
     campaigns.find((campaign) => campaign.status !== 'planned') ?? campaigns[0];
 
@@ -315,6 +316,14 @@ export default function CampaignsIndex() {
   }
   // [END campaign-dashboard.product-picker]
 
+  // Cancel discards the draft. The form remounts with its defaults, and state has to match.
+  function discard() {
+    setProducts([]);
+    setChannels(CHANNEL_KEYS);
+    setAudience('everyone');
+    setComposing(false);
+  }
+
   function submit(event) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
@@ -328,7 +337,7 @@ export default function CampaignsIndex() {
   return (
     <s-page heading="Campaigns">
       {composing ? (
-        <s-button slot="secondary-actions" onClick={() => setComposing(false)}>
+        <s-button slot="secondary-actions" onClick={discard}>
           Cancel
         </s-button>
       ) : (

@@ -1,5 +1,5 @@
 import {authenticate} from '../shopify.server';
-import {customerTier} from '../campaigns.server';
+import {customerTier, withReturnedErrors} from '../campaigns.server';
 
 // A customer asking for a copy of what this app holds on them. That's the tier metafield
 // and the campaigns that list them. The app sends both to the merchant inside 30 days.
@@ -13,7 +13,7 @@ export const action = async ({request}) => {
   if (!admin || !id) return new Response();
 
   const {tier, campaigns, userErrors} = await customerTier(
-    admin,
+    withReturnedErrors(admin),
     `gid://shopify/Customer/${id}`,
   );
   if (userErrors.length) {

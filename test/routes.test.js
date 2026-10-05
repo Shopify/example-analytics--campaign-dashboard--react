@@ -34,7 +34,7 @@ describe('create', () => {
 
   it('creates a campaign without any target', async () => {
     const mock = mockAdmin(creating());
-    session.admin = mock.admin;
+    session.admin = mock.raw;
     const response = await createAction({request: post('/app/campaigns', fields)});
     expect(response.status).toBe(302);
     expect(response.headers.get('Location')).toBe('/app/campaigns/4212');
@@ -44,14 +44,14 @@ describe('create', () => {
 
   it('rejects a zero amount', async () => {
     const mock = mockAdmin(creating());
-    session.admin = mock.admin;
+    session.admin = mock.raw;
     const result = await createAction({request: post('/app/campaigns', {...fields, qrTarget: '0'})});
     expect(result.problems).toEqual(['QR code target must be greater than 0. Leave it blank for no target.']);
   });
 
   it('drops a target the form hides', async () => {
     const mock = mockAdmin(creating());
-    session.admin = mock.admin;
+    session.admin = mock.raw;
     await createAction({request: post('/app/campaigns', {...fields, productTarget: '500', audienceTarget: '250'})});
     const saved = Object.fromEntries(mock.calls.find((call) => call.op === 'CreateCampaign').variables.metaobject.fields.map((f) => [f.key, f.value]));
     expect(saved).toMatchObject({product_target: '', audience_target: ''});
@@ -80,7 +80,7 @@ describe('QR code save', () => {
   it('rejects a campaign the picker never offered', async () => {
     const closed = planned({gid: 'g-closed', status: 'closed'});
     const mock = mockAdmin(qrHandlers([closed]));
-    session.admin = mock.admin;
+    session.admin = mock.raw;
     const response = await qrAction({request: post('/app/qrcodes/hat-front', form('g-closed')), params: {id: 'hat-front'}});
     expect(response.status).toBe(422);
     expect(await response.json()).toEqual({errors: {campaign: 'Select a planned campaign.'}});
@@ -89,7 +89,7 @@ describe('QR code save', () => {
 
   it('leaves the campaigns alone when the picker is unchanged', async () => {
     const mock = mockAdmin(qrHandlers([planned({gid: 'g1'})]));
-    session.admin = mock.admin;
+    session.admin = mock.raw;
     await qrAction({request: post('/app/qrcodes/hat-front', {...form('g1'), initialCampaign: 'g1'}), params: {id: 'hat-front'}}).catch((error) => error);
     expect(ops(mock.calls)).toContain('UpsertQRCode');
     expect(ops(mock.calls)).not.toContain('CampaignList');
@@ -99,7 +99,7 @@ describe('QR code save', () => {
   it('keeps a code on an active campaign', async () => {
     const active = planned({gid: 'g-active', status: 'running', qrCodes: [{id: 'gid://shopify/Metaobject/50', handle: 'hat-front'}]});
     const mock = mockAdmin(qrHandlers([active, planned({gid: 'g1'})]));
-    session.admin = mock.admin;
+    session.admin = mock.raw;
     const response = await qrAction({request: post('/app/qrcodes/hat-front', {...form('g1'), initialCampaign: 'g-active'}), params: {id: 'hat-front'}});
     expect(response.status).toBe(422);
     expect(await response.json()).toEqual({errors: {campaign: 'QR codes move only between planned campaigns.'}});
@@ -109,7 +109,7 @@ describe('QR code save', () => {
   it('names the campaign status when a delete is refused', async () => {
     const canceled = planned({gid: 'g-canceled', status: 'canceled', qrCodes: [{id: 'gid://shopify/Metaobject/50', handle: 'hat-front'}]});
     const mock = mockAdmin(qrHandlers([canceled]));
-    session.admin = mock.admin;
+    session.admin = mock.raw;
     const response = await qrAction({request: post('/app/qrcodes/hat-front', {action: 'delete'}), params: {id: 'hat-front'}});
     expect(response.status).toBe(422);
     expect(await response.json()).toEqual({
@@ -117,9 +117,35 @@ describe('QR code save', () => {
     });
   });
 
+  it('keeps the code and its campaign when the delete is throttled', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const entry = planned({gid: 'g1', qrCodes: [{id: 'gid://shopify/Metaobject/50', handle: 'hat-front'}]});
+    const mock = mockAdmin(qrHandlers([entry], {DeleteQRCode: () => ({errors: [{message: 'Throttled'}], data: null})}));
+    session.admin = mock.raw;
+    const response = await qrAction({request: post('/app/qrcodes/hat-front', {action: 'delete'}), params: {id: 'hat-front'}});
+    expect(response.status).toBe(422);
+    expect(await response.json()).toEqual({errors: {campaign: "Couldn't delete the code. Try again."}});
+    expect(ops(mock.calls)).not.toContain('UpdateCampaign');
+    expect(ops(mock.calls)).not.toContain('EndQRCodeMarketingActivity');
+  });
+
+  it('deletes the code, then ends its marketing activity', async () => {
+    vi.stubEnv('SHOPIFY_APP_URL', 'https://app.test');
+    const entry = planned({gid: 'g1', qrCodes: [{id: 'gid://shopify/Metaobject/50', handle: 'hat-front'}]});
+    const mock = mockAdmin(qrHandlers([entry], {
+      DeleteQRCode: () => ({data: {metaobjectDelete: {deletedId: 'gid://shopify/Metaobject/50', userErrors: []}}}),
+      EndQRCodeMarketingActivity: () => ({data: {marketingActivityUpsertExternal: {userErrors: []}}}),
+    }));
+    session.admin = mock.raw;
+    const response = await qrAction({request: post('/app/qrcodes/hat-front', {action: 'delete'}), params: {id: 'hat-front'}});
+    expect(response.status).toBe(302);
+    expect(ops(mock.calls).slice(-2)).toEqual(['DeleteQRCode', 'EndQRCodeMarketingActivity']);
+    vi.unstubAllEnvs();
+  });
+
   it('rejects a live date outside the campaign', async () => {
     const mock = mockAdmin(qrHandlers([planned({gid: 'g1'})]));
-    session.admin = mock.admin;
+    session.admin = mock.raw;
     const response = await qrAction({request: post('/app/qrcodes/hat-front', {...form('g1'), liveOn: '2026-10-20'}), params: {id: 'hat-front'}});
     expect(response.status).toBe(422);
     expect(await response.json()).toEqual({errors: {liveOn: 'Select a day from Sep 10 to Oct 7.'}});
@@ -128,7 +154,7 @@ describe('QR code save', () => {
 
   it('saves a changed live date on the code, not the campaign', async () => {
     const mock = mockAdmin(qrHandlers([planned({gid: 'g1', qrCodes: [{id: 'gid://shopify/Metaobject/50', handle: 'hat-front'}]})]));
-    session.admin = mock.admin;
+    session.admin = mock.raw;
     await qrAction({
       request: post('/app/qrcodes/hat-front', {...form('g1'), initialCampaign: 'g1', liveOn: '2026-09-20'}),
       params: {id: 'hat-front'},
@@ -139,7 +165,7 @@ describe('QR code save', () => {
 
   it('keeps the stored live date when the form leaves it unchanged', async () => {
     const mock = mockAdmin(qrHandlers([planned({gid: 'g1'})]));
-    session.admin = mock.admin;
+    session.admin = mock.raw;
     await qrAction({
       request: post('/app/qrcodes/hat-front', {...form('g1'), initialCampaign: 'g1', liveOn: '2026-09-20', initialLiveOn: '2026-09-20'}),
       params: {id: 'hat-front'},
@@ -149,7 +175,7 @@ describe('QR code save', () => {
 
   it('clears the live date when the code leaves its campaign', async () => {
     const mock = mockAdmin(qrHandlers([planned({gid: 'g1', qrCodes: [{id: 'gid://shopify/Metaobject/50', handle: 'hat-front'}]})]));
-    session.admin = mock.admin;
+    session.admin = mock.raw;
     await qrAction({
       request: post('/app/qrcodes/hat-front', {...form(''), initialCampaign: 'g1', liveOn: '2026-09-20', initialLiveOn: '2026-09-20'}),
       params: {id: 'hat-front'},
@@ -164,7 +190,7 @@ describe('QR code save', () => {
         UpdateCampaign: () => ({data: {metaobjectUpdate: {metaobject: null, userErrors: [{message: 'Throttled'}]}}}),
       }),
     );
-    session.admin = mock.admin;
+    session.admin = mock.raw;
     const response = await qrAction({request: post('/app/qrcodes/hat-front', form('g1')), params: {id: 'hat-front'}}).catch((error) => error);
     expect(ops(mock.calls)).toContain('UpsertQRCode');
     expect(response.headers.get('Location')).toBe('/app/qrcodes/hat-front?campaign=unsaved');
