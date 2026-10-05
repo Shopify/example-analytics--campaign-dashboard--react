@@ -157,6 +157,7 @@ export async function raiseTarget(admin, target) {
 }
 // [END campaign-dashboard.raise-target]
 
+// [START campaign-dashboard.end-targets]
 // A campaign that closes early stops counting on the day it closed. Move the end date
 // on every target the campaign created, and Shopify rebuilds each measuring query.
 // A QR code that wasn't live yet keeps a one-day target, because a target can't end
@@ -187,11 +188,14 @@ export async function endTargetsOn(admin, campaign, day) {
   }
   return {problems, warnings};
 }
+// [END campaign-dashboard.end-targets]
 
+// [START campaign-dashboard.own-targets]
 // Every name above ends in what the target measures. The title in front can change.
 const TARGET_ENDINGS = [': store-wide sales', ': promoted products', ' segment', ' QR code'];
 export const isOwnTarget = (target) =>
   target.name?.includes(': ') && TARGET_ENDINGS.some((ending) => target.name.endsWith(ending));
+// [END campaign-dashboard.own-targets]
 
 // A form can name any target ID. Match against the recorded ones before writing.
 export function recordedTarget(campaign, body, id) {

@@ -336,6 +336,7 @@ async function runIntent(admin, request, params) {
     return {ok: true};
   }
 
+  // [START campaign-dashboard.audience-intent]
   if (intent === 'set-audience') {
     const audience = String(form.get('audience'));
     // The tier becomes a ShopifyQL comparison and a target filter, both built as
@@ -349,6 +350,7 @@ async function runIntent(admin, request, params) {
     }
     return {ok: true};
   }
+  // [END campaign-dashboard.audience-intent]
 
   if (intent === 'set-targets') {
     // Activation turns the amounts into targets. Later edits would drift from them.
@@ -610,6 +612,7 @@ async function runIntent(admin, request, params) {
     return {ok: true};
   }
 
+  // [START campaign-dashboard.flag-incident-action]
   if (intent === 'flag-incident') {
     if (campaign.status !== 'running') {
       return {problems: ['Only active campaigns can flag incidents.']};
@@ -637,6 +640,7 @@ async function runIntent(admin, request, params) {
     }
     return {ok: true};
   }
+  // [END campaign-dashboard.flag-incident-action]
 
   if (intent === 'close') {
     // A closed campaign's outcome annotation is its permanent record, and measuring

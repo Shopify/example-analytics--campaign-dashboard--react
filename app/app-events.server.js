@@ -192,6 +192,7 @@ const LAST_OFFSET = Math.max(
 export const funnelWindowEnd = (startDate, timeZone) =>
   shopMorning(startDate, timeZone) + LAST_OFFSET;
 
+// [START campaign-dashboard.send-window]
 // The schedule runs two weeks from the start date. A campaign that ends sooner would
 // date sends after it closed, and no endpoint deletes an accepted event.
 export const funnelFitsWindow = (startDate, endDate, timeZone) =>
@@ -212,6 +213,7 @@ export function sendBlocker(campaign, timeZone, locale, now = Date.now()) {
   }
   return null;
 }
+// [END campaign-dashboard.send-window]
 
 // No endpoint deletes an event. A channel the campaign didn't select would add numbers
 // to a funnel the app never renders. Raw events stay 30 days, and their counts and sums stay queryable longer.

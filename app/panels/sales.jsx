@@ -4,6 +4,7 @@ import {campaignMarks, campaignWindow} from '../campaigns';
 
 import {PanelHeader} from './shared';
 
+// [START campaign-dashboard.range-since]
 const SINCE_BY_RANGE = {
   today: 'today',
   last7days: 'startOfDay(-7d)',
@@ -11,6 +12,7 @@ const SINCE_BY_RANGE = {
   last90days: 'startOfDay(-90d)',
   last365days: 'startOfDay(-365d)',
 };
+// [END campaign-dashboard.range-since]
 
 // [START campaign-dashboard.metric-card-ready]
 // A metric card needs `window.shopify.shopifyQL`, installed after load. A card that

@@ -724,6 +724,7 @@ export const DEFINITION_UPDATE = `
 `;
 // [END campaign-dashboard.metafield-capability]
 
+// [START campaign-dashboard.dimension-probe]
 // ShopifyQL needs the double-hyphen namespace quoted, and those quotes have to survive
 // being written inside a GraphQL string.
 const inGraphQLString = (dimension) => dimension.replaceAll('"', '\\"');
@@ -740,6 +741,7 @@ export const dimensionProbeQuery = (dimension) => `
     }
   }
 `;
+// [END campaign-dashboard.dimension-probe]
 
 // `AS` names the column. Without it the column is the whole dotted expression. A day
 // bucket splits the window into the campaign's products and everything else.

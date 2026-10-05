@@ -268,6 +268,7 @@ export async function upsertMarketingActivity(handle, title, shop, graphql) {
 }
 // [END qr-marketing.upsert-activity]
 
+// [START qr-marketing.end-activity]
 export async function endMarketingActivity(handle, shop, graphql) {
   const remoteUrl = new URL(
     `/qrcodes/${handle}/scan`,
@@ -307,6 +308,7 @@ export async function endMarketingActivity(handle, shop, graphql) {
     throw new Error(result.userErrors[0].message);
   }
 }
+// [END qr-marketing.end-activity]
 
 // [START delete-qrcode]
 export async function deleteQRCode(id, graphql) {

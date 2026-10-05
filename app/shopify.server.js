@@ -26,7 +26,9 @@ const shopify = shopifyApp({
 });
 
 export default shopify;
+// [START campaign-dashboard.api-version]
 export const apiVersion = '2027-01';
+// [END campaign-dashboard.api-version]
 export const addDocumentResponseHeaders = shopify.addDocumentResponseHeaders;
 export const authenticate = shopify.authenticate;
 export const unauthenticated = shopify.unauthenticated;
