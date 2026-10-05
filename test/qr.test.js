@@ -141,17 +141,44 @@ describe('QR code sales panel', async () => {
     expect(qrCardQuery(withCodes)).toContain("WHERE utm_medium = 'qr' AND utm_campaign IN ('hat-front')");
   });
 
-  it('drops rows without sales', () => {
-    const rows = [
-      {utm_campaign: 'hat-front', campaign_last_non_direct_click_total_sales: '40', campaign_last_non_direct_click_order_count: 2},
-      {utm_campaign: 'hat-back', campaign_last_non_direct_click_total_sales: '0', campaign_last_non_direct_click_order_count: 0},
-    ];
-    const shape = qrShape({
-      qrSales: {tableData: {rows}},
-      totalSales: '200',
-      cell: (row, key) => row[key],
-      rate: (part, whole) => (whole ? (part / whole) * 100 : 0),
+  const cell = (row, key) => row[key];
+  const rate = (part, whole) => (whole ? (part / whole) * 100 : 0);
+  const sales = [
+    {utm_campaign: 'hat-front', campaign_last_non_direct_click_total_sales: '40', campaign_last_non_direct_click_order_count: 2},
+    {utm_campaign: 'hat-back', campaign_last_non_direct_click_total_sales: '0', campaign_last_non_direct_click_order_count: 0},
+  ];
+
+  it('drops rows without sales or sessions', () => {
+    const shape = qrShape({qrSales: {tableData: {rows: sales}}, totalSales: '200', cell, rate});
+    expect(shape).toEqual({
+      qrRows: [{code: 'hat-front', sales: 40, orders: 2, sessions: null, cartRate: null, conversionRate: null}],
+      qrTotal: 40,
+      qrShare: 20,
     });
-    expect(shape).toEqual({qrRows: [{code: 'hat-front', sales: 40, orders: 2}], qrTotal: 40, qrShare: 20});
+  });
+
+  it('joins each code to its sessions and keeps a code with scans and no order', () => {
+    const qrFunnel = {
+      tableData: {
+        rows: [
+          {utm_campaign: 'hat-front', campaign_sessions: '8', campaign_added_to_cart_rate: '0.5', campaign_conversion_rate: '0.25'},
+          {utm_campaign: 'hat-back', campaign_sessions: '3', campaign_added_to_cart_rate: '0.0', campaign_conversion_rate: '0.0'},
+          {utm_campaign: 'hat-side', campaign_sessions: '0', campaign_added_to_cart_rate: '0.0', campaign_conversion_rate: '0.0'},
+        ],
+      },
+    };
+    const shape = qrShape({qrSales: {tableData: {rows: sales}}, qrFunnel, totalSales: '200', cell, rate});
+    expect(shape.qrRows).toEqual([
+      {code: 'hat-front', sales: 40, orders: 2, sessions: 8, cartRate: 0.5, conversionRate: 0.25},
+      {code: 'hat-back', sales: 0, orders: 0, sessions: 3, cartRate: 0, conversionRate: 0},
+    ]);
+    expect(shape.qrTotal).toBe(40);
+  });
+
+  it("filters sessions to the campaign's codes", async () => {
+    const {qrFunnelQuery} = await import('../app/campaign-queries.server');
+    expect(qrFunnelQuery({startDate: '2026-09-01', endDate: '2026-09-30'}, "utm_campaign IN ('hat-front')")).toContain(
+      "FROM campaign_sessions SHOW campaign_sessions, campaign_added_to_cart_rate, campaign_conversion_rate WHERE utm_campaign IN ('hat-front') GROUP BY utm_campaign SINCE 2026-09-01 UNTIL 2026-09-30",
+    );
   });
 });

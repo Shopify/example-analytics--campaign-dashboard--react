@@ -31,10 +31,12 @@ import {
   measureQuery,
   progressValue,
   promotedByQuery,
+  qrFunnelQuery,
   qrSalesQuery,
   runIfSupported,
   runOptional,
   salesQuery,
+  topProductsQuery,
   sequenceQuery,
   readTargets,
   targetNodes,
@@ -99,8 +101,10 @@ import {ConfirmButton} from '../panels/confirm';
 import {
   SalesAndOrders,
   StoreTotals,
+  TopProducts,
   annotationStatus,
   metricCardQuery,
+  topProductsShape,
   useMetricCardsReady,
 } from '../panels/sales';
 import {
@@ -163,6 +167,8 @@ export async function loader({request, params}) {
     touchSales,
     codeSales,
     qrSales,
+    qrFunnel,
+    topProducts,
   ] = await Promise.all([
     admin.graphql(salesQuery(campaign)).then((response) => response.json()),
     readTargets(admin, campaign).catch(() => ({data: null})),
@@ -190,6 +196,10 @@ export async function loader({request, params}) {
     qrHandleFilter(campaign)
       ? runOptional(admin, qrSalesQuery(campaign, qrHandleFilter(campaign)))
       : emptyTable(),
+    qrHandleFilter(campaign)
+      ? runOptional(admin, qrFunnelQuery(campaign, qrHandleFilter(campaign)))
+      : emptyTable(),
+    runOptional(admin, topProductsQuery(campaign)),
   ]);
 
   // [START campaign-dashboard.parse-errors]
@@ -243,6 +253,8 @@ export async function loader({request, params}) {
     touchSales,
     codeSales,
     qrSales,
+    qrFunnel,
+    topProducts,
     qrCodes,
     sendBlocked: sendBlocker(campaign, salesBody.data?.shop?.ianaTimezone ?? 'Etc/UTC', locale),
   };
@@ -870,16 +882,24 @@ const DONE = {
 };
 
 // [START campaign-dashboard.totals]
-// WITH TOTALS and PERCENT_CHANGE name their columns after the metric. The percent
-// is null when the previous period sold nothing.
+// WITH TOTALS and PERCENT_CHANGE name their columns after the metric and the period.
+// A percent is null when the period it compares against sold nothing.
 export function salesTotals(rows) {
-  const change = rows[0]?.['percent_change_total_sales__previous_period__totals'];
-  const previousTotal = Number(
-    rows[0]?.['comparison_total_sales__previous_period__totals'] ?? 0,
-  );
+  const totals = rows[0] ?? {};
+  const change = (percent, before) =>
+    percent == null || Number(before ?? 0) === 0 ? null : Number(percent);
   return {
-    totalSales: rows[0]?.['total_sales__totals'] ?? '0',
-    percentChange: change == null || previousTotal === 0 ? null : Number(change),
+    totalSales: totals['total_sales__totals'] ?? '0',
+    percentChange: change(
+      totals['percent_change_total_sales__previous_period__totals'],
+      totals['comparison_total_sales__previous_period__totals'],
+    ),
+    yearChange: change(
+      totals['percent_change_total_sales__previous_year__totals'],
+      totals['comparison_total_sales__previous_year__totals'],
+    ),
+    newCustomers: Number(totals['new_customers__totals'] ?? 0),
+    firstTimeSales: totals['total_sales_first_time__totals'] ?? '0',
   };
 }
 // [END campaign-dashboard.totals]
@@ -956,6 +976,8 @@ export default function CampaignDashboard() {
     touchSales,
     codeSales,
     qrSales,
+    qrFunnel,
+    topProducts,
     qrCodes,
   } = data;
 
@@ -999,7 +1021,10 @@ export default function CampaignDashboard() {
   const dayOf = (instant) => shopDay.format(new Date(instant));
   // [END campaign-dashboard.format]
 
-  const {totalSales, percentChange} = salesTotals(rows);
+  const {totalSales, percentChange, yearChange, newCustomers, firstTimeSales} =
+    salesTotals(rows);
+
+  const {productRows, otherSales} = topProductsShape({topProducts, cell});
 
   const {storeTarget, scopedTargets} = splitTargets(targets);
 
@@ -1063,6 +1088,7 @@ export default function CampaignDashboard() {
 
   const {qrRows, qrTotal, qrShare} = qrShape({
     qrSales,
+    qrFunnel,
     campaign,
     totalSales,
     cell,
@@ -1433,6 +1459,9 @@ export default function CampaignDashboard() {
           campaign={campaign}
           totalSales={totalSales}
           percentChange={percentChange}
+          yearChange={yearChange}
+          newCustomers={newCustomers}
+          firstTimeSales={firstTimeSales}
           rows={rows}
           cell={cell}
           shortDate={shortDate}
@@ -1487,6 +1516,14 @@ export default function CampaignDashboard() {
           integer={integer}
         />
 
+        <Unavailable heading="Top products" reason={topProducts.unavailable} />
+
+        <TopProducts
+          productRows={productRows}
+          otherSales={otherSales}
+          currency={currency}
+        />
+
         <Unavailable
           heading="Promoted product sales"
           reason={promoted.unavailable}
@@ -1538,6 +1575,8 @@ export default function CampaignDashboard() {
         />
 
         <Unavailable heading="QR code sales" reason={qrSales.unavailable} />
+
+        <Unavailable heading="QR code sessions" reason={qrFunnel.unavailable} />
 
         <QRCodeSales
           campaign={campaign}

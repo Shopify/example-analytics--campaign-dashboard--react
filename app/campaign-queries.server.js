@@ -170,7 +170,7 @@ export const METAFIELDS_SET = `
 // [END campaign-dashboard.metafield-state]
 
 // [START campaign-dashboard.query]
-// TIMESERIES buckets by the shop's timezone.
+// TIMESERIES buckets by the shop's timezone. Each COMPARE TO period adds its own columns.
 export const salesQuery = (campaign) => `
   query CampaignSales {
     shop {
@@ -179,7 +179,7 @@ export const salesQuery = (campaign) => `
       ianaTimezone
     }
     shopifyqlQuery(
-      query: "FROM sales SHOW total_sales, orders TIMESERIES day ${campaignWindow(campaign)} COMPARE TO previous_period WITH TOTALS, PERCENT_CHANGE ORDER BY day ASC"
+      query: "FROM sales SHOW total_sales, orders, new_customers, total_sales_first_time TIMESERIES day ${campaignWindow(campaign)} COMPARE TO previous_period, previous_year WITH TOTALS, PERCENT_CHANGE ORDER BY day ASC"
     ) {
       tableData {
         columns {
@@ -194,6 +194,30 @@ export const salesQuery = (campaign) => `
   }
 `;
 // [END campaign-dashboard.query]
+
+// [START campaign-dashboard.top-products-query]
+// TOP 5 folds every other product into one remainder row. rowMetadata marks it.
+export const topProductsQuery = (campaign) => `
+  query CampaignTopProducts {
+    shopifyqlQuery(
+      query: "FROM sales SHOW total_sales GROUP BY TOP 5 product_title_at_time_of_sale ${campaignWindow(campaign)}"
+    ) {
+      tableData {
+        columns {
+          name
+          dataType
+          displayName
+        }
+        rows
+        rowMetadata {
+          topNRemainderColumnNames
+        }
+      }
+      parseErrors
+    }
+  }
+`;
+// [END campaign-dashboard.top-products-query]
 
 // [START campaign-dashboard.optional-query]
 // Built per panel. Two skipped panels would otherwise share a rows array.
@@ -855,6 +879,27 @@ export const qrSalesQuery = (campaign, filter) => `
   }
 `;
 // [END campaign-dashboard.qr-sales-queries]
+
+// [START campaign-dashboard.qr-funnel-query]
+// Sessions count every visit a scan started, including visits with no order.
+export const qrFunnelQuery = (campaign, filter) => `
+  query CampaignQRFunnel {
+    shopifyqlQuery(
+      query: "FROM campaign_sessions SHOW campaign_sessions, campaign_added_to_cart_rate, campaign_conversion_rate WHERE ${filter} GROUP BY utm_campaign ${campaignWindow(campaign)}"
+    ) {
+      tableData {
+        columns {
+          name
+          dataType
+          displayName
+        }
+        rows
+      }
+      parseErrors
+    }
+  }
+`;
+// [END campaign-dashboard.qr-funnel-query]
 
 // [START campaign-dashboard.campaign-documents]
 export const OBJECT_DEFINITION_QUERY = `

@@ -145,10 +145,25 @@ export function StoreTotals({statusLine, cardReady, range, setRange, cardQuery})
 }
 // [END campaign-dashboard.card-render]
 
+function ChangeBadge({change, against, percent}) {
+  if (change === null) return null;
+  return (
+    <s-badge
+      tone={change >= 0 ? 'success' : 'critical'}
+      icon={change >= 0 ? 'arrow-up' : 'arrow-down'}
+    >
+      {percent(change)} vs {against}
+    </s-badge>
+  );
+}
+
 export function SalesAndOrders({
   campaign,
   totalSales,
   percentChange,
+  yearChange,
+  newCustomers,
+  firstTimeSales,
   rows,
   cell,
   shortDate,
@@ -173,26 +188,28 @@ export function SalesAndOrders({
         title={`Store sales during ${campaign.title}`}
         uses={{
           shopifyql:
-            'One row per day for sales and orders, with the previous period beside it.',
+            'One row per day for sales, orders, and new customers, with the previous period and the same days last year beside it.',
           annotations:
             'ANNOTATE ALL draws every store annotation on the chart.',
         }}
       />
-      {/* The percentage is Shopify's, from PERCENT_CHANGE. */}
+      {/* [START campaign-dashboard.totals-render] */}
+      {/* The percentages are Shopify's, from PERCENT_CHANGE. */}
       <div style={{marginBottom: '32px'}}>
-        <s-stack direction="inline" gap="base" alignItems="center">
-          <s-text color="subdued">Total sales:</s-text>
-          <s-heading>{currency(totalSales)}</s-heading>
-          {percentChange !== null && (
-            <s-badge
-              tone={percentChange >= 0 ? 'success' : 'critical'}
-              icon={percentChange >= 0 ? 'arrow-up' : 'arrow-down'}
-            >
-              {percent(percentChange)}
-            </s-badge>
-          )}
+        <s-stack direction="block" gap="small-200">
+          <s-stack direction="inline" gap="base" alignItems="center">
+            <s-text color="subdued">Total sales:</s-text>
+            <s-heading>{currency(totalSales)}</s-heading>
+            <ChangeBadge change={percentChange} against="previous period" percent={percent} />
+            <ChangeBadge change={yearChange} against="last year" percent={percent} />
+          </s-stack>
+          <s-text color="subdued">
+            New customers: {newCustomers}. First-time customer sales:{' '}
+            {currency(firstTimeSales)}.
+          </s-text>
         </s-stack>
       </div>
+      {/* [END campaign-dashboard.totals-render] */}
 
       {/* [START campaign-dashboard.sales-card-render] */}
       {/* The card fills its container's height. Without one, the chart collapses
@@ -278,3 +295,64 @@ export function SalesAndOrders({
     </s-section>
   );
 }
+
+// [START campaign-dashboard.top-products-shape]
+// The remainder row has no title. Its rowMetadata names the column TOP 5 rolled up.
+export function topProductsShape({topProducts, cell}) {
+  const metadata = topProducts.tableData.rowMetadata ?? [];
+  const rows = (topProducts.tableData.rows ?? []).map((row, index) => ({
+    title: String(cell(row, 'product_title_at_time_of_sale') ?? ''),
+    sales: Number(cell(row, 'total_sales') ?? 0),
+    remainder: (metadata[index]?.topNRemainderColumnNames ?? []).includes(
+      'product_title_at_time_of_sale',
+    ),
+  }));
+  return {
+    productRows: rows
+      .filter((row) => !row.remainder && row.sales > 0)
+      .sort((first, second) => second.sales - first.sales),
+    otherSales: rows
+      .filter((row) => row.remainder)
+      .reduce((running, row) => running + row.sales, 0),
+  };
+}
+// [END campaign-dashboard.top-products-shape]
+
+// [START campaign-dashboard.top-products-render]
+export function TopProducts({productRows, otherSales, currency}) {
+  if (productRows.length === 0) return null;
+
+  return (
+    <s-section id="top-products">
+      <PanelHeader
+        title="Top products"
+        uses={{
+          shopifyql:
+            'GROUP BY TOP 5 ranks products by sales and totals the rest in one row.',
+        }}
+      />
+      <s-table variant="auto">
+        <s-table-header-row>
+          <s-table-header listSlot="primary">Product</s-table-header>
+          <s-table-header listSlot="labeled">Sales</s-table-header>
+        </s-table-header-row>
+        <s-table-body>
+          {productRows.map((row) => (
+            <s-table-row key={row.title}>
+              <s-table-cell>{row.title}</s-table-cell>
+              <s-table-cell>{currency(row.sales)}</s-table-cell>
+            </s-table-row>
+          ))}
+          {/* Label the remainder row and render it last. The column then sums to store sales. */}
+          {otherSales !== 0 && (
+            <s-table-row>
+              <s-table-cell>Other products</s-table-cell>
+              <s-table-cell>{currency(otherSales)}</s-table-cell>
+            </s-table-row>
+          )}
+        </s-table-body>
+      </s-table>
+    </s-section>
+  );
+}
+// [END campaign-dashboard.top-products-render]

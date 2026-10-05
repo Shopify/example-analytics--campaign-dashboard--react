@@ -112,14 +112,33 @@ export function creatorShape({codeSales, campaign, touchRows, cell}) {
 // [END campaign-dashboard.code-shape]
 
 // [START campaign-dashboard.qr-shape]
-export function qrShape({qrSales, totalSales, cell, rate}) {
-  const qrRows = (qrSales.tableData.rows ?? [])
+// Funnel rates are fractions of each code's sessions. A code with scans and no
+// order still gets a row.
+export function qrShape({qrSales, qrFunnel, totalSales, cell, rate}) {
+  const funnel = new Map(
+    (qrFunnel?.tableData.rows ?? []).map((row) => [
+      String(cell(row, 'utm_campaign') ?? ''),
+      {
+        sessions: Number(cell(row, 'campaign_sessions') ?? 0),
+        cartRate: Number(cell(row, 'campaign_added_to_cart_rate') ?? 0),
+        conversionRate: Number(cell(row, 'campaign_conversion_rate') ?? 0),
+      },
+    ]),
+  );
+  const sold = (qrSales.tableData.rows ?? [])
     .map((row) => ({
       code: String(cell(row, 'utm_campaign') ?? ''),
       sales: Number(cell(row, 'campaign_last_non_direct_click_total_sales') ?? 0),
       orders: Number(cell(row, 'campaign_last_non_direct_click_order_count') ?? 0),
     }))
     .filter((row) => row.sales > 0);
+  const scannedOnly = [...funnel.entries()]
+    .filter(([code, visits]) => visits.sessions > 0 && !sold.some((row) => row.code === code))
+    .map(([code]) => ({code, sales: 0, orders: 0}));
+  const qrRows = [...sold, ...scannedOnly].map((row) => ({
+    ...row,
+    ...(funnel.get(row.code) ?? {sessions: null, cartRate: null, conversionRate: null}),
+  }));
   const qrTotal = qrRows.reduce((running, row) => running + row.sales, 0);
   return {qrRows, qrTotal, qrShare: rate(qrTotal, Number(totalSales))};
 }
@@ -365,13 +384,15 @@ export function QRCodeSales({
 }) {
   if (qrRows.length === 0) return null;
 
+  const ofSessions = (value) => (value == null ? '—' : `${(value * 100).toFixed(1)}%`);
+
   return (
     <s-section id="qr-sales">
       <PanelHeader
         title="QR code sales"
         uses={{
           shopifyql:
-            "Filters attributed sales to orders that started from a scan of this campaign's QR codes.",
+            "Filters attributed sales to orders that started from a scan of this campaign's QR codes, and sessions to the visits a scan started.",
           annotations:
             "ANNOTATE draws the campaign's marks from the store's timeline onto the chart.",
           components: 'A Shopify metric card, running the query it displays.',
@@ -403,6 +424,9 @@ export function QRCodeSales({
       <s-table variant="auto">
         <s-table-header-row>
           <s-table-header listSlot="primary">QR code</s-table-header>
+          <s-table-header listSlot="labeled">Sessions</s-table-header>
+          <s-table-header listSlot="labeled">Added to cart</s-table-header>
+          <s-table-header listSlot="labeled">Conversion</s-table-header>
           <s-table-header listSlot="labeled">Orders</s-table-header>
           <s-table-header listSlot="labeled">Attributed sales</s-table-header>
         </s-table-header-row>
@@ -410,6 +434,9 @@ export function QRCodeSales({
           {qrRows.map((row) => (
             <s-table-row key={row.code}>
               <s-table-cell>{qrTitle(campaign, row.code)}</s-table-cell>
+              <s-table-cell>{row.sessions ?? '—'}</s-table-cell>
+              <s-table-cell>{ofSessions(row.cartRate)}</s-table-cell>
+              <s-table-cell>{ofSessions(row.conversionRate)}</s-table-cell>
               <s-table-cell>{row.orders}</s-table-cell>
               <s-table-cell>{currency(row.sales)}</s-table-cell>
             </s-table-row>

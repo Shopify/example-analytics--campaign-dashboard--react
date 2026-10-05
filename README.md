@@ -123,7 +123,7 @@ Targets are optional. Activation creates a target for each amount you set and sk
 
 Four more controls write to the same charts. **Close campaign** rewrites the annotation with what the campaign earned. If the order dimension is queryable, the close also records the last campaign touch before each order. **Cancel campaign** takes the annotations and targets back off the store. **Replan campaign** returns a canceled campaign to planned for a second activation, and **Delete campaign** removes it.
 
-To try the QR code flow, click **QR codes** in the app's navigation and create a code. Under **Campaign**, pick a planned campaign, then save. A planned campaign's page also links to a new code with its campaign picked. A code belongs to one campaign, and the **Campaign** column on the list links to it. **Live on** sets the day the code's mark lands on the timeline. Blank goes live with the campaign. Activating the campaign marks each of its codes on the timeline. With a **QR code target** amount, activation also creates one target per code. Every scan redirects to the product with the code's UTM parameters, and the **QR code sales** panel reports the orders shoppers place after scanning.
+To try the QR code flow, click **QR codes** in the app's navigation and create a code. Under **Campaign**, pick a planned campaign, then save. A planned campaign's page also links to a new code with its campaign picked. A code belongs to one campaign, and the **Campaign** column on the list links to it. **Live on** sets the day the code's mark lands on the timeline. Blank goes live with the campaign. Activating the campaign marks each of its codes on the timeline. With a **QR code target** amount, activation also creates one target per code. Every scan redirects to the product with the code's UTM parameters, and the **QR code sales** panel reports the sessions each code started and the orders shoppers place after scanning.
 
 Each campaign is an entry of the **Campaign** metaobject type, which the app creates on first load. The admin lists the entries with the store's other metaobjects, and a merchant can edit them there. Re-cloning doesn't reset them. The seed runs once per store. Deleting the seeded campaigns doesn't bring them back. Each creator is an entry of the **Creator** type, and campaigns share those entries. Deleting a campaign leaves its creators in place.
 
@@ -137,7 +137,7 @@ A dev store with no orders reports `$0`. The seed creates campaigns. The sales c
 
 ## What it does
 
-An active campaign's page runs the panels in the order a campaign produces evidence. Targets come first, then sales against the period before, the send funnel per channel, revenue grouped by the dimensions this app creates, and a closing summary written back to the store's timeline.
+An active campaign's page runs the panels in the order a campaign produces evidence. Targets come first, then sales against the period before and the same days last year, the top products, the send funnel per channel, revenue grouped by the dimensions this app creates, and a closing summary written back to the store's timeline.
 
 Chips beside each panel title name what produced the number, whether ShopifyQL, App Events, metafields, annotations, or web components.
 

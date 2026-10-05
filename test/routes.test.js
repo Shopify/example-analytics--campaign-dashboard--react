@@ -1,3 +1,5 @@
+import {createElement} from 'react';
+import {renderToStaticMarkup} from 'react-dom/server';
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {lockStore, mockAdmin, ops} from './helpers/admin';
 import {creatorNode, handlesFor, listOf, node} from './helpers/campaign';
@@ -9,7 +11,8 @@ const {action: createAction} = await import('../app/routes/app.campaigns._index.
 const {action: qrAction, loader: qrLoader} = await import('../app/routes/app.qrcodes.$id.jsx');
 const {loader: qrListLoader} = await import('../app/routes/app.qrcodes._index.jsx');
 const {salesTotals} = await import('../app/routes/app.campaigns.$campaignId.jsx');
-const {salesQuery} = await import('../app/campaign-queries.server');
+const {salesQuery, topProductsQuery} = await import('../app/campaign-queries.server');
+const {TopProducts, topProductsShape} = await import('../app/panels/sales.jsx');
 const {creatorShape} = await import('../app/panels/dimensions.jsx');
 const {campaignFromNode} = await import('../app/campaigns.server');
 
@@ -327,25 +330,105 @@ describe('QR code pages', () => {
 });
 
 describe('sales totals', () => {
+  // Column names and values from a live 2027-01 response.
   const row = {
-    total_sales__totals: '202192.75',
-    comparison_total_sales__previous_period__totals: '90726.9',
-    percent_change_total_sales__previous_period__totals: '122.858',
+    total_sales__totals: '255700.2',
+    new_customers__totals: '1',
+    total_sales_first_time__totals: '699.95',
+    comparison_total_sales__previous_period__totals: '63740.5',
+    percent_change_total_sales__previous_period__totals: '301.158',
+    comparison_total_sales__previous_year__totals: '3220',
+    percent_change_total_sales__previous_year__totals: '7841',
   };
 
-  it('asks Shopify for the percent change', () => {
-    expect(salesQuery({startDate: '2026-09-01', endDate: '2026-09-30'})).toContain('WITH TOTALS, PERCENT_CHANGE');
+  it('asks Shopify for both comparisons and the new customer metrics', () => {
+    const query = salesQuery({startDate: '2026-09-01', endDate: '2026-09-30'});
+    expect(query).toContain('SHOW total_sales, orders, new_customers, total_sales_first_time');
+    expect(query).toContain('COMPARE TO previous_period, previous_year WITH TOTALS, PERCENT_CHANGE');
   });
 
-  it('reads the percent from the PERCENT_CHANGE column', () => {
-    expect(salesTotals([row])).toEqual({totalSales: '202192.75', percentChange: 122.858});
-    expect(salesTotals([{...row, percent_change_total_sales__previous_period__totals: '-5'}]).percentChange).toBe(-5);
+  it('reads each percent from its PERCENT_CHANGE column', () => {
+    expect(salesTotals([row])).toEqual({
+      totalSales: '255700.2',
+      percentChange: 301.158,
+      yearChange: 7841,
+      newCustomers: 1,
+      firstTimeSales: '699.95',
+    });
+    expect(salesTotals([{...row, percent_change_total_sales__previous_year__totals: '-5'}]).yearChange).toBe(-5);
   });
 
-  it('has no percent without the column or a previous total', () => {
+  it('has no percent without the column or a total to compare against', () => {
     const {percent_change_total_sales__previous_period__totals: _, ...noColumn} = row;
     expect(salesTotals([noColumn]).percentChange).toBeNull();
-    expect(salesTotals([{...row, comparison_total_sales__previous_period__totals: '0'}]).percentChange).toBeNull();
-    expect(salesTotals([])).toEqual({totalSales: '0', percentChange: null});
+    expect(salesTotals([{...row, comparison_total_sales__previous_year__totals: '0'}])).toMatchObject({
+      percentChange: 301.158,
+      yearChange: null,
+    });
+    expect(salesTotals([])).toEqual({
+      totalSales: '0',
+      percentChange: null,
+      yearChange: null,
+      newCustomers: 0,
+      firstTimeSales: '0',
+    });
+  });
+});
+
+describe('top products', () => {
+  const cell = (row, key) => row[key];
+
+  it('groups the top five by title in the campaign window', () => {
+    expect(topProductsQuery({startDate: '2026-09-01', endDate: '2026-09-30'})).toContain(
+      'FROM sales SHOW total_sales GROUP BY TOP 5 product_title_at_time_of_sale SINCE 2026-09-01 UNTIL 2026-09-30',
+    );
+    expect(topProductsQuery({startDate: '2026-09-01', endDate: '2026-09-30'})).toContain('rowMetadata');
+  });
+
+  it('ranks the products and reads the remainder row off rowMetadata', () => {
+    // The live response leads with the remainder row.
+    const topProducts = {
+      tableData: {
+        rows: [
+          {product_title_at_time_of_sale: null, total_sales: '379393.95'},
+          {product_title_at_time_of_sale: 'Canvas Tote', total_sales: '1890'},
+          {product_title_at_time_of_sale: 'Espadrille Sandals', total_sales: '2318.75'},
+        ],
+        rowMetadata: [
+          {topNRemainderColumnNames: ['product_title_at_time_of_sale']},
+          {topNRemainderColumnNames: []},
+          {topNRemainderColumnNames: []},
+        ],
+      },
+    };
+    expect(topProductsShape({topProducts, cell})).toEqual({
+      productRows: [
+        {title: 'Espadrille Sandals', sales: 2318.75, remainder: false},
+        {title: 'Canvas Tote', sales: 1890, remainder: false},
+      ],
+      otherSales: 379393.95,
+    });
+  });
+
+  it('renders the null-title remainder last as Other products', () => {
+    const topProducts = {
+      tableData: {
+        rows: [
+          {product_title_at_time_of_sale: null, total_sales: '161317'},
+          {product_title_at_time_of_sale: 'Canvas Tote', total_sales: '140'},
+        ],
+        rowMetadata: [{topNRemainderColumnNames: ['product_title_at_time_of_sale']}, {topNRemainderColumnNames: []}],
+      },
+    };
+    const html = renderToStaticMarkup(
+      createElement(TopProducts, {...topProductsShape({topProducts, cell}), currency: (value) => `$${value}`}),
+    );
+    const cells = [...html.matchAll(/<s-table-cell>([^<]*)<\/s-table-cell>/g)].map((match) => match[1]);
+    expect(cells).toEqual(['Canvas Tote', '$140', 'Other products', '$161317']);
+  });
+
+  it('shows no remainder when the store sold five products or fewer', () => {
+    const topProducts = {tableData: {rows: [{product_title_at_time_of_sale: 'Canvas Tote', total_sales: '10'}], rowMetadata: [{topNRemainderColumnNames: []}]}};
+    expect(topProductsShape({topProducts, cell}).otherSales).toBe(0);
   });
 });
