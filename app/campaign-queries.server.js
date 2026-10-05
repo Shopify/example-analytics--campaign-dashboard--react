@@ -707,6 +707,19 @@ export const promotedByQuery = (campaign, dimension) => `
   }
 `;
 
+// Which tier each stamped customer holds. Nothing lists a metafield's owners back.
+export const ROSTER_KEY = 'tier_roster';
+export const TIER_ROSTER = `
+  query TierRoster {
+    currentAppInstallation {
+      id
+      roster: metafield(namespace: "${ID_NAMESPACE}", key: "${ROSTER_KEY}") {
+        jsonValue
+      }
+    }
+  }
+`;
+
 // [START campaign-dashboard.tier-queries]
 export const tierRankQuery = ({size, skip = 0}) => `
   query AudienceRanking {

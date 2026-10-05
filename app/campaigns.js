@@ -200,18 +200,19 @@ export function campaignMarks(campaign) {
       description: 'Promoted products go on sale.',
       date: campaign.startDate,
     },
-    {
-      key: 'vip',
-      // The closest documented type. The text names the tier.
-      type: 'loyalty_program_offer',
-      title: isTargetedTier(campaign.audience)
-        ? `Early access for ${tier}`
-        : `Early access for ${campaign.title}`,
-      description: isTargetedTier(campaign.audience)
-        ? `${tier} customers get early access.`
-        : 'All customers get early access.',
-      date: withinWindow(campaign, 1),
-    },
+    // Early access goes to a tier. Everyone has no tier to let in first.
+    ...(isTargetedTier(campaign.audience)
+      ? [
+          {
+            key: 'vip',
+            // The closest documented type. The text names the tier.
+            type: 'loyalty_program_offer',
+            title: `Early access for ${tier}`,
+            description: `${tier} customers get early access.`,
+            date: withinWindow(campaign, 1),
+          },
+        ]
+      : []),
     ...(creators.length
       ? [
           {
@@ -229,14 +230,19 @@ export function campaignMarks(campaign) {
           },
         ]
       : []),
-    {
-      key: 'promo',
-      type: 'buy_x_get_y_discount',
-      label: 'BOGO offer',
-      title: `BOGO offer on ${campaign.title}`,
-      description: 'Buy two, get one free.',
-      date: withinWindow(campaign, 8),
-    },
+    // The offer is on the promoted products. No products, no offer.
+    ...(campaign.products?.length
+      ? [
+          {
+            key: 'promo',
+            type: 'buy_x_get_y_discount',
+            label: 'BOGO offer',
+            title: `BOGO offer on ${campaign.title}`,
+            description: 'Buy two, get one free.',
+            date: withinWindow(campaign, 8),
+          },
+        ]
+      : []),
     // One per assigned code, on the day it goes live.
     ...qrHandles(campaign).map((handle) => ({
       key: `${QR_MARK_PREFIX}${handle}`,

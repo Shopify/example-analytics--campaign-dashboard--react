@@ -308,6 +308,18 @@ describe('entry writes', () => {
     });
   });
 
+  it('refuses to record markers after another request changed the campaign', async () => {
+    const campaign = {...campaignFromNode(node({id: 4210})), updatedAt: '2026-09-30T10:00:00Z'};
+    const {admin, calls} = mockAdmin({
+      CampaignById: () => ({data: {metaobject: node({id: 4210, updatedAt: '2026-09-30T10:05:00Z'})}}),
+      CampaignVersion: () => ({data: {metaobject: {updatedAt: '2026-09-30T10:05:00Z'}}}),
+      UpdateCampaign: updated,
+    });
+    const {userErrors} = await rememberMarkers(admin, campaign, {launch: 'a2'});
+    expect(userErrors[0].code).toBe('STALE');
+    expect(ops(calls)).not.toContain('UpdateCampaign');
+  });
+
   it('deletes a redacted customer\'s tier metafield', async () => {
     const {admin, calls} = mockAdmin({
       DeleteCustomerTier: () => ({data: {metafieldsDelete: {deletedMetafields: [{key: 'tier'}], userErrors: []}}}),
@@ -334,6 +346,19 @@ describe('entry writes', () => {
       {id: 'g2', metaobject: {fields: [{key: 'qr_code_ids', value: '["gid://shopify/Metaobject/902","gid://shopify/Metaobject/901"]'}]}},
       {id: 'g1', metaobject: {fields: [{key: 'qr_code_ids', value: '[]'}]}},
     ]);
+  });
+
+  it('leaves the code on its old campaign when the new one fails to save', async () => {
+    const {admin, calls} = mockAdmin({
+      CampaignList: listOf([
+        node({gid: 'g1', id: 4210, qrCodes: [{id: 'gid://shopify/Metaobject/901', handle: 'a'}]}),
+        node({gid: 'g2', id: 4211}),
+      ]),
+      QRCodeHandles: qrCodeHandles([{id: 'gid://shopify/Metaobject/901', handle: 'a'}]),
+      UpdateCampaign: () => ({data: {metaobjectUpdate: {metaobject: null, userErrors: [{message: 'Nope'}]}}}),
+    });
+    expect(await assignQRCode(admin, 'gid://shopify/Metaobject/901', 'g2')).toEqual([{message: 'Nope'}]);
+    expect(calls.filter((call) => call.op === 'UpdateCampaign').map((call) => call.variables.id)).toEqual(['g2']);
   });
 
   it('leaves the campaigns alone when the code stays put', async () => {

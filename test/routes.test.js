@@ -106,6 +106,17 @@ describe('QR code save', () => {
     expect(ops(mock.calls)).not.toContain('UpsertQRCode');
   });
 
+  it('names the campaign status when a delete is refused', async () => {
+    const canceled = planned({gid: 'g-canceled', status: 'canceled', qrCodes: [{id: 'gid://shopify/Metaobject/50', handle: 'hat-front'}]});
+    const mock = mockAdmin(qrHandlers([canceled]));
+    session.admin = mock.admin;
+    const response = await qrAction({request: post('/app/qrcodes/hat-front', {action: 'delete'}), params: {id: 'hat-front'}});
+    expect(response.status).toBe(422);
+    expect(await response.json()).toEqual({
+      errors: {campaign: "Only a planned campaign's codes can be deleted. This code's campaign is canceled."},
+    });
+  });
+
   it('rejects a live date outside the campaign', async () => {
     const mock = mockAdmin(qrHandlers([planned({gid: 'g1'})]));
     session.admin = mock.admin;

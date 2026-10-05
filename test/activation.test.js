@@ -4,6 +4,7 @@ import {
   createQrTargets,
   createStoreTarget,
   stampProducts,
+  stampTier,
   writeMarks,
 } from '../app/campaign-mutations.server';
 import {mockAdmin} from './helpers/admin';
@@ -115,5 +116,46 @@ describe('stampProducts', () => {
     expect(calls[0].variables.metafields).toEqual([
       {ownerId: 'p1', namespace: '$app:campaign_dashboard', key: 'campaign', type: 'metaobject_reference', value: 'gid://shopify/Metaobject/1'},
     ]);
+  });
+});
+
+describe('stampTier', () => {
+  const ranked = (...ids) => () => ({
+    data: {shopifyqlQuery: {tableData: {rows: ids.map((id) => ({customer_id: id}))}, parseErrors: []}},
+  });
+  const roster = (value) => () => ({
+    data: {currentAppInstallation: {id: 'gid://shopify/AppInstallation/1', roster: value ? {jsonValue: value} : null}},
+  });
+
+  it('clears the customers who dropped out of the tier', async () => {
+    const {admin, calls} = mockAdmin({
+      AudienceRanking: ranked('2', '3'),
+      TierRoster: roster({
+        'gid://shopify/Customer/1': 'vip',
+        'gid://shopify/Customer/2': 'vip',
+        'gid://shopify/Customer/9': 'regulars',
+      }),
+      SetCampaignMetafields: () => ({data: {metafieldsSet: {userErrors: []}}}),
+      DeleteCustomerTier: () => ({data: {metafieldsDelete: {userErrors: []}}}),
+    });
+    expect(await stampTier(admin, campaign({audience: 'vip'}))).toEqual([]);
+    const cleared = calls.find((call) => call.op === 'DeleteCustomerTier');
+    expect(cleared.variables.metafields).toEqual([
+      {ownerId: 'gid://shopify/Customer/1', namespace: '$app:campaign_dashboard', key: 'tier'},
+    ]);
+    const saved = calls.filter((call) => call.op === 'SetCampaignMetafields').at(-1).variables.metafields[0];
+    expect(JSON.parse(saved.value)).toEqual({
+      'gid://shopify/Customer/2': 'vip',
+      'gid://shopify/Customer/3': 'vip',
+      'gid://shopify/Customer/9': 'regulars',
+    });
+  });
+
+  it('stamps nobody on a ranking that does not parse', async () => {
+    const {admin, calls} = mockAdmin({
+      AudienceRanking: () => ({data: {shopifyqlQuery: {tableData: null, parseErrors: ['Bad query']}}}),
+    });
+    expect(await stampTier(admin, campaign({audience: 'vip'}))).toEqual([{message: 'Bad query'}]);
+    expect(calls).toHaveLength(1);
   });
 });

@@ -25,7 +25,7 @@ const campaign = (overrides = {}) => ({
   startDate: '2026-09-10',
   endDate: '2026-10-07',
   channels: ['email', 'sms', 'push'],
-  products: [],
+  products: [{id: 'gid://shopify/Product/1', title: 'Board'}],
   audience: 'vip',
   creatorCodes: [],
   ...overrides,
@@ -70,7 +70,7 @@ describe('input checks', () => {
   });
 
   it('builds the promoted-product filter from digits only', () => {
-    expect(promotedFilter(campaign())).toBeNull();
+    expect(promotedFilter(campaign({products: []}))).toBeNull();
     expect(
       promotedFilter(
         campaign({
@@ -138,6 +138,17 @@ describe('campaignMarks', () => {
       'push',
     ]);
     expect(marks.filter((mark) => mark.ranged)).toHaveLength(1);
+  });
+
+  it('skips the offer without products and early access without a tier', () => {
+    const marks = campaignMarks(campaign({products: [], audience: 'everyone'}));
+    expect(marks.map((mark) => mark.key)).toEqual([
+      'campaign',
+      'launch',
+      'email',
+      'sms',
+      'push',
+    ]);
   });
 
   it('adds the creator mark only with creator codes', () => {

@@ -78,6 +78,7 @@ import {
   createStoreTarget,
   endTargetsOn,
   flagIncident,
+  isOwnTarget,
   markMilestone,
   raiseTarget,
   recordMark,
@@ -711,7 +712,8 @@ export async function action({request, params}) {
     }
     // Only what this app made. The record is merchant-editable, and
     // `analyticsTargetsDelete` deletes any target on the shop. Annotations carry
-    // `createdByApp`. Targets carry the name this app gave them.
+    // `createdByApp`. Targets carry the ending this app gave their names. The title in
+    // front of it can change after activation.
     const undone = await clearOwnMarks(
       admin,
       Object.values(campaign.markers ?? {}),
@@ -725,16 +727,22 @@ export async function action({request, params}) {
     );
 
     const targets = {...campaign.targets};
-    const ours = targetNodes(await readTargets(admin, campaign)).filter((target) =>
-      target.name?.startsWith(`${campaign.title}: `),
-    );
+    const read = await readTargets(admin, campaign);
+    const unread = transportErrors(read);
+    undone.push(...unread);
+    const ours = unread.length ? [] : targetNodes(read).filter(isOwnTarget);
     if (ours.length > 0) {
       const body = await (
         await admin.graphql(TARGETS_DELETE, {variables: {ids: ours.map((target) => target.id)}})
       ).json();
       const result = body.data?.analyticsTargetsDelete;
-      undone.push(...transportErrors(body), ...(result?.userErrors ?? []));
-      for (const deleted of result?.deletedIds ?? []) {
+      const deletedIds = result?.deletedIds ?? [];
+      const failed = [...transportErrors(body), ...(result?.userErrors ?? [])];
+      if (!failed.length && ours.some((target) => !deletedIds.includes(target.id))) {
+        failed.push({message: "Couldn't delete every target. Cancel the campaign again."});
+      }
+      undone.push(...failed);
+      for (const deleted of deletedIds) {
         const key = Object.keys(targets).find((name) => targets[name] === deleted);
         if (key) delete targets[key];
       }

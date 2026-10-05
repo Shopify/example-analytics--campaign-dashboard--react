@@ -3,11 +3,15 @@ import {
   ANNOTATION_DELETE,
   ANNOTATION_UPDATE,
   BUNDLE_QUERY,
+  ID_NAMESPACE,
+  METAFIELDS_DELETE,
   METAFIELDS_SET,
   ORDER_PAGE_SIZE,
   RECORDED_ANNOTATIONS,
+  ROSTER_KEY,
   TARGET_CREATE,
   TARGET_UPDATE,
+  TIER_ROSTER,
   appEventsQuery,
   bounceQuery,
   measureQuery,
@@ -168,6 +172,11 @@ export async function endTargetsOn(admin, campaign, day) {
   return problems;
 }
 
+// Every name above ends in what the target measures. The title in front can change.
+const TARGET_ENDINGS = [': store-wide sales', ': promoted products', ' segment', ' QR code'];
+export const isOwnTarget = (target) =>
+  target.name?.includes(': ') && TARGET_ENDINGS.some((ending) => target.name.endsWith(ending));
+
 // A form can name any target ID. Match against the recorded ones before writing.
 export function recordedTarget(campaign, body, id) {
   const recorded = new Set(Object.values(campaign.targets ?? {}));
@@ -288,11 +297,18 @@ export async function writeMarks(admin, campaign, appId, markedAt) {
     if (errors.length) {
       return {markers, problems: errors.map((error) => error.message)};
     }
-    if (created?.analyticsAnnotation?.id) {
-      markers[mark.key] = created.analyticsAnnotation.id;
-      await rememberMarkers(admin, campaign, {
-        [mark.key]: created.analyticsAnnotation.id,
-      });
+    const id = created?.analyticsAnnotation?.id;
+    if (id) {
+      const saved = await rememberMarkers(admin, campaign, {[mark.key]: id});
+      // An ID the record doesn't hold is an annotation nothing can find again.
+      if (saved.userErrors.length) {
+        const orphaned = await clearOwnMarks(admin, [id], appId);
+        return {
+          markers,
+          problems: [...saved.userErrors, ...orphaned].map((error) => error.message),
+        };
+      }
+      markers[mark.key] = id;
     }
   }
   return {markers, problems: []};
@@ -327,6 +343,8 @@ export async function stampProducts(admin, campaign) {
 // [END campaign-dashboard.product-metafield]
 
 // [START campaign-dashboard.stamp-tier]
+// A re-rank moves customers out of the tier. The roster says who held it, so their
+// stamps come off and the tier stays the size it says.
 export async function stampTier(admin, campaign) {
   const tier = AUDIENCE_TIERS.find((entry) => entry.value === campaign.audience);
   if (!tier?.size) return [];
@@ -334,7 +352,10 @@ export async function stampTier(admin, campaign) {
   const body = await (await admin.graphql(tierRankQuery(tier))).json();
   // A failed rank read finds no customers. Returning no errors would read as a tier
   // with nobody in it.
-  const unranked = transportErrors(body);
+  const unranked = [
+    ...transportErrors(body),
+    ...(body.data?.shopifyqlQuery?.parseErrors ?? []).map((message) => ({message})),
+  ];
   if (unranked.length) return unranked;
 
   // GROUP BY returns a numeric ID. Every mutation below wants a GID.
@@ -342,25 +363,82 @@ export async function stampTier(admin, campaign) {
     .map((row) => row.customer_id)
     .filter(Boolean)
     .map((id) => `gid://shopify/Customer/${id}`);
-  if (ids.length === 0) return [];
 
-  const stamped = await (
+  const read = await (await admin.graphql(TIER_ROSTER)).json();
+  const unread = transportErrors(read);
+  if (unread.length) return unread;
+  const installation = read.data?.currentAppInstallation;
+  const roster = installation?.roster?.jsonValue ?? {};
+
+  if (ids.length) {
+    const stamped = await (
+      await admin.graphql(METAFIELDS_SET, {
+        variables: {
+          metafields: ids.map((id) => ({
+            ownerId: id,
+            namespace: DIMENSION_NAMESPACE,
+            key: TIER_METAFIELD.key,
+            type: 'single_line_text_field',
+            value: campaign.audience,
+          })),
+        },
+      })
+    ).json();
+    const unstamped = [
+      ...transportErrors(stamped),
+      ...(stamped.data?.metafieldsSet?.userErrors ?? []),
+    ];
+    if (unstamped.length) return unstamped;
+  }
+
+  const dropped = Object.keys(roster).filter(
+    (id) => roster[id] === campaign.audience && !ids.includes(id),
+  );
+  const userErrors = [];
+  if (dropped.length) {
+    const cleared = await (
+      await admin.graphql(METAFIELDS_DELETE, {
+        variables: {
+          metafields: dropped.map((id) => ({
+            ownerId: id,
+            namespace: DIMENSION_NAMESPACE,
+            key: TIER_METAFIELD.key,
+          })),
+        },
+      })
+    ).json();
+    userErrors.push(
+      ...transportErrors(cleared),
+      ...(cleared.data?.metafieldsDelete?.userErrors ?? []),
+    );
+  }
+
+  // A failed clear keeps the dropped customers listed. The next stamp retries them.
+  const kept = Object.fromEntries(
+    Object.entries(roster).filter(([id]) => userErrors.length || !dropped.includes(id)),
+  );
+  const saved = await (
     await admin.graphql(METAFIELDS_SET, {
       variables: {
-        metafields: ids.map((id) => ({
-          ownerId: id,
-          namespace: DIMENSION_NAMESPACE,
-          key: TIER_METAFIELD.key,
-          type: 'single_line_text_field',
-          value: campaign.audience,
-        })),
+        metafields: [
+          {
+            ownerId: installation?.id,
+            namespace: ID_NAMESPACE,
+            key: ROSTER_KEY,
+            type: 'json',
+            value: JSON.stringify({
+              ...kept,
+              ...Object.fromEntries(ids.map((id) => [id, campaign.audience])),
+            }),
+          },
+        ],
       },
     })
   ).json();
-
   return [
-    ...transportErrors(stamped),
-    ...(stamped.data?.metafieldsSet?.userErrors ?? []),
+    ...userErrors,
+    ...transportErrors(saved),
+    ...(saved.data?.metafieldsSet?.userErrors ?? []),
   ];
 }
 // [END campaign-dashboard.stamp-tier]

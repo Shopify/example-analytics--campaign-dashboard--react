@@ -1,4 +1,5 @@
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
+import {STALE_MESSAGE} from '../app/campaigns.server';
 import {ops} from './helpers/admin';
 import {base, lastUpdate, marking, planned, resetTargets, runWith, targeting} from './helpers/routes';
 
@@ -61,6 +62,34 @@ describe('activate', () => {
       ['Summer launch: hat-front QR code', '2026-09-10'],
       ['Summer launch: Hat back QR code', '2026-09-25'],
     ]);
+  });
+
+  it('fails one of two concurrent activations and deletes its unrecorded mark', async () => {
+    const entry = planned({updatedAt: '2026-09-30T10:00:00Z'});
+    const {mock, result} = run(
+      {
+        ...base(entry),
+        ...marking,
+        CampaignVersion: () => ({data: {metaobject: {updatedAt: '2026-09-30T10:00:00Z'}}}),
+        UpdateCampaign: () => ({
+          data: {metaobjectUpdate: {metaobject: planned({updatedAt: '2026-09-30T10:01:00Z'}), userErrors: []}},
+        }),
+        CampaignById: () => ({data: {metaobject: planned({updatedAt: '2026-09-30T10:02:00Z'})}}),
+        CreateCampaignAnnotation: () => ({
+          data: {analyticsAnnotationCreate: {analyticsAnnotation: {id: 'gid://shopify/AnalyticsAnnotation/77'}, userErrors: []}},
+        }),
+        RecordedAnnotations: ({ids}) => ({
+          data: {annotations: ids.map((id) => ({id, createdByApp: {id: 'gid://shopify/App/7'}}))},
+        }),
+        DeleteCampaignAnnotation: () => ({data: {analyticsAnnotationDelete: {userErrors: []}}}),
+      },
+      {intent: 'activate'},
+    );
+    expect(await result).toEqual({problems: [STALE_MESSAGE]});
+    expect(mock.calls.filter((call) => call.op === 'DeleteCampaignAnnotation').map((call) => call.variables.id)).toEqual([
+      'gid://shopify/AnalyticsAnnotation/77',
+    ]);
+    expect(ops(mock.calls).filter((op) => op === 'UpdateCampaign')).toHaveLength(1);
   });
 
   it('deletes the new targets when their IDs fail to save', async () => {
@@ -142,7 +171,7 @@ describe('close', () => {
     );
     const {mock, result} = run(
       {
-        ...closing(running({markers}), [], () => ({data: {shopifyqlQuery: {tableData: {rows: [{total_sales: '10'}]}, parseErrors: []}}})),
+        ...closing(running({markers, products: [{id: 'gid://shopify/Product/1', title: 'Hat'}]}), [], () => ({data: {shopifyqlQuery: {tableData: {rows: [{total_sales: '10'}]}, parseErrors: []}}})),
         RecordedAnnotations: ({ids: asked}) => ({
           data: {annotations: asked.map((id) => ({id, createdByApp: {id: 'gid://shopify/App/7'}}))},
         }),
@@ -222,8 +251,44 @@ describe('cancel', () => {
       },
       {intent: 'cancel'},
     );
-    expect(await result).toEqual({problems: ['Busy']});
+    expect(await result).toEqual({problems: ['Busy', "Couldn't delete every target. Cancel the campaign again."]});
     expect(lastUpdate(mock.calls)).toEqual({markers: '{"qr:hat":"gid://shopify/AnalyticsAnnotation/2"}', targets: '{"qr:hat":"gid://shopify/AnalyticsTarget/2"}'});
+  });
+
+  it('deletes the recorded targets after the campaign was renamed', async () => {
+    const entry = planned({
+      title: 'Autumn launch',
+      status: 'running',
+      targets: {store: 'gid://shopify/AnalyticsTarget/1', 'qr:hat': 'gid://shopify/AnalyticsTarget/2'},
+    });
+    const names = {
+      'gid://shopify/AnalyticsTarget/1': 'Summer launch: store-wide sales',
+      'gid://shopify/AnalyticsTarget/2': 'Summer launch: Hat QR code',
+    };
+    const {mock, result} = run(
+      {
+        ...base(entry),
+        CampaignTargets: ({ids}) => ({data: {targets: ids.map((id) => ({id, name: names[id]}))}}),
+        DeleteCampaignTargets: ({ids}) => ({data: {analyticsTargetsDelete: {deletedIds: ids, userErrors: []}}}),
+      },
+      {intent: 'cancel'},
+    );
+    expect(await result).toEqual({ok: true});
+    expect(mock.calls.find((call) => call.op === 'DeleteCampaignTargets').variables.ids).toEqual(Object.keys(names));
+    expect(lastUpdate(mock.calls)).toMatchObject({status: 'canceled', targets: '{}'});
+  });
+
+  it('keeps the recorded targets when they fail to read', async () => {
+    const entry = planned({status: 'running', targets: {store: 'gid://shopify/AnalyticsTarget/1'}});
+    const {mock, result} = run(
+      {
+        ...base(entry),
+        CampaignTargets: () => ({errors: [{message: 'Throttled'}]}),
+      },
+      {intent: 'cancel'},
+    );
+    expect(await result).toEqual({problems: ['Throttled']});
+    expect(lastUpdate(mock.calls)).toEqual({markers: '{}', targets: '{"store":"gid://shopify/AnalyticsTarget/1"}'});
   });
 });
 

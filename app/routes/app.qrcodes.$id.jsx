@@ -23,7 +23,7 @@ import {
   campaignOf,
   readCampaigns,
 } from "../campaigns.server";
-import { isCalendarDate, shortDate } from "../campaigns";
+import { isCalendarDate, shortDate, statusLabel } from "../campaigns";
 
 // [START campaign-dashboard.qr-campaign-picker]
 // Activation writes a mark for each code, and a target when the campaign sets a QR
@@ -129,7 +129,8 @@ export async function action({ request, params }) {
 
   if (data.action === "delete") {
     if (!qrCodeId) return redirect("/app/qrcodes");
-    // An active or closed campaign reports on its codes. Deleting one would change it.
+    // An active or closed campaign reports on its codes, and a canceled one replans with
+    // them. Deleting one would change it.
     const choices = await campaignChoices(admin, qrCodeId);
     if (choices.failed.length || choices.locked) {
       return new Response(
@@ -137,7 +138,7 @@ export async function action({ request, params }) {
           errors: {
             campaign: choices.failed.length
               ? "Couldn't load campaigns. Try again."
-              : "This code belongs to an active or closed campaign and can't be deleted.",
+              : `Only a planned campaign's codes can be deleted. This code's campaign is ${statusLabel(choices.current.status).toLowerCase()}.`,
           },
         }),
         { status: 422, headers: { "Content-Type": "application/json" } },

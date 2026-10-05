@@ -448,7 +448,10 @@ export async function rememberMarkers(admin, campaign, markers) {
   const current = body.data?.metaobject
     ? campaignFromNode(body.data.metaobject)
     : campaign;
-  // The merge already holds every recorded ID, so the fresh version is the one to check.
+  // A version this action didn't write means another request changed the campaign.
+  if (campaign.updatedAt && current.updatedAt !== campaign.updatedAt) {
+    return {campaign: null, userErrors: [{code: 'STALE', message: STALE_MESSAGE}]};
+  }
   const result = await updateCampaign(admin, current, {
     markers: {...current.markers, ...markers},
   });
@@ -499,7 +502,8 @@ export async function assignQRCode(admin, qrCodeId, campaignGid) {
   const {campaigns, failed} = await readCampaigns(admin);
   if (failed.length) return failed;
 
-  // The new campaign first. A failure partway leaves the code on two campaigns, not none.
+  // The new campaign first. If that write fails, the code stays where it was. A later
+  // failure leaves the code on two campaigns, not none.
   const ordered = [...campaigns].sort(
     (a, b) => (b.gid === campaignGid) - (a.gid === campaignGid),
   );
@@ -515,6 +519,7 @@ export async function assignQRCode(admin, qrCodeId, campaignGid) {
       : campaign.qrCodes.filter((qrCode) => qrCode.id !== qrCodeId);
     const result = await updateCampaign(admin, campaign, {qrCodes});
     userErrors.push(...result.userErrors);
+    if (wants && result.userErrors.length) break;
   }
   return userErrors;
 }
