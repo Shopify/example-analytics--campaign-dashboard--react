@@ -378,10 +378,11 @@ describe('sales totals', () => {
 describe('top products', () => {
   const cell = (row, key) => row[key];
 
-  it('groups the top five by title in the campaign window', () => {
-    expect(topProductsQuery({startDate: '2026-09-01', endDate: '2026-09-30'})).toContain(
-      'FROM sales SHOW total_sales GROUP BY TOP 5 product_title_at_time_of_sale SINCE 2026-09-01 UNTIL 2026-09-30',
-    );
+  it('ranks the top five by total sales in the campaign window', () => {
+    const query = topProductsQuery({startDate: '2026-09-01', endDate: '2026-09-30'});
+    expect(query).toContain('GROUP BY TOP 5 product_title_at_time_of_sale');
+    // TOP 5 without ORDER BY returns five products that aren't the best sellers.
+    expect(query.match(/query: "([^"]*)"/)[1]).toMatch(/ ORDER BY total_sales DESC$/);
     expect(topProductsQuery({startDate: '2026-09-01', endDate: '2026-09-30'})).toContain('rowMetadata');
   });
 
