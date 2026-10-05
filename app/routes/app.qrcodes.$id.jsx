@@ -112,7 +112,7 @@ export async function loader({ request, params }) {
     campaignError: failed.length
       ? CAMPAIGNS_FAILED
       : unsaved === "started"
-        ? "The code saved, but its campaign didn't change. A campaign it touched left planning after this page loaded."
+        ? "The code saved, but its campaign didn't change. One of the campaigns left planning after this page loaded."
         : unsaved === "unsaved"
           ? "The code saved, but the campaign didn't. Select it again and save."
           : null,
@@ -146,7 +146,7 @@ export async function action({ request, params }) {
     if (lock.problems) return refuse(lock.problems[0].message);
     try {
       // An active or closed campaign reports on its codes, and a canceled one replans with
-      // them. The lock holds the status this check reads.
+      // them. The lock stops another request from activating the campaign before the delete.
       const choices = await campaignChoices(admin, qrCodeId);
       if (choices.failed.length) return refuse("Couldn't load campaigns. Try again.");
       if (choices.locked) {

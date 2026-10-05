@@ -56,6 +56,15 @@ You'll need Node 20.19+ or 22.12+, [app development permissions](https://shopify
 
 The app opens on a campaign list holding two seeded campaigns. Panels read `$0` or show no rows until you request the access below and the store has orders. The declaration from `npm run deploy` takes a few minutes to propagate before an App Events query returns rows.
 
+## Tests
+
+Run the unit tests, and check that every `[START]` tag the tutorials excerpt still has its `[END]` tag:
+
+```shell
+npm test
+npm run check:markers
+```
+
 ## Access to request
 
 | Access | What stays empty without it |
@@ -112,7 +121,7 @@ The first load seeds two campaigns, both planned, dated relative to your install
 
 Targets are optional. Activation creates a target for each amount you set and skips each blank one. The annotations go up either way.
 
-Four more controls write to the same charts. **Close campaign** rewrites the annotation with what the campaign earned and records the last campaign touch before each order. **Cancel campaign** takes the annotations and targets back off the store. **Replan campaign** returns a canceled campaign to planned for a second activation, and **Delete campaign** removes it.
+Four more controls write to the same charts. **Close campaign** rewrites the annotation with what the campaign earned. If the order dimension is queryable, the close also records the last campaign touch before each order. **Cancel campaign** takes the annotations and targets back off the store. **Replan campaign** returns a canceled campaign to planned for a second activation, and **Delete campaign** removes it.
 
 To try the QR code flow, click **QR codes** in the app's navigation and create a code. Under **Campaign**, pick a planned campaign, then save. A planned campaign's page also links to a new code with its campaign picked. A code belongs to one campaign, and the **Campaign** column on the list links to it. **Live on** sets the day the code's mark lands on the timeline. Blank goes live with the campaign. Activating the campaign marks each of its codes on the timeline. With a **QR code target** amount, activation also creates one target per code. Every scan redirects to the product with the code's UTM parameters, and the **QR code sales** panel reports the orders shoppers place after scanning.
 
@@ -165,13 +174,6 @@ GraphQL documents are in `app/campaign-queries.server.js`, campaign entries in `
 Each campaign is an entry of the `campaign_dashboard_campaign` metaobject type. `ensureDefinition` creates the type at runtime, because analytics joins only types without the `$app:` prefix. The `qr_code_ids` field holds QR code IDs as text, and an uninstall leaves every entry in place. `CAMPAIGN_FIELDS` documents the shape field by field.
 
 For a smaller starting point covering only the ShopifyQL half, see [Build a sales dashboard with the GraphQL Admin API](https://shopify.dev/docs/apps/build/shopifyql/graphql-admin-api/build-a-sales-dashboard) and [`example-shopifyql--sales-dashboard--react`](https://github.com/Shopify/example-shopifyql--sales-dashboard--react).
-
-Run the unit tests, and check that every `[START]` tag the tutorials excerpt still has its `[END]` tag:
-
-```shell
-npm test
-npm run check:markers
-```
 
 ## Contributions
 
