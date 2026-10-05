@@ -76,13 +76,13 @@ name = "Scans"
 type = "number_integer"
 # [END metaobject-definition]
 
-# [START campaign-dashboard.qr-campaign-field]
+# [START campaign-dashboard.qr-campaign-link]
 # Holds the ID of the code's campaign entry.
 [metaobjects.app.qrcode.fields.campaign]
 name = "Campaign"
 type = "single_line_text_field"
 capabilities.admin_filterable = true
-# [END campaign-dashboard.qr-campaign-field]
+# [END campaign-dashboard.qr-campaign-link]
 
 # [START campaign-dashboard.qr-live-on-field]
 # Blank goes live with its campaign.
