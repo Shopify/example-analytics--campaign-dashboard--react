@@ -13,9 +13,9 @@ describe('target charts', () => {
     ...overrides,
   });
 
-  it('draws the store target as a running total with targets and annotations', () => {
+  it('draws the store target as daily bars under a running total, with targets and annotations', () => {
     expect(targetChartQuery(target())).toBe(
-      'FROM sales SHOW total_sales TIMESERIES day WITH CUMULATIVE_VALUES SINCE 2026-09-10 UNTIL 2026-10-07 COMPARE TO TARGETS VISUALIZE total_sales__cumulative TYPE line ANNOTATE ALL',
+      'FROM sales SHOW total_sales TIMESERIES day WITH CUMULATIVE_VALUES SINCE 2026-09-10 UNTIL 2026-10-07 COMPARE TO TARGETS VISUALIZE total_sales TYPE bar, total_sales__cumulative TYPE line ANNOTATE ALL',
     );
   });
 
@@ -29,10 +29,11 @@ describe('target charts', () => {
       }),
     );
     expect(query).toBe(
-      "FROM campaign_sales SHOW campaign_last_non_direct_click_total_sales WHERE utm_campaign = 'hat-front' TIMESERIES day WITH CUMULATIVE_VALUES SINCE 2026-09-25 UNTIL 2026-10-07 COMPARE TO TARGETS VISUALIZE campaign_last_non_direct_click_total_sales__cumulative TYPE line ANNOTATE ALL",
+      "FROM campaign_sales SHOW campaign_last_non_direct_click_total_sales WHERE utm_campaign = 'hat-front' TIMESERIES day WITH CUMULATIVE_VALUES SINCE 2026-09-25 UNTIL 2026-10-07 COMPARE TO TARGETS VISUALIZE campaign_last_non_direct_click_total_sales TYPE bar, campaign_last_non_direct_click_total_sales__cumulative TYPE line ANNOTATE ALL",
     );
   });
-  it('adds daily bars under a product target line', () => {
+
+  it('keeps a product target\'s filter', () => {
     expect(targetChartQuery(target({filters: 'product_id IN (1, 2)'}))).toBe(
       'FROM sales SHOW total_sales WHERE product_id IN (1, 2) TIMESERIES day WITH CUMULATIVE_VALUES SINCE 2026-09-10 UNTIL 2026-10-07 COMPARE TO TARGETS VISUALIZE total_sales TYPE bar, total_sales__cumulative TYPE line ANNOTATE ALL',
     );

@@ -9,14 +9,12 @@ import {useMetricCardsReady} from './sales';
 // [START campaign-dashboard.target-chart]
 // A running total from the target's first day, scoped by its filter. ANNOTATE ALL
 // puts the store's annotations, this campaign's included, on the same axis.
-// Product targets add daily bars under the line, so a strong day stands out.
+// COMPARE TO TARGETS matches a target only when its base metric is visualized.
 export function targetChartQuery(target) {
   // QR targets measure a `campaign_sales` metric, which `sales` doesn't have.
   const from =
     target.shopifyqlQuery?.match(/^\s*FROM (\w+)/)?.[1] ??
     (target.metric.startsWith('campaign_') ? 'campaign_sales' : 'sales');
-  const running = `${target.metric}__cumulative TYPE line`;
-  const daily = target.filters?.startsWith('product_id') ? `${target.metric} TYPE bar, ` : '';
   return [
     `FROM ${from}`,
     `SHOW ${target.metric}`,
@@ -24,7 +22,7 @@ export function targetChartQuery(target) {
     'TIMESERIES day WITH CUMULATIVE_VALUES',
     `SINCE ${target.startDate} UNTIL ${target.endDate}`,
     'COMPARE TO TARGETS',
-    `VISUALIZE ${daily}${running} ANNOTATE ALL`,
+    `VISUALIZE ${target.metric} TYPE bar, ${target.metric}__cumulative TYPE line ANNOTATE ALL`,
   ]
     .filter(Boolean)
     .join(' ');

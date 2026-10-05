@@ -8,6 +8,8 @@ vi.mock('../app/shopify.server', async () => (await import('./helpers/routes')).
 const {action: createAction} = await import('../app/routes/app.campaigns._index.jsx');
 const {action: qrAction, loader: qrLoader} = await import('../app/routes/app.qrcodes.$id.jsx');
 const {loader: qrListLoader} = await import('../app/routes/app.qrcodes._index.jsx');
+const {salesTotals} = await import('../app/routes/app.campaigns.$campaignId.jsx');
+const {salesQuery} = await import('../app/campaign-queries.server');
 
 const upsertedFields = (calls) => calls.find((call) => call.op === 'UpsertQRCode').variables.metaobject.fields;
 
@@ -241,5 +243,29 @@ describe('QR code pages', () => {
       ['hat-front', {id: 4210, title: 'Summer launch'}],
       ['hat-back', null],
     ]);
+  });
+});
+
+describe('sales totals', () => {
+  const row = {
+    total_sales__totals: '202192.75',
+    comparison_total_sales__previous_period__totals: '90726.9',
+    percent_change_total_sales__previous_period__totals: '122.858',
+  };
+
+  it('asks Shopify for the percent change', () => {
+    expect(salesQuery({startDate: '2026-09-01', endDate: '2026-09-30'})).toContain('WITH TOTALS, PERCENT_CHANGE');
+  });
+
+  it('reads the percent from the PERCENT_CHANGE column', () => {
+    expect(salesTotals([row])).toEqual({totalSales: '202192.75', percentChange: 122.858});
+    expect(salesTotals([{...row, percent_change_total_sales__previous_period__totals: '-5'}]).percentChange).toBe(-5);
+  });
+
+  it('has no percent without the column or a previous total', () => {
+    const {percent_change_total_sales__previous_period__totals: _, ...noColumn} = row;
+    expect(salesTotals([noColumn]).percentChange).toBeNull();
+    expect(salesTotals([{...row, comparison_total_sales__previous_period__totals: '0'}]).percentChange).toBeNull();
+    expect(salesTotals([])).toEqual({totalSales: '0', percentChange: null});
   });
 });

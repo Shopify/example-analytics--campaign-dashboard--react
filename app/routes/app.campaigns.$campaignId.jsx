@@ -869,6 +869,21 @@ const DONE = {
   'flag-incident': 'Incident flagged',
 };
 
+// [START campaign-dashboard.totals]
+// WITH TOTALS and PERCENT_CHANGE name their columns after the metric. The percent
+// is null when the previous period sold nothing.
+export function salesTotals(rows) {
+  const change = rows[0]?.['percent_change_total_sales__previous_period__totals'];
+  const previousTotal = Number(
+    rows[0]?.['comparison_total_sales__previous_period__totals'] ?? 0,
+  );
+  return {
+    totalSales: rows[0]?.['total_sales__totals'] ?? '0',
+    percentChange: change == null || previousTotal === 0 ? null : Number(change),
+  };
+}
+// [END campaign-dashboard.totals]
+
 export default function CampaignDashboard() {
   const data = useLoaderData();
   const fetcher = useFetcher();
@@ -984,17 +999,7 @@ export default function CampaignDashboard() {
   const dayOf = (instant) => shopDay.format(new Date(instant));
   // [END campaign-dashboard.format]
 
-  // [START campaign-dashboard.totals]
-  // WITH TOTALS and COMPARE TO name their columns after the metric.
-  const totalSales = rows[0]?.['total_sales__totals'] ?? '0';
-  const previousTotal = Number(
-    rows[0]?.['comparison_total_sales__previous_period__totals'] ?? 0,
-  );
-  const percentChange =
-    previousTotal === 0
-      ? null
-      : ((Number(totalSales) - previousTotal) / Math.abs(previousTotal)) * 100;
-  // [END campaign-dashboard.totals]
+  const {totalSales, percentChange} = salesTotals(rows);
 
   const {storeTarget, scopedTargets} = splitTargets(targets);
 

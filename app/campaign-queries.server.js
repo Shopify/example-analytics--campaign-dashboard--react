@@ -157,7 +157,7 @@ export const salesQuery = (campaign) => `
       ianaTimezone
     }
     shopifyqlQuery(
-      query: "FROM sales SHOW total_sales, orders TIMESERIES day ${campaignWindow(campaign)} COMPARE TO previous_period WITH TOTALS ORDER BY day ASC"
+      query: "FROM sales SHOW total_sales, orders TIMESERIES day ${campaignWindow(campaign)} COMPARE TO previous_period WITH TOTALS, PERCENT_CHANGE ORDER BY day ASC"
     ) {
       tableData {
         columns {

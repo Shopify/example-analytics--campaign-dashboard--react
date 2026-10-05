@@ -178,7 +178,7 @@ export function SalesAndOrders({
             'ANNOTATE ALL draws every store annotation on the chart.',
         }}
       />
-      {/* The percentage is Shopify's, from COMPARE TO previous_period. */}
+      {/* The percentage is Shopify's, from PERCENT_CHANGE. */}
       <div style={{marginBottom: '32px'}}>
         <s-stack direction="inline" gap="base" alignItems="center">
           <s-text color="subdued">Total sales:</s-text>
