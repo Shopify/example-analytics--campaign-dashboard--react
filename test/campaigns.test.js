@@ -15,6 +15,7 @@ import {
   recentWindow,
   sanitizeCode,
   shopMorning,
+  targetEnd,
   touchMarks,
   withinWindow,
 } from '../app/campaigns';
@@ -105,6 +106,24 @@ describe('windows', () => {
     expect(
       recentWindow(campaign({startDate: '2026-07-01', endDate: '2026-07-20'})),
     ).toBe('SINCE -29d UNTIL -29d');
+  });
+
+  it('treats a start one day inside the retention floor as expired', () => {
+    vi.useFakeTimers({toFake: ['Date']});
+    vi.setSystemTime(new Date('2026-09-30T12:00:00Z'));
+    expect(recentWindow(campaign({startDate: '2026-09-01', endDate: '2026-09-20'}))).toBe(
+      'SINCE -29d UNTIL 2026-09-20',
+    );
+    expect(recentWindow(campaign({startDate: '2026-09-02', endDate: '2026-09-20'}))).toBe(
+      'SINCE 2026-09-02 UNTIL 2026-09-20',
+    );
+    vi.useRealTimers();
+  });
+
+  it('ends a target after the day it starts', () => {
+    expect(targetEnd('2026-09-10', '2026-10-07')).toBe('2026-10-07');
+    expect(targetEnd('2026-09-30', '2026-09-30')).toBe('2026-10-01');
+    expect(targetEnd('2026-10-03', '2026-09-30')).toBe('2026-10-04');
   });
 
   it('resolves a date to 9am in the shop timezone', () => {

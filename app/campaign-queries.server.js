@@ -814,13 +814,14 @@ export const tierSalesQuery = (campaign, dimension, tier) => `
 
 // [START campaign-dashboard.order-touch-queries]
 // `order_id` comes back numeric. Paging with `LIMIT` and `OFFSET` keeps a long
-// campaign's close from loading every order row at once.
+// campaign's close from loading every order row at once. A refund or an edit adds a
+// row on its own day. The filter keeps only the rows of the original sale.
 export const ORDER_PAGE_SIZE = 250;
 
 export const orderDaysQuery = (campaign, offset) => `
   query CampaignOrders {
     shopifyqlQuery(
-      query: "FROM sales SHOW total_sales GROUP BY order_id, day ${campaignWindow(campaign)} ORDER BY day ASC, order_id ASC LIMIT ${ORDER_PAGE_SIZE} OFFSET ${offset}"
+      query: "FROM sales SHOW total_sales WHERE is_sales_reversal = false AND is_sale_adjustment = false GROUP BY order_id, day ${campaignWindow(campaign)} ORDER BY day ASC, order_id ASC LIMIT ${ORDER_PAGE_SIZE} OFFSET ${offset}"
     ) {
       tableData {
         rows

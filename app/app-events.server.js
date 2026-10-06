@@ -194,7 +194,7 @@ export const funnelWindowEnd = (startDate, timeZone) =>
 
 // [START campaign-dashboard.send-window]
 // The schedule runs two weeks from the start date. A campaign that ends sooner would
-// date sends after it closed, and no endpoint deletes an accepted event.
+// date sends after it closed, and the App Events API can't retract a submitted event.
 export const funnelFitsWindow = (startDate, endDate, timeZone) =>
   funnelWindowEnd(startDate, timeZone) <= shopMorning(endDate, timeZone) + 86400000;
 
@@ -240,6 +240,15 @@ function stageTimestamp(start, day, hour, index) {
 
 // [START campaign-dashboard.app-events-send]
 async function sendEvent({token, shopId, stage, campaignId, start, index}) {
+  // A network failure counts as one failed event. Throwing would lose the received count.
+  try {
+    return await postEvent({token, shopId, stage, campaignId, start, index});
+  } catch (error) {
+    return {ok: false, status: 'network', body: error.message};
+  }
+}
+
+async function postEvent({token, shopId, stage, campaignId, start, index}) {
   const response = await fetch('https://api.shopify.com/app/2027-01/events', {
     method: 'POST',
     headers: {

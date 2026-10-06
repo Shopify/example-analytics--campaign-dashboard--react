@@ -37,6 +37,7 @@ import {
   qrHandles,
   qrLiveOn,
   qrTitle,
+  targetEnd,
   touchMarks,
 } from './campaigns';
 import {AUDIENCE_TIERS, TIER_METAFIELD, isTargetedTier, tierLabel} from './audiences';
@@ -49,7 +50,9 @@ const NO_TARGET = {id: null, userErrors: []};
 // existing target, and that target belongs to someone else. Keep no ID beside an error.
 async function createTarget(admin, input, measures) {
   const body = await (
-    await admin.graphql(TARGET_CREATE, {variables: {input}})
+    await admin.graphql(TARGET_CREATE, {
+      variables: {input: {...input, endDate: targetEnd(input.startDate, input.endDate)}},
+    })
   ).json();
   const created = body.data?.analyticsTargetCreate;
   const userErrors = [
@@ -160,14 +163,14 @@ export async function raiseTarget(admin, target) {
 // [START campaign-dashboard.end-targets]
 // A campaign that closes early stops counting on the day it closed. Move the end date
 // on every target the campaign created, and Shopify rebuilds each measuring query.
-// A QR code that wasn't live yet keeps a one-day target, because a target can't end
-// before it starts.
+// A QR code that wasn't live yet keeps a one-day target, because a target has to end
+// after the day it starts.
 export async function endTargetsOn(admin, campaign, day) {
   const read = await readTargets(admin, campaign);
   const problems = [...transportErrors(read)];
   const warnings = [];
   for (const target of problems.length ? [] : targetNodes(read)) {
-    const endDate = target.startDate > day ? target.startDate : day;
+    const endDate = targetEnd(target.startDate, day);
     const body = await (
       await admin.graphql(TARGET_UPDATE, {
         variables: {id: target.id, input: {endDate}},
@@ -452,8 +455,8 @@ export async function stampTier(admin, campaign, campaigns) {
 export async function stampOrders(admin, campaign) {
   const touches = touchMarks(campaign);
   const userErrors = [];
-  // A refund or edit books a later row for the same order. Rows come oldest first,
-  // and the first row is the day the order was placed.
+  // The query skips refund and edit rows. An order placed before the window has no
+  // row, and each remaining order's first row is the day it was placed.
   const stamped = new Set();
   for (let offset = 0; ; offset += ORDER_PAGE_SIZE) {
     const body = await (

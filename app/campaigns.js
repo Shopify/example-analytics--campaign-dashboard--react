@@ -143,7 +143,8 @@ const RECENT_DAYS = 29;
 export function recentWindow(campaign) {
   const day = (offset) =>
     new Date(Date.now() - offset * 86400000).toISOString().slice(0, 10);
-  const floor = day(RECENT_DAYS);
+  // The UTC date can trail the store's date by a day. One day stricter covers every timezone.
+  const floor = day(RECENT_DAYS - 1);
   // A campaign that ended before the retained days has no events left to count.
   if (campaign.endDate < floor) return `SINCE -${RECENT_DAYS}d UNTIL -${RECENT_DAYS}d`;
   const since = campaign.startDate < floor ? `-${RECENT_DAYS}d` : campaign.startDate;
@@ -151,6 +152,12 @@ export function recentWindow(campaign) {
   const until = running && campaign.endDate > day(0) ? 'today' : campaign.endDate;
   return `SINCE ${since} UNTIL ${until}`;
 }
+
+// A target has to end after the day it starts. A one-day window ends the next day.
+export const targetEnd = (startDate, endDate) =>
+  !startDate || endDate > startDate
+    ? endDate
+    : new Date(Date.parse(startDate) + 86400000).toISOString().slice(0, 10);
 
 // Only the owning app can change an app-owned definition. Writes take the `$app:`
 // alias. Reads and analytics columns take the namespace it resolves to.

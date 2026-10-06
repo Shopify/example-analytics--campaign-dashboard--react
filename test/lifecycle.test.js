@@ -249,6 +249,20 @@ describe('lock release', () => {
   });
 });
 
+describe('saved targets', () => {
+  const failed = () => planned({targets: {store: 'gid://shopify/AnalyticsTarget/3'}});
+
+  it.each([
+    ['set-targets', {revenueTarget: '100'}],
+    ['set-audience', {audience: 'vip'}],
+    ['set-products', {products: '[]'}],
+  ])('refuses %s after a failed activation saved targets', async (intent, fields) => {
+    const {mock, result} = run(base(failed()), {intent, ...fields});
+    expect((await result).problems[0]).toMatch(/Cancel the campaign/);
+    expect(ops(mock.calls)).not.toContain('UpdateCampaign');
+  });
+});
+
 describe('set-targets', () => {
   it('clears a blank amount and keeps an absent one', async () => {
     const {mock, result} = run(base(planned({revenueTarget: '100', productTarget: '50'})), {
@@ -359,7 +373,7 @@ describe('close', () => {
     expect(mock.calls.find((call) => call.op === 'CloseCampaignAnnotation').variables.input.title).toBe('Summer launch: 50% of target');
   });
 
-  it("ends each target on the close day, or on its start for a code that wasn't live", async () => {
+  it("ends each target on the close day, or the day after its start for a code that wasn't live", async () => {
     const store = {id: 'gid://shopify/AnalyticsTarget/3', startDate: '2026-09-10', expectedValue: '2000', shopifyqlQuery: 'FROM sales SHOW total_sales'};
     const later = {id: 'gid://shopify/AnalyticsTarget/4', startDate: '2026-10-03', expectedValue: '100', shopifyqlQuery: 'FROM campaign_sales SHOW x'};
     const {mock, result} = run(
@@ -372,7 +386,7 @@ describe('close', () => {
     const ends = mock.calls
       .filter((call) => call.op === 'RaiseCampaignTarget')
       .map((call) => [call.variables.id, call.variables.input.endDate]);
-    expect(ends).toEqual([[store.id, '2026-09-30'], [later.id, '2026-10-03']]);
+    expect(ends).toEqual([[store.id, '2026-09-30'], [later.id, '2026-10-04']]);
   });
 
   it('closes with a warning when another target already has the shortened dates', async () => {

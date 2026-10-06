@@ -101,7 +101,7 @@ export function SendEventsPanel({
   submit,
 }) {
   // The record is the gate. A partial send closes it too, because idempotency keys
-  // expire after 24 hours and a later resend would count every accepted event twice.
+  // expire after 24 hours and a later resend would count every received event twice.
   if (alreadySent || !running) return null;
 
   // An undeclared column fails on `parseErrors` while the request itself succeeds.
@@ -276,7 +276,8 @@ export function Deliverability({
         }}
       />
       <s-paragraph>
-        {health.reach.toFixed(1)}% of {integer(sent)} messages reached customers. {listResult}
+        {health.reach.toFixed(1)}% of {integer(sent)} messages were delivered. Push
+        notifications count as sent, because push reports no delivery. {listResult}
       </s-paragraph>
       <s-table>
         <s-table-header-row>

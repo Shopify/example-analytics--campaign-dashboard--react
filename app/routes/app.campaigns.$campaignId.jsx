@@ -318,10 +318,18 @@ async function runIntent(admin, request, params) {
 
   // Both edits move what an active campaign's target filters on. Gate on the record's status,
   // the same field the panel reads before it offers the control.
+  // A failed activation keeps the targets it created, and a retry reuses them as they
+  // were. Cancel deletes them, so an edit can't drift from a saved target.
+  const savedTargets = Object.keys(campaign.targets ?? {}).length > 0;
+  const savedTargetsProblem = {
+    problems: ['This campaign already has targets from an activation. Cancel the campaign, then make the change.'],
+  };
+
   if (intent === 'set-products' || intent === 'set-audience') {
     if (campaign.status !== 'planned') {
       return {problems: ['Only planned campaigns can change products or segment.']};
     }
+    if (savedTargets) return savedTargetsProblem;
   }
 
   if (intent === 'set-products') {
@@ -357,6 +365,7 @@ async function runIntent(admin, request, params) {
     if (campaign.status !== 'planned') {
       return {problems: ['Targets can change only before the campaign is activated.']};
     }
+    if (savedTargets) return savedTargetsProblem;
     const amounts = {};
     // The form renders a field only for a target this campaign can activate, and a
     // segment of everyone has no segment target. Validate what came in, and leave
@@ -384,7 +393,7 @@ async function runIntent(admin, request, params) {
     if (campaign.status !== 'running') {
       return {problems: ['Only active campaigns can send events.']};
     }
-    // No endpoint deletes an accepted event, and the funnel queries sum every event
+    // The App Events API can't retract a submitted event, and the funnel queries sum every event
     // this app sent for the campaign. A second replay would sum both runs into one
     // funnel and measure every rate against a doubled denominator. The record is the
     // gate, because the funnel read behind the panel lags ingestion by minutes.
@@ -415,7 +424,7 @@ async function runIntent(admin, request, params) {
     // a duplicate run after they expire. A partial send closes the gate.
     const landed = sent
       ? [
-          `Shopify accepted ${sent} of ${eventTotal(campaign.channels)} events. The funnel reports those, and a second send would count them twice.`,
+          `Shopify received ${sent} of ${eventTotal(campaign.channels)} events. The funnel reports the events that pass validation, and a second send would count them twice.`,
         ]
       : [];
     if (sent > 0) {
