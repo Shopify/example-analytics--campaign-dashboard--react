@@ -41,20 +41,28 @@ You'll need Node 20.19+ or 22.12+, [app development permissions](https://shopify
    scopes = "read_reports,write_reports,read_analytics_annotations,write_analytics_annotations,write_products,write_customers,write_orders,write_metaobject_definitions,write_metaobjects,write_marketing_events"
    ```
 
-5. Create the local database, then deploy the app, the QR code metaobject definition, and the event declarations:
+5. If your organization doesn't have App Events access yet, delete the extension before anything else runs:
+
+   ```shell
+   rm -rf extensions/app-events
+   ```
+
+   Without access, the extension stops `npm run dev` and `npm run deploy` with `Invalid extension type "analytics_app_events"`. With the extension deleted, the **Campaign events** panel shows a **Campaign events aren't available yet** banner. After access arrives, `git checkout -- extensions/app-events` restores the extension.
+
+6. Create the local database and start the app. Shopify CLI asks for a dev store and installs the app with the scopes from step 4. Press `p` to open the app:
 
    ```shell
    npm run setup
-   npm run deploy
-   ```
-
-6. Start the app, press `p` to open the preview URL, then click **Install app**. The prompt lists the scopes from step 4:
-
-   ```shell
    npm run dev
    ```
 
-The app opens on a campaign list holding two seeded campaigns. Panels read `$0` or show no rows until you request the access below and the store has orders. The declaration from `npm run deploy` takes a few minutes to propagate before an App Events query returns rows.
+7. In a second terminal, deploy the QR code metaobject definition and the event declarations. Run the deploy after `npm run dev` starts, because until then the app URL is a placeholder and the deploy rejects the webhook addresses:
+
+   ```shell
+   npm run deploy
+   ```
+
+The app opens on a campaign list holding two seeded campaigns. Panels read `$0` or show no rows until you request the access below and the store has orders. With the extension in place, the event declarations from `npm run deploy` take a few minutes to propagate before an App Events query returns rows.
 
 ## Tests
 
@@ -70,7 +78,7 @@ npm run check:markers
 | Access | What stays empty without it |
 |--------|-----------------------------|
 | [Level 2 protected customer data](https://shopify.dev/docs/apps/launch/protected-customer-data) | The campaign detail page. `shopifyqlQuery` returns an access error, and a **Couldn't load sales** banner replaces the panels. The campaign list still loads. |
-| [App Events in Analytics](https://shopify.dev/docs/apps/build/app-events/analytics) | **Campaign events**, **Channel metrics**, **Send performance**, and **Deliverability**. |
+| [App Events in Analytics](https://shopify.dev/docs/apps/build/app-events/analytics) | The app, which won't start until you delete the extension in step 5. Then **Campaign events** shows a **Campaign events aren't available yet** banner, and **Channel metrics**, **Send performance**, and **Deliverability** stay hidden. |
 
 ### Level 2 protected customer data
 
@@ -90,6 +98,8 @@ Leave this app's distribution method unset. [Requesting protected customer data]
 ### App Events in Analytics
 
 An early-access program. [Request access with this form](https://forms.gle/2yLka2Ww3J3cNiGY8) and wait for a reply. There's no self-serve path.
+
+Until access arrives, delete the extension as step 5 of [Setup](#setup) describes.
 
 ## API version
 

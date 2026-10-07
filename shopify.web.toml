@@ -1,5 +1,6 @@
 name = "web"
 roles = ["backend", "frontend"]
+webhooks_path = "/webhooks/app/uninstalled"
 
 [commands]
 dev = "npm exec react-router dev"
