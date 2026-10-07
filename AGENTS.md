@@ -35,7 +35,7 @@ The tests use Vitest. `test/helpers/admin.js` exports `mockAdmin`, which answers
 
 ## Don't change these
 
-- **API version.** `shopify.app.toml` and `app/shopify.server.js` pin `2026-10`. Keep both files on the same version.
+- **API version.** `shopify.app.toml` and `app/shopify.server.js` pin `2027-01`, the release candidate. ShopifyQL resolves Campaign metaobject columns only in the release candidate. The stable `2026-10` version returns `Metafield Column Not Found`, and **Promoted product sales** stays empty.
 - **Runtime metaobject types.** `ensureDefinition` in `app/campaigns.server.js` creates the `campaign_dashboard_campaign` and `campaign_dashboard_creator` types when the app loads. Analytics joins only types without the `$app:` prefix. Keep these types out of `shopify.app.toml`.
 - **Reference validations.** A metaobject reference field's validation can't change after the field exists. Add a new field instead of changing the `creators` field.
 - **Credentials.** `client_id` is empty in `shopify.app.toml`, and `config:link` fills it in. Never write a client secret, an access token, or a store domain into a tracked file.
@@ -54,4 +54,4 @@ The tests use Vitest. `test/helpers/admin.js` exports `mockAdmin`, which answers
 
 ## Validate Shopify code
 
-Use the [Shopify AI Toolkit](https://shopify.dev/docs/apps/build/ai-toolkit) to check GraphQL Admin API documents in `app/campaign-queries.server.js` against the `2026-10` schema, and to look up ShopifyQL syntax and schemas.
+Use the [Shopify AI Toolkit](https://shopify.dev/docs/apps/build/ai-toolkit) to check GraphQL Admin API documents in `app/campaign-queries.server.js` against the `2027-01` schema, and to look up ShopifyQL syntax and schemas.

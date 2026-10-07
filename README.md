@@ -93,7 +93,9 @@ An early-access program. [Request access with this form](https://forms.gle/2yLka
 
 ## API version
 
-Two files pin version `2026-10`. `shopify.app.toml` sets `api_version` for webhooks, and `app/shopify.server.js` sets `apiVersion` for every Admin API call. Keep both files on the same version.
+Two files pin version `2027-01`, the release candidate. `shopify.app.toml` sets `api_version` for webhooks, and `app/shopify.server.js` sets `apiVersion` for every Admin API call. Keep both files on the same version.
+
+ShopifyQL resolves Campaign metaobject columns only in the release candidate. The stable `2026-10` version returns `Metafield Column Not Found` for these columns. On that version, the product dimension never reads **Queryable** and **Promoted product sales** stays empty.
 
 ## Credentials
 
