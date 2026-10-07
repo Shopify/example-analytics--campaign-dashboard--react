@@ -1,0 +1,92 @@
+# `shopify app config link` fills in client_id and the app URLs.
+# Learn more: https://shopify.dev/docs/apps/tools/cli/configuration
+client_id = ""
+
+embedded = true
+
+# [START campaign-dashboard.access-scopes]
+[access_scopes]
+scopes = "read_reports,write_reports,read_analytics_annotations,write_analytics_annotations,write_products,write_customers,write_orders,write_metaobject_definitions,write_metaobjects,write_marketing_events"
+# [END campaign-dashboard.access-scopes]
+
+# [START campaign-dashboard.direct-api]
+# The metric cards query from the browser, which needs direct access.
+# `online` runs those queries as the staff member who opened the app, and
+# the browser holds that person's permissions and no more.
+[access.admin]
+direct_api_mode = "online"
+embedded_app_direct_api_access = true
+# [END campaign-dashboard.direct-api]
+
+[webhooks]
+api_version = "2026-10"
+
+  # Handled by: /app/routes/webhooks.app.uninstalled.jsx
+  [[webhooks.subscriptions]]
+  topics = ["app/uninstalled"]
+  uri = "/webhooks/app/uninstalled"
+
+  # Handled by: /app/routes/webhooks.app.scopes_update.jsx
+  [[webhooks.subscriptions]]
+  topics = ["app/scopes_update"]
+  uri = "/webhooks/app/scopes_update"
+
+  # [START campaign-dashboard.compliance-webhooks]
+  # `topics` rejects these three at release. They go under `compliance_topics`.
+  [[webhooks.subscriptions]]
+  compliance_topics = ["customers/data_request"]
+  uri = "/webhooks/customers/data_request"
+
+  [[webhooks.subscriptions]]
+  compliance_topics = ["customers/redact"]
+  uri = "/webhooks/customers/redact"
+
+  [[webhooks.subscriptions]]
+  compliance_topics = ["shop/redact"]
+  uri = "/webhooks/shop/redact"
+  # [END campaign-dashboard.compliance-webhooks]
+
+# [START metaobject-definition]
+[metaobjects.app.qrcode]
+name = "QR Code"
+description = "QR codes that link to products"
+
+  [metaobjects.app.qrcode.access]
+  admin = "merchant_read_write"
+
+[metaobjects.app.qrcode.fields.title]
+name = "Title"
+type = "single_line_text_field"
+required = true
+
+[metaobjects.app.qrcode.fields.product]
+name = "Product"
+type = "product_reference"
+
+[metaobjects.app.qrcode.fields.product_variant]
+name = "Product Variant"
+type = "variant_reference"
+
+[metaobjects.app.qrcode.fields.destination]
+name = "Destination"
+type = "single_line_text_field"
+
+[metaobjects.app.qrcode.fields.scans]
+name = "Scans"
+type = "number_integer"
+# [END metaobject-definition]
+
+# [START campaign-dashboard.qr-campaign-link]
+# Holds the ID of the code's campaign entry.
+[metaobjects.app.qrcode.fields.campaign]
+name = "Campaign"
+type = "single_line_text_field"
+capabilities.admin_filterable = true
+# [END campaign-dashboard.qr-campaign-link]
+
+# [START campaign-dashboard.qr-live-on-field]
+# Blank goes live with its campaign.
+[metaobjects.app.qrcode.fields.live_on]
+name = "Live on"
+type = "date"
+# [END campaign-dashboard.qr-live-on-field]

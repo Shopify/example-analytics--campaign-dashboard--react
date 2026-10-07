@@ -1,0 +1,58 @@
+# [START campaign-dashboard.app-events-toml]
+[[extensions]]
+type = "analytics_app_events"
+handle = "app-events"
+
+# The email funnel, in order.
+[[extensions.events]]
+name = "shopify.marketing.email_sent"
+kind = "standard"
+
+[[extensions.events]]
+name = "shopify.marketing.email_delivered"
+kind = "standard"
+
+[[extensions.events]]
+name = "shopify.marketing.email_opened"
+kind = "standard"
+
+[[extensions.events]]
+name = "shopify.marketing.email_clicked"
+kind = "standard"
+
+# The two ways a send goes wrong. A funnel without these reports only wins.
+[[extensions.events]]
+name = "shopify.marketing.email_bounced"
+kind = "standard"
+
+[[extensions.events]]
+name = "shopify.marketing.email_unsubscribed"
+kind = "standard"
+
+# The follow-up touch, on a second channel.
+[[extensions.events]]
+name = "shopify.marketing.sms_sent"
+kind = "standard"
+
+[[extensions.events]]
+name = "shopify.marketing.sms_delivered"
+kind = "standard"
+
+[[extensions.events]]
+name = "shopify.marketing.sms_clicked"
+kind = "standard"
+
+[[extensions.events]]
+name = "shopify.marketing.sms_unsubscribed"
+kind = "standard"
+
+# The last touch, on a third channel. device_platform splits it by iOS and
+# Android without a second pair of events.
+[[extensions.events]]
+name = "shopify.marketing.push_sent"
+kind = "standard"
+
+[[extensions.events]]
+name = "shopify.marketing.push_opened"
+kind = "standard"
+# [END campaign-dashboard.app-events-toml]
