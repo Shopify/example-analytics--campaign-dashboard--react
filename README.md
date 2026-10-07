@@ -93,9 +93,7 @@ An early-access program. [Request access with this form](https://forms.gle/2yLka
 
 ## API version
 
-Two files pin version `2027-01`. `shopify.app.toml` sets `api_version` for webhooks, and `app/shopify.server.js` sets `apiVersion` for every Admin API call. Don't lower either one.
-
-ShopifyQL resolves Campaign metaobject columns starting with `2027-01`. On an earlier version, the product dimension never reads **Queryable** and **Promoted product sales** stays empty.
+Two files pin version `2026-10`. `shopify.app.toml` sets `api_version` for webhooks, and `app/shopify.server.js` sets `apiVersion` for every Admin API call. Keep both files on the same version.
 
 ## Credentials
 
@@ -131,9 +129,9 @@ Each campaign is an entry of the **Campaign** metaobject type, which the app cre
 
 A dev store with no orders reports `$0`. The seed creates campaigns. The sales come from orders you create.
 
-- A dev store accepts only test payments, and test orders never reach the `sales` dataset. Create orders with the GraphQL Admin API's [`orderCreate`](https://shopify.dev/docs/api/admin-graphql/latest/mutations/orderCreate) mutation instead, with a `processedAt` date inside `Summer launch`'s window. The nine sends land between 20 and 7 days before you install.
+- A dev store accepts only test payments, and test orders often don't reach the `sales` dataset. Create orders with the GraphQL Admin API's [`orderCreate`](https://shopify.dev/docs/api/admin-graphql/latest/mutations/orderCreate) mutation instead, with a `processedAt` date inside `Summer launch`'s window. The nine sends land between 20 and 7 days before you install.
 - Cluster the orders in the days right after a send, with the largest cluster in the last few days. Orders placed only in the opening week make every later send read as having moved nothing.
-- **Creator revenue** groups sales by `discount_code`, and that column counts a code only when a buyer enters it at checkout. An order created through the API or in the admin has no code. **QR code sales** reads orders that follow a scan. Both panels need real checkouts on a store that accepts payments, and a dev store leaves them empty.
+- **Creator revenue** groups sales by `discount_code`, and that column counts a code only when a buyer enters it at checkout. An order created through the API or in the admin has no code. **QR code sales** reads orders that follow a scan. Both panels need real checkouts on a store that accepts payments. On a dev store, **Creator revenue** lists each code at `$0` and **QR code sales** stays empty.
 
 ## What it does
 
@@ -149,9 +147,9 @@ The [tutorial series](https://shopify.dev/docs/apps/build/analytics) walks throu
 |--------------|---------------|
 | A **Couldn't load sales** banner replaces the sales panels | Either the `scopes` line didn't survive `config:link`, or Level 2 access hasn't landed for this app. Reading live analytics needs both `read_reports` and Level 2. |
 | Every sales panel reads `$0` | The store has no orders in the campaign's window. |
-| `This store can't query App Events yet` | Either `npm run deploy` hasn't propagated, or the organization doesn't have App Events access. |
+| A **Campaign events aren't available yet** banner | Either `npm run deploy` hasn't propagated, or the organization doesn't have App Events access. |
 | `Column Not Found` on an `app_events` query | The declaration hasn't reached the store. Don't send events until it clears. |
-| **Creator revenue** doesn't appear | No sale has one of the three codes. A discount added in the admin has no code for analytics to group on. |
+| **Creator revenue** lists every code at `$0` | No sale has one of the three codes. A discount added in the admin has no code for analytics to group on. |
 | **Promoted product sales** is empty | Analytics is off for the Campaign type, or the setting changed under a minute ago. Turn it on from the product row under **Analytics dimensions**. |
 | A segment panel is empty | The dimension isn't queryable yet. Create it from **Analytics dimensions**. |
 | **Order attribution** is missing after a close | Analytics takes a few minutes to index the order metafields the close wrote. Reload after that. |

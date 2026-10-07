@@ -10,7 +10,7 @@ const shopify = shopifyApp({
   apiKey: process.env.SHOPIFY_API_KEY,
   apiSecretKey: process.env.SHOPIFY_API_SECRET || '',
   // [START campaign-dashboard.api-version]
-  apiVersion: '2027-01',
+  apiVersion: '2026-10',
   // [END campaign-dashboard.api-version]
   scopes: process.env.SCOPES?.split(','),
   appUrl: process.env.SHOPIFY_APP_URL || '',
@@ -27,7 +27,7 @@ const shopify = shopifyApp({
 
 export default shopify;
 // [START campaign-dashboard.api-version]
-export const apiVersion = '2027-01';
+export const apiVersion = '2026-10';
 // [END campaign-dashboard.api-version]
 export const addDocumentResponseHeaders = shopify.addDocumentResponseHeaders;
 export const authenticate = shopify.authenticate;
