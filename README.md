@@ -47,7 +47,7 @@ You'll need Node 20.19+ or 22.12+, [app development permissions](https://shopify
    rm -rf extensions/app-events
    ```
 
-   Without access, the extension stops `npm run dev` and `npm run deploy` with `Invalid extension type "analytics_app_events"`. With the extension deleted, the **Campaign events** panel shows a **Campaign events aren't available yet** banner. After access arrives, `git checkout -- extensions/app-events` restores the extension.
+   Without access, the extension stops `npm run dev` and `npm run deploy` with `Invalid extension type "analytics_app_events"`. With the extension deleted, the **Campaign events** panel shows a **Campaign events aren't available yet** banner. After access arrives, run `git checkout -- extensions/app-events` to restore the extension, then run `npm run deploy` to send the event declarations to Shopify.
 
 6. Create the local database and start the app. Shopify CLI asks for a dev store and installs the app with the scopes from step 4. Press `p` to open the app:
 
