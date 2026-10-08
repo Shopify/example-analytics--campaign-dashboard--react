@@ -32,8 +32,8 @@ import { isCalendarDate, shortDate, statusLabel } from "../campaigns";
 // target. Codes join and leave a campaign before activation.
 const assignable = (campaign) => campaign.status === "planned";
 
-async function campaignChoices(admin, qrCodeId) {
-  const { campaigns, failed } = await readCampaigns(withReturnedErrors(admin));
+async function campaignChoices(admin, shop, qrCodeId) {
+  const { campaigns, failed } = await readCampaigns(withReturnedErrors(admin), shop);
   const current = qrCodeId ? campaignOf(campaigns, qrCodeId) : null;
   return {
     failed,
@@ -80,7 +80,7 @@ export async function loader({ request, params }) {
 
   // [START data]
   if (params.id === "new") {
-    const { campaigns, failed } = await campaignChoices(admin, null);
+    const { campaigns, failed } = await campaignChoices(admin, session.shop, null);
     // A campaign page links here with its campaign picked.
     const picked = new URL(request.url).searchParams.get("campaign");
     return {
@@ -99,6 +99,7 @@ export async function loader({ request, params }) {
   if (!qrCode) throw new Response("No QR code has this handle.", { status: 404 });
   const { campaigns, current, failed, locked } = await campaignChoices(
     admin,
+    session.shop,
     qrCode?.id,
   );
   return {
@@ -131,16 +132,16 @@ export async function action({ request, params }) {
         status: 422,
         headers: { "Content-Type": "application/json" },
       });
-    const before = await campaignChoices(admin, qrCodeId);
+    const before = await campaignChoices(admin, session.shop, qrCodeId);
     if (before.failed.length) return refuse("Couldn't load campaigns. Try again.");
     const lock = before.current
-      ? await lockCampaigns(withReturnedErrors(admin), [before.current.id])
+      ? await lockCampaigns(session.shop, [before.current.id])
       : { release: async () => {} };
     if (lock.problems) return refuse(lock.problems[0].message);
     try {
       // An active or closed campaign reports on its codes, and a canceled one replans with
       // them. The lock stops another request from activating the campaign before the delete.
-      const choices = await campaignChoices(admin, qrCodeId);
+      const choices = await campaignChoices(admin, session.shop, qrCodeId);
       if (choices.failed.length) return refuse("Couldn't load campaigns. Try again.");
       if (choices.locked) {
         return refuse(
@@ -185,7 +186,7 @@ export async function action({ request, params }) {
   const reassigned = campaign !== (data.initialCampaign || null);
   const moved = reassigned || liveOn !== (data.initialLiveOn || "");
   const choices = moved
-    ? await campaignChoices(admin, qrCodeId)
+    ? await campaignChoices(admin, session.shop, qrCodeId)
     : null;
   const choice = choices?.campaigns.find((option) => option.gid === campaign);
   const campaignError = !choices
@@ -214,7 +215,7 @@ export async function action({ request, params }) {
   // [START campaign-dashboard.qr-campaign-assign]
   // A code's single `campaign` field holds the link. A code has one campaign at most.
   const lock = moved
-    ? await lockQRCodeMove(withReturnedErrors(admin), qrCodeId, campaign)
+    ? await lockQRCodeMove(withReturnedErrors(admin), session.shop, qrCodeId, campaign)
     : { release: async () => {} };
   if (lock.problems) {
     return new Response(

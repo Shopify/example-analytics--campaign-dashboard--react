@@ -10,7 +10,7 @@ export async function loader({ request }) {
   const { admin, session } = await authenticate.admin(request);
   const [qrCodes, { campaigns }] = await Promise.all([
     getQRCodes(admin.graphql, session.shop),
-    readCampaigns(withReturnedErrors(admin)),
+    readCampaigns(withReturnedErrors(admin), session.shop),
   ]);
 
   // [START campaign-dashboard.qr-list-campaign]

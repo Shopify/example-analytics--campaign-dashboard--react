@@ -30,8 +30,9 @@ import {CHANNELS, CHANNEL_KEYS} from '../channels';
 
 // [START campaign-dashboard.overview-read]
 export const loader = async ({request}) => {
-  const admin = withReturnedErrors((await authenticate.admin(request)).admin);
-  const {appId, campaigns, appName, userErrors} = await ensureCampaign(admin);
+  const {admin: client, session} = await authenticate.admin(request);
+  const admin = withReturnedErrors(client);
+  const {appId, campaigns, appName, userErrors} = await ensureCampaign(admin, session.shop);
 
   const [dimensions, targetsBody, sends] = await Promise.all([
     readDimensions(admin, appId),
@@ -78,13 +79,14 @@ export const loader = async ({request}) => {
 
 // [START campaign-dashboard.spawn-action]
 export const action = async ({request}) => {
-  const admin = withReturnedErrors((await authenticate.admin(request)).admin);
+  const {admin: client, session} = await authenticate.admin(request);
+  const admin = withReturnedErrors(client);
   const form = await request.formData();
 
   // Setup for every campaign, sharing this route's action with the create form.
   if (String(form.get('intent')) === 'enable-dimension') {
     const which = String(form.get('which'));
-    const {appId} = await readCampaigns(admin);
+    const {appId} = await readCampaigns(admin, session.shop);
     const definition = (await readDimensions(admin, appId))[which];
     if (!definition) return {problems: [`No dimension named ${which}.`]};
     const errors = await enableDimension(admin, definition);
@@ -162,7 +164,7 @@ export const action = async ({request}) => {
     return {problems: creators.userErrors.map((error) => error.message)};
   }
 
-  const {campaign, userErrors} = await createCampaign(admin, {
+  const {campaign, userErrors} = await createCampaign(admin, session.shop, {
     ...fields,
     creators: creators.creators,
   });

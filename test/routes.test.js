@@ -1,8 +1,9 @@
 import {createElement} from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
-import {lockStore, mockAdmin, ops} from './helpers/admin';
+import {mockAdmin, ops} from './helpers/admin';
 import {creatorNode, qrCodesFor, listOf, node} from './helpers/campaign';
+import {SHOP, db, tablesOf} from './helpers/db';
 import {planned, post, resetTargets, session} from './helpers/routes';
 
 vi.mock('../app/shopify.server', async () => (await import('./helpers/routes')).shopifyServer);
@@ -30,9 +31,9 @@ afterEach(() => {
 });
 
 describe('create', () => {
+  beforeEach(() => db.shopState.create({data: {shop: SHOP, lastCampaignId: 4211}}));
   const creating = () => ({
-    CampaignList: listOf([], {value: '4211'}),
-    SetCampaignMetafields: () => ({data: {metafieldsSet: {userErrors: []}}}),
+    CampaignList: listOf([]),
     CreateCampaign: ({metaobject}) => ({
       data: {metaobjectCreate: {metaobject: node({gid: 'g', handle: metaobject.handle, id: 4212}), userErrors: []}},
     }),
@@ -145,7 +146,6 @@ describe('creator revenue', () => {
 
 describe('QR code save', () => {
   const qrHandlers = (campaigns, extra = {}) => ({
-    ...lockStore(),
     CampaignList: listOf(campaigns),
     CampaignQRCodes: qrCodesFor(campaigns),
     UpdateCampaign: () => ({data: {metaobjectUpdate: {metaobject: null, userErrors: []}}}),
@@ -218,21 +218,22 @@ describe('QR code save', () => {
   it('deletes the code, then ends its marketing activity', async () => {
     vi.stubEnv('SHOPIFY_APP_URL', 'https://app.test');
     const entry = planned({gid: 'g1', qrCodes: [{id: 'gid://shopify/Metaobject/50', handle: 'hat-front'}]});
+    const heldDuring = {};
     const mock = mockAdmin(qrHandlers([entry], {
-      DeleteQRCode: () => ({data: {metaobjectDelete: {deletedId: 'gid://shopify/Metaobject/50', userErrors: []}}}),
-      EndQRCodeMarketingActivity: () => ({data: {marketingActivityUpsertExternal: {userErrors: []}}}),
+      DeleteQRCode: () => {
+        heldDuring.delete = tablesOf().campaignLock.map((lock) => lock.campaignId);
+        return {data: {metaobjectDelete: {deletedId: 'gid://shopify/Metaobject/50', userErrors: []}}};
+      },
+      EndQRCodeMarketingActivity: () => {
+        heldDuring.end = tablesOf().campaignLock.map((lock) => lock.campaignId);
+        return {data: {marketingActivityUpsertExternal: {userErrors: []}}};
+      },
     }));
     session.admin = mock.raw;
     const response = await qrAction({request: post('/app/qrcodes/hat-front', {action: 'delete'}), params: {id: 'hat-front'}});
     expect(response.status).toBe(302);
-    expect(ops(mock.calls).filter((op) => /Lock|^DeleteQRCode|^EndQRCode/.test(op))).toEqual([
-      'CampaignLock',
-      'TakeCampaignLock',
-      'DeleteQRCode',
-      'CampaignLock',
-      'ReleaseCampaignLock',
-      'EndQRCodeMarketingActivity',
-    ]);
+    expect(ops(mock.calls).filter((op) => /^DeleteQRCode|^EndQRCode/.test(op))).toEqual(['DeleteQRCode', 'EndQRCodeMarketingActivity']);
+    expect(heldDuring).toEqual({delete: [4210], end: []});
     vi.unstubAllEnvs();
   });
 
@@ -297,18 +298,22 @@ describe('QR code save', () => {
   });
 
   it("writes the chosen campaign on the code and leaves every campaign entry alone", async () => {
-    const locks = lockStore();
-    const mock = mockAdmin({
-      ...qrHandlers([planned({gid: 'g1', id: 4210, qrCodes: [{id: 'gid://shopify/Metaobject/50', handle: 'hat-front'}]}), planned({gid: 'g2', id: 4211})]),
-      ...locks,
-    });
+    let heldDuring = null;
+    const mock = mockAdmin(
+      qrHandlers([planned({gid: 'g1', id: 4210, qrCodes: [{id: 'gid://shopify/Metaobject/50', handle: 'hat-front'}]}), planned({gid: 'g2', id: 4211})], {
+        UpsertQRCode: () => {
+          heldDuring = tablesOf().campaignLock.map((lock) => lock.campaignId);
+          return {data: {metaobjectUpsert: {metaobject: {id: 'gid://shopify/Metaobject/50', handle: 'hat-front'}, userErrors: []}}};
+        },
+      }),
+    );
     session.admin = mock.raw;
     const response = await qrAction({request: post('/app/qrcodes/hat-front', {...form('g2'), initialCampaign: 'g1'}), params: {id: 'hat-front'}}).catch((error) => error);
     expect(response.headers.get('Location')).toBe('/app/qrcodes/hat-front');
     expect(upsertedFields(mock.calls)).toContainEqual({key: 'campaign', value: 'g2'});
     expect(ops(mock.calls)).not.toContain('UpdateCampaign');
-    expect(ops(mock.calls).filter((op) => op === 'TakeCampaignLock')).toHaveLength(2);
-    expect(locks.held.size).toBe(0);
+    expect(heldDuring).toEqual([4210, 4211]);
+    expect(tablesOf().campaignLock).toEqual([]);
   });
 
   it('leaves the campaign field out when the picker is unchanged', async () => {

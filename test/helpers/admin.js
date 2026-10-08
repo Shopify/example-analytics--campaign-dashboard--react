@@ -28,27 +28,3 @@ export function mockAdmin(handlers) {
 }
 
 export const ops = (calls) => calls.map((call) => call.op);
-
-// Campaign locks that remember what each request took, keyed by metafield key.
-export function lockStore() {
-  const held = new Map();
-  return {
-    held,
-    CampaignLock: ({key}) => ({
-      data: {
-        currentAppInstallation: {
-          id: 'gid://shopify/AppInstallation/1',
-          metafield: held.has(key) ? {value: held.get(key), compareDigest: 'd0'} : null,
-        },
-      },
-    }),
-    TakeCampaignLock: ({metafields: [lock]}) => {
-      held.set(lock.key, lock.value);
-      return {data: {metafieldsSet: {userErrors: []}}};
-    },
-    ReleaseCampaignLock: ({metafields: [lock]}) => {
-      held.delete(lock.key);
-      return {data: {metafieldsDelete: {userErrors: []}}};
-    },
-  };
-}

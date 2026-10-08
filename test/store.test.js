@@ -10,15 +10,16 @@ import {
   forgetCustomer,
   lockCampaign,
   lockQRCodeMove,
-  nextCampaignId,
+  campaignIdFloor,
   readCampaigns,
   rememberMarkers,
   updateCampaign,
   upsertCreators,
-  withReturnedErrors,
+  withState,
 } from '../app/campaigns.server';
-import {lockStore, mockAdmin, ops} from './helpers/admin';
+import {mockAdmin, ops} from './helpers/admin';
 import {ALL_FIELDS, creatorNode, listOf, node, objectDefinitions, qrCodeList, qrCodeNode} from './helpers/campaign';
+import {SHOP, db, seedState, storedState, tablesOf} from './helpers/db';
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -27,21 +28,19 @@ beforeEach(() => {
 afterEach(() => vi.useRealTimers());
 
 describe('campaign IDs', () => {
-  it('starts at the first ID', () => {
-    expect(nextCampaignId([], null)).toBe(FIRST_CAMPAIGN_ID);
+  it('floors a store without campaigns below the first ID', () => {
+    expect(campaignIdFloor([])).toBe(FIRST_CAMPAIGN_ID - 1);
   });
-  it('counts past the high-water mark after the highest campaign is deleted', () => {
-    expect(nextCampaignId([{id: 4210}], 4212)).toBe(4213);
-  });
-  it('counts past a stored ID above the mark', () => {
-    expect(nextCampaignId([{id: 4215}], 4212)).toBe(4216);
+  it('floors at the highest stored ID', () => {
+    expect(campaignIdFloor([{id: 4215}, {id: 4210}])).toBe(4215);
   });
 });
 
 describe('field mapping', () => {
-  it('round-trips a campaign through the entry fields', () => {
-    const campaign = campaignFromNode(
-      node({
+  it('round-trips a campaign through the entry fields', async () => {
+    const {admin} = mockAdmin({
+      CampaignList: listOf([
+        node({
         id: 4210,
         title: 'Summer',
         startDate: '2026-09-10',
@@ -54,8 +53,10 @@ describe('field mapping', () => {
         markers: {campaign: 'gid://shopify/AnalyticsAnnotation/1'},
         targets: {store: 'gid://shopify/AnalyticsTarget/2'},
         sentEvents: 9,
-      }),
-    );
+        }),
+      ]),
+    });
+    const {campaigns: [campaign]} = await readCampaigns(admin, SHOP);
     expect(campaign).toMatchObject({
       gid: 'gid://shopify/Metaobject/1',
       handle: 'campaign-4210',
@@ -71,7 +72,8 @@ describe('field mapping', () => {
   });
 
   it('defaults every field a merchant cleared in the admin', () => {
-    const campaign = campaignFromNode({id: 'gid://x', handle: 'h', fields: [{key: 'campaign_id', jsonValue: 4300}]});
+    const entry = {id: 'gid://x', handle: 'h', fields: [{key: 'campaign_id', jsonValue: 4300}]};
+    const campaign = withState(campaignFromNode(entry), SHOP, null);
     expect(campaign).toMatchObject({
       id: 4300,
       channels: [],
@@ -82,6 +84,23 @@ describe('field mapping', () => {
       markers: {},
       targets: {},
       sentEvents: null,
+    });
+  });
+
+  it("ignores records left by a deleted entry that held the campaign's ID", async () => {
+    seedState({campaignId: 4210, gid: 'gid://shopify/Metaobject/old', markers: {campaign: 'a1'}, sentEvents: 3});
+    const {admin} = mockAdmin({CampaignList: listOf([node({id: 4210})])});
+    const {campaigns} = await readCampaigns(admin, SHOP);
+    expect(campaigns[0]).toMatchObject({markers: {}, targets: {}, sentEvents: null});
+  });
+
+  it("fails the read when the app's records fail to read", async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(db.campaignState, 'findMany').mockRejectedValueOnce(new Error('SQLITE_BUSY'));
+    const {admin} = mockAdmin({CampaignList: listOf([node({id: 4210})])});
+    expect(await readCampaigns(admin, SHOP)).toMatchObject({
+      failed: [{message: "Couldn't read the app's campaign records. Try again."}],
+      campaigns: [],
     });
   });
 
@@ -103,7 +122,7 @@ describe('field mapping', () => {
         code(905, null),
       ]),
     });
-    const {campaigns, failed} = await readCampaigns(admin);
+    const {campaigns, failed} = await readCampaigns(admin, SHOP);
     expect(failed).toEqual([]);
     expect(campaigns.map((campaign) => campaign.qrCodes.map((qrCode) => qrCode.handle))).toEqual([
       ['code-902'],
@@ -121,7 +140,7 @@ describe('field mapping', () => {
           ? page([qrCodeNode({id: 'q2', handle: 'b', campaign: 'g1'})], null)
           : page([qrCodeNode({id: 'q1', handle: 'a', campaign: 'g1'})], 'c1'),
     });
-    const {campaigns} = await readCampaigns(admin);
+    const {campaigns} = await readCampaigns(admin, SHOP);
     expect(campaigns[0].qrCodes.map((qrCode) => qrCode.id)).toEqual(['q1', 'q2']);
     expect(calls.filter((call) => call.op === 'CampaignQRCodes').map((call) => call.variables)).toEqual([{after: null}, {after: 'c1'}]);
   });
@@ -131,7 +150,7 @@ describe('field mapping', () => {
       CampaignList: listOf([node({gid: 'g1', id: 4210})]),
       CampaignQRCodes: () => ({data: {metaobjects: {nodes: [], pageInfo: {hasNextPage: true, endCursor: 'more'}}}}),
     });
-    expect(await readCampaigns(admin)).toMatchObject({
+    expect(await readCampaigns(admin, SHOP)).toMatchObject({
       failed: [{message: 'This store has more than 5,000 QR codes. The campaign dashboard reads up to 5,000.'}],
       campaigns: [],
     });
@@ -145,7 +164,7 @@ describe('field mapping', () => {
         return body;
       },
     });
-    expect((await readCampaigns(admin)).failed).toEqual([
+    expect((await readCampaigns(admin, SHOP)).failed).toEqual([
       {message: 'This store has more than 5,000 campaigns. The campaign dashboard reads up to 5,000.'},
     ]);
     expect(ops(calls).filter((op) => op === 'CampaignList')).toHaveLength(20);
@@ -156,12 +175,12 @@ describe('field mapping', () => {
       CampaignList: listOf([node({id: 4210})]),
       CampaignQRCodes: () => ({errors: [{message: 'Throttled'}], data: null}),
     });
-    expect(await readCampaigns(admin)).toMatchObject({failed: [{message: 'Throttled'}], campaigns: []});
+    expect(await readCampaigns(admin, SHOP)).toMatchObject({failed: [{message: 'Throttled'}], campaigns: []});
   });
 
   it('skips the QR code list without campaigns', async () => {
     const {admin, calls} = mockAdmin({CampaignList: listOf([])});
-    await readCampaigns(admin);
+    await readCampaigns(admin, SHOP);
     expect(ops(calls)).toEqual(['CampaignList']);
   });
 
@@ -169,7 +188,6 @@ describe('field mapping', () => {
     expect(campaignFields({revenueTarget: '', products: [{id: 'gid://shopify/Product/1'}], markers: {a: 'b'}})).toEqual([
       {key: 'products', value: '["gid://shopify/Product/1"]'},
       {key: 'revenue_target', value: ''},
-      {key: 'markers', value: '{"a":"b"}'},
     ]);
   });
 });
@@ -388,22 +406,21 @@ describe('ensureCampaign', () => {
         },
       },
     }),
-    SetCampaignMetafields: () => ({data: {metafieldsSet: {metafields: [], userErrors: []}}}),
   });
 
   it('seeds two campaigns and spends both IDs on a new store', async () => {
     const {admin, calls} = mockAdmin(seeding());
-    const result = await ensureCampaign(admin);
+    const result = await ensureCampaign(admin, SHOP);
     expect(result.userErrors).toEqual([]);
     expect(result.campaigns.map((campaign) => campaign.id)).toEqual([4210, 4211]);
     const upserts = calls.filter((call) => call.op === 'UpsertCampaign');
     expect(upserts.map((call) => call.variables.handle.handle).sort()).toEqual(['campaign-4210', 'campaign-4211']);
-    expect(calls.at(-1).variables.metafields[0]).toMatchObject({key: 'last_campaign_id', value: '4211'});
+    expect(tablesOf().shopState).toEqual([{shop: SHOP, lastCampaignId: 4211}]);
   });
 
   it('seeds the creators on fixed handles and references them from the campaign', async () => {
     const {admin, calls} = mockAdmin(seeding());
-    await ensureCampaign(admin);
+    await ensureCampaign(admin, SHOP);
     const creators = calls.filter((call) => call.op === 'UpsertCreator');
     expect(creators.map((call) => [call.variables.handle, call.variables.metaobject.fields])).toEqual([
       [
@@ -421,12 +438,13 @@ describe('ensureCampaign', () => {
     expect(school.variables.metaobject.fields.map((field) => field.key)).not.toContain('creators');
   });
 
-  it('skips the seed once a high-water mark exists', async () => {
+  it('skips the seed once the shop has spent campaign IDs', async () => {
+    await db.shopState.create({data: {shop: SHOP, lastCampaignId: 4211}});
     const {admin, calls} = mockAdmin({
       ObjectDefinition: definition,
-      CampaignList: listOf([], {value: '4211'}),
+      CampaignList: listOf([]),
     });
-    const result = await ensureCampaign(admin);
+    const result = await ensureCampaign(admin, SHOP);
     expect(result.campaigns).toEqual([]);
     expect(ops(calls)).toEqual(['ObjectDefinition', 'ObjectDefinition', 'CampaignList']);
   });
@@ -436,35 +454,41 @@ describe('ensureCampaign', () => {
       ObjectDefinition: definition,
       CampaignList: () => ({errors: [{message: 'Throttled'}], data: null}),
     });
-    expect((await ensureCampaign(admin)).userErrors).toEqual([{message: 'Throttled'}]);
+    expect((await ensureCampaign(admin, SHOP)).userErrors).toEqual([{message: 'Throttled'}]);
     expect(ops(calls)).not.toContain('UpsertCampaign');
     expect(ops(calls)).not.toContain('UpsertCreator');
   });
 });
 
 describe('createCampaign', () => {
-  const setMark = () => ({data: {metafieldsSet: {metafields: [], userErrors: []}}});
+  const creating = (extra) => ({
+    CreateCampaign: ({metaobject}) => ({
+      data: {metaobjectCreate: {metaobject: node({gid: `gid-${metaobject.handle}`, handle: metaobject.handle, id: 0}), userErrors: []}},
+    }),
+    ...extra,
+  });
 
-  it('spends the next ID and creates the entry under its handle', async () => {
-    const {admin, calls} = mockAdmin({
-      CampaignList: listOf([node({id: 4210})], {value: '4212'}),
-      SetCampaignMetafields: setMark,
-      CreateCampaign: ({metaobject}) => ({
-        data: {metaobjectCreate: {metaobject: node({gid: 'new', handle: metaobject.handle, id: 4213}), userErrors: []}},
-      }),
-    });
-    const {campaign, userErrors} = await createCampaign(admin, {title: 'Fall'});
+  it('spends the next ID past a deleted campaign and creates the entry under its handle', async () => {
+    await db.shopState.create({data: {shop: SHOP, lastCampaignId: 4212}});
+    const {admin, calls} = mockAdmin(creating({CampaignList: listOf([node({id: 4210})])}));
+    const {campaign, userErrors} = await createCampaign(admin, SHOP, {title: 'Fall'});
     expect(userErrors).toEqual([]);
-    expect(campaign.id).toBe(4213);
-    expect(ops(calls)).toEqual(['CampaignList', 'CampaignQRCodes', 'SetCampaignMetafields', 'CreateCampaign']);
-    const fields = Object.fromEntries(calls[3].variables.metaobject.fields.map((field) => [field.key, field.value]));
+    expect(campaign).toMatchObject({handle: 'campaign-4213', shop: SHOP, markers: {}, targets: {}, sentEvents: null});
+    expect(ops(calls)).toEqual(['CampaignList', 'CampaignQRCodes', 'CreateCampaign']);
+    const fields = Object.fromEntries(calls[2].variables.metaobject.fields.map((field) => [field.key, field.value]));
     expect(fields).toMatchObject({campaign_id: '4213', status: 'planned', audience: 'everyone', title: 'Fall'});
+    expect(tablesOf().shopState).toEqual([{shop: SHOP, lastCampaignId: 4213}]);
+  });
+
+  it('counts past an entry made before the shop had spent IDs', async () => {
+    const {admin} = mockAdmin(creating({CampaignList: listOf([node({id: 4215})])}));
+    expect((await createCampaign(admin, SHOP, {})).campaign.handle).toBe('campaign-4216');
   });
 
   it('deletes a suffixed entry and retries with the next ID', async () => {
+    await db.shopState.create({data: {shop: SHOP, lastCampaignId: 4211}});
     const {admin, calls} = mockAdmin({
-      CampaignList: listOf([], {value: '4211'}),
-      SetCampaignMetafields: setMark,
+      CampaignList: listOf([]),
       CreateCampaign: ({metaobject}) => {
         const taken = metaobject.handle === 'campaign-4212';
         return {
@@ -478,26 +502,26 @@ describe('createCampaign', () => {
       },
       DeleteCampaign: () => ({data: {metaobjectDelete: {deletedId: 'x', userErrors: []}}}),
     });
-    const {campaign} = await createCampaign(admin, {title: 'Race'});
+    const {campaign} = await createCampaign(admin, SHOP, {title: 'Race'});
     expect(campaign.handle).toBe('campaign-4213');
     expect(calls.find((call) => call.op === 'DeleteCampaign').variables.id).toBe('gid-campaign-4212');
-    expect(calls.filter((call) => call.op === 'SetCampaignMetafields').map((call) => call.variables.metafields[0].value)).toEqual(['4212', '4213']);
+    expect(tablesOf().shopState[0].lastCampaignId).toBe(4213);
   });
 
   it('hands out no ID on a failed read', async () => {
     const {admin, calls} = mockAdmin({
       CampaignList: () => ({errors: [{message: 'Throttled'}], data: null}),
     });
-    expect((await createCampaign(admin, {})).userErrors).toEqual([{message: 'Throttled'}]);
+    expect((await createCampaign(admin, SHOP, {})).userErrors).toEqual([{message: 'Throttled'}]);
     expect(ops(calls)).toEqual(['CampaignList']);
+    expect(tablesOf().shopState).toEqual([]);
   });
 
-  it('stops when the ID mark fails to save', async () => {
-    const {admin, calls} = mockAdmin({
-      CampaignList: listOf([]),
-      SetCampaignMetafields: () => ({data: {metafieldsSet: {userErrors: [{message: 'Nope'}]}}}),
-    });
-    expect((await createCampaign(admin, {})).userErrors).toEqual([{message: 'Nope'}]);
+  it('stops when the ID fails to save', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(db.shopState, 'update').mockRejectedValueOnce(new Error('SQLITE_BUSY'));
+    const {admin, calls} = mockAdmin(creating({CampaignList: listOf([])}));
+    expect((await createCampaign(admin, SHOP, {})).userErrors).toEqual([{message: "Couldn't assign a campaign ID. Try again."}]);
     expect(ops(calls)).not.toContain('CreateCampaign');
   });
 });
@@ -505,51 +529,37 @@ describe('createCampaign', () => {
 describe('entry writes', () => {
   const updated = () => ({data: {metaobjectUpdate: {metaobject: null, userErrors: []}}});
 
-  it('refuses a write when someone changed the campaign since it was read', async () => {
-    const campaign = {gid: 'g1', updatedAt: '2026-09-30T10:00:00Z'};
-    const {admin, calls} = mockAdmin({
-      CampaignVersion: () => ({data: {metaobject: {updatedAt: '2026-09-30T10:05:00Z'}}}),
-    });
-    const {userErrors} = await updateCampaign(admin, campaign, {status: 'running'});
-    expect(userErrors[0].code).toBe('STALE');
-    expect(ops(calls)).toEqual(['CampaignVersion']);
+  it("saves markers and targets in the app's database and writes the rest to the entry", async () => {
+    const campaign = withState(campaignFromNode(node({id: 4210})), SHOP, null);
+    const {admin, calls} = mockAdmin({UpdateCampaign: updated});
+    await updateCampaign(admin, campaign, {status: 'running', targets: {store: 't1'}});
+    expect(calls.map((call) => call.variables.metaobject.fields)).toEqual([[{key: 'status', value: 'running'}]]);
+    expect(storedState(4210)).toMatchObject({campaignGid: 'gid://shopify/Metaobject/1', targets: {store: 't1'}, markers: {}});
   });
 
-  it('carries the new version to the next write in the same action', async () => {
-    const campaign = {gid: 'g1', updatedAt: '2026-09-30T10:00:00Z'};
-    const {admin} = mockAdmin({
-      CampaignVersion: () => ({data: {metaobject: {updatedAt: campaign.updatedAt}}}),
-      UpdateCampaign: () => ({
-        data: {metaobjectUpdate: {metaobject: node({id: 4210, updatedAt: '2026-09-30T10:01:00Z'}), userErrors: []}},
-      }),
-    });
-    await updateCampaign(admin, campaign, {status: 'running'});
-    expect(campaign.updatedAt).toBe('2026-09-30T10:01:00Z');
+  it('skips the entry write when the change holds only records', async () => {
+    const campaign = withState(campaignFromNode(node({id: 4210})), SHOP, null);
+    const {admin, calls} = mockAdmin({});
+    expect((await updateCampaign(admin, campaign, {markers: {campaign: 'a1'}})).userErrors).toEqual([]);
+    expect(calls).toEqual([]);
+    expect(storedState(4210).markers).toEqual({campaign: 'a1'});
+  });
+
+  it('writes no entry field when the records fail to save', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(db.campaignState, 'update').mockRejectedValueOnce(new Error('SQLITE_BUSY'));
+    const campaign = withState(campaignFromNode(node({id: 4210})), SHOP, null);
+    const {admin, calls} = mockAdmin({UpdateCampaign: updated});
+    const {userErrors} = await updateCampaign(admin, campaign, {status: 'running', targets: {store: 't1'}});
+    expect(userErrors).toEqual([{message: "Couldn't save the campaign's records. Try again."}]);
+    expect(calls).toEqual([]);
   });
 
   it('merges new marker IDs into the stored ones', async () => {
-    const stale = campaignFromNode(node({id: 4210, markers: {}}));
-    const {admin, calls} = mockAdmin({
-      CampaignById: () => ({data: {metaobject: node({id: 4210, markers: {campaign: 'a1'}})}}),
-      UpdateCampaign: updated,
-    });
-    await rememberMarkers(admin, stale, {launch: 'a2'});
-    expect(calls[1].variables).toEqual({
-      id: 'gid://shopify/Metaobject/1',
-      metaobject: {fields: [{key: 'markers', value: '{"campaign":"a1","launch":"a2"}'}]},
-    });
-  });
-
-  it('refuses to record markers after another request changed the campaign', async () => {
-    const campaign = {...campaignFromNode(node({id: 4210})), updatedAt: '2026-09-30T10:00:00Z'};
-    const {admin, calls} = mockAdmin({
-      CampaignById: () => ({data: {metaobject: node({id: 4210, updatedAt: '2026-09-30T10:05:00Z'})}}),
-      CampaignVersion: () => ({data: {metaobject: {updatedAt: '2026-09-30T10:05:00Z'}}}),
-      UpdateCampaign: updated,
-    });
-    const {userErrors} = await rememberMarkers(admin, campaign, {launch: 'a2'});
-    expect(userErrors[0].code).toBe('STALE');
-    expect(ops(calls)).not.toContain('UpdateCampaign');
+    const stale = withState(campaignFromNode(node({id: 4210})), SHOP, null);
+    seedState({campaignId: 4210, markers: {campaign: 'a1'}});
+    expect(await rememberMarkers(stale, {launch: 'a2'})).toEqual({userErrors: []});
+    expect(storedState(4210).markers).toEqual({campaign: 'a1', launch: 'a2'});
   });
 
   it('deletes a redacted customer\'s tier metafield and writes no campaign', async () => {
@@ -568,7 +578,7 @@ describe('entry writes', () => {
       CampaignList: listOf([node({gid: 'g1', id: 4210})]),
       CampaignQRCodes: qrCodeList([qrCodeNode({id: 'gid://shopify/Metaobject/901', handle: 'a', liveOn: '2026-09-20', campaign: 'g1'})]),
     });
-    const {campaigns} = await readCampaigns(admin);
+    const {campaigns} = await readCampaigns(admin, SHOP);
     expect(campaigns[0].qrCodes).toEqual([{id: 'gid://shopify/Metaobject/901', handle: 'a', title: '', liveOn: '2026-09-20'}]);
   });
 });
@@ -590,38 +600,55 @@ describe('returned errors', () => {
 });
 
 describe('campaign lock', () => {
-  it("leaves a lock alone once another request takes it over", async () => {
-    const locks = lockStore();
-    const {admin, calls} = mockAdmin(locks);
-    const lock = await lockCampaign(admin, 4210);
-    locks.held.set('lock_4210', '2026-09-30T12:06:00.000Z|other');
-    await lock.release();
-    expect(locks.held.get('lock_4210')).toBe('2026-09-30T12:06:00.000Z|other');
-    expect(ops(calls)).not.toContain('ReleaseCampaignLock');
+  it('refuses while another request holds the campaign, then takes it after the release', async () => {
+    const first = await lockCampaign(SHOP, 4210);
+    expect(await lockCampaign(SHOP, '4210')).toEqual({
+      problems: [{message: 'Another change to this campaign is in progress. Reload in a moment.'}],
+    });
+    await first.release();
+    expect((await lockCampaign(SHOP, 4210)).release).toBeTypeOf('function');
   });
 
-  it('names a refusal other than a lost race', async () => {
-    const {admin} = mockAdmin({
-      ...lockStore(),
-      TakeCampaignLock: () => ({data: {metafieldsSet: {userErrors: [{code: 'INVALID', message: 'Value is too long.'}]}}}),
-    });
-    expect(await lockCampaign(admin, 4210)).toEqual({problems: [{message: 'Value is too long.'}]});
+  it('holds each shop and campaign apart', async () => {
+    await lockCampaign(SHOP, 4210);
+    expect((await lockCampaign(SHOP, 4211)).problems).toBeUndefined();
+    expect((await lockCampaign('other.test', 4210)).problems).toBeUndefined();
+  });
+
+  it('takes over a lock older than five minutes', async () => {
+    await lockCampaign(SHOP, 4210);
+    vi.setSystemTime(new Date('2026-09-30T12:05:01Z'));
+    expect((await lockCampaign(SHOP, 4210)).problems).toBeUndefined();
+  });
+
+  it('leaves a lock alone once another request takes it over', async () => {
+    const lock = await lockCampaign(SHOP, 4210);
+    vi.setSystemTime(new Date('2026-09-30T12:06:00Z'));
+    await lockCampaign(SHOP, 4210);
+    const [taker] = tablesOf().campaignLock;
+    await lock.release();
+    expect(tablesOf().campaignLock).toEqual([taker]);
+  });
+
+  it('names a failed lock write', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(db.campaignLock, 'create').mockRejectedValueOnce(new Error('SQLITE_BUSY'));
+    expect(await lockCampaign(SHOP, 4210)).toEqual({problems: [{message: "Couldn't lock the campaign. Try again."}]});
   });
 
   it('logs a failed release and returns', async () => {
     const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
-    const {admin} = mockAdmin({...lockStore(), ReleaseCampaignLock: () => new Response(null, {status: 401})});
-    const lock = await lockCampaign(admin, 4210);
+    const lock = await lockCampaign(SHOP, 4210);
+    vi.spyOn(db.campaignLock, 'deleteMany').mockRejectedValueOnce(new Error('SQLITE_BUSY'));
     await expect(lock.release()).resolves.toBeUndefined();
     expect(logged).toHaveBeenCalled();
   });
 });
 
 describe('QR code moves under the lock', () => {
-  const moving = (before, after, codeAfter = 'g1') => {
-    const locks = lockStore();
-    const mock = mockAdmin({
-      ...locks,
+  const held = () => tablesOf().campaignLock.map((lock) => lock.campaignId);
+  const moving = (before, after, codeAfter = 'g1') =>
+    mockAdmin({
       CampaignList: (variables, seen) =>
         listOf(seen.filter((call) => call.op === 'CampaignList').length > 1 ? after : before)(variables),
       CampaignQRCodes: (variables, seen) =>
@@ -633,48 +660,56 @@ describe('QR code moves under the lock', () => {
           }),
         ])(variables),
     });
-    return {...mock, locks};
-  };
 
   it('refuses a campaign activated after the form loaded', async () => {
-    const {admin, calls, locks} = moving(
+    const {admin, calls} = moving(
       [node({gid: 'g1', id: 4210, title: 'Fall'})],
       [node({gid: 'g1', id: 4210, title: 'Fall', status: 'running'})],
     );
-    expect(await lockQRCodeMove(admin, 'gid://shopify/Metaobject/902', 'g1')).toEqual({
+    expect(await lockQRCodeMove(admin, SHOP, 'gid://shopify/Metaobject/902', 'g1')).toEqual({
       problems: [{code: 'NOT_PLANNED', message: 'Fall is active. QR codes move only between planned campaigns.'}],
     });
     expect(ops(calls)).not.toContain('UpdateCampaign');
-    expect(locks.held.size).toBe(0);
+    expect(held()).toEqual([]);
   });
 
   it("refuses when the code's old campaign left planning", async () => {
-    const {admin, locks} = moving(
+    const {admin} = moving(
       [node({gid: 'g1', id: 4210, title: 'Fall'}), node({gid: 'g2', id: 4211, title: 'Winter'})],
       [node({gid: 'g1', id: 4210, title: 'Fall', status: 'running'}), node({gid: 'g2', id: 4211, title: 'Winter'})],
     );
-    expect((await lockQRCodeMove(admin, 'gid://shopify/Metaobject/901', 'g2')).problems).toEqual([
+    expect((await lockQRCodeMove(admin, SHOP, 'gid://shopify/Metaobject/901', 'g2')).problems).toEqual([
       {code: 'NOT_PLANNED', message: 'Fall is active. QR codes move only between planned campaigns.'},
     ]);
-    expect(locks.held.size).toBe(0);
+    expect(held()).toEqual([]);
   });
 
   it('refuses when another request moved the code to an unlocked campaign', async () => {
     const entries = [node({gid: 'g1', id: 4210}), node({gid: 'g2', id: 4211}), node({gid: 'g3', id: 4212})];
-    const {admin, locks} = moving(entries, entries, 'g3');
-    expect((await lockQRCodeMove(admin, 'gid://shopify/Metaobject/901', 'g2')).problems).toEqual([
+    const {admin} = moving(entries, entries, 'g3');
+    expect((await lockQRCodeMove(admin, SHOP, 'gid://shopify/Metaobject/901', 'g2')).problems).toEqual([
       {code: 'STALE', message: 'This QR code changed while you were working. Reload the page and try again.'},
     ]);
-    expect(locks.held.size).toBe(0);
+    expect(held()).toEqual([]);
   });
 
   it('holds the old and new campaigns until the release', async () => {
     const entries = [node({gid: 'g1', id: 4210}), node({gid: 'g2', id: 4211}), node({gid: 'g3', id: 4212})];
-    const {admin, locks} = moving(entries, entries);
-    const lock = await lockQRCodeMove(admin, 'gid://shopify/Metaobject/901', 'g2');
+    const {admin} = moving(entries, entries);
+    const lock = await lockQRCodeMove(admin, SHOP, 'gid://shopify/Metaobject/901', 'g2');
     expect(lock.problems).toBeUndefined();
-    expect([...locks.held.keys()]).toEqual(['lock_4210', 'lock_4211']);
+    expect(held()).toEqual([4210, 4211]);
     await lock.release();
-    expect(locks.held.size).toBe(0);
+    expect(held()).toEqual([]);
+  });
+
+  it('releases the locks it took when one campaign is held', async () => {
+    await lockCampaign(SHOP, 4211);
+    const entries = [node({gid: 'g1', id: 4210}), node({gid: 'g2', id: 4211})];
+    const {admin} = moving(entries, entries);
+    expect((await lockQRCodeMove(admin, SHOP, 'gid://shopify/Metaobject/901', 'g2')).problems).toEqual([
+      {message: 'Another change to this campaign is in progress. Reload in a moment.'},
+    ]);
+    expect(held()).toEqual([4211]);
   });
 });

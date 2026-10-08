@@ -188,6 +188,8 @@ The QR code routes come from that tutorial. `/app/qrcodes` lists the codes, `/ap
 
 Each campaign is an entry of the `campaign_dashboard_campaign` metaobject type. `ensureDefinition` creates the type at runtime, because analytics joins only types without the `$app:` prefix. Each QR code's `campaign` field holds its campaign entry's ID as text, because a field in `shopify.app.toml` can't reference a type the app creates at runtime. An uninstall leaves every campaign entry in place. `CAMPAIGN_FIELDS` documents the shape field by field.
 
+The app keeps its private records in its own SQLite database through Prisma, and `app/campaign-state.server.js` reads and writes them. The records hold the IDs of the annotations and targets that each campaign created, how many events each campaign sent, the last campaign ID the app handed out, and a short-lived lock per campaign. The `shop/redact` webhook deletes them 48 hours after an uninstall.
+
 Creators are entries of the `campaign_dashboard_creator` type, and `ensureDefinition` creates that type first. The Campaign `creators` field validates against the Creator definition's ID, and a metaobject reference validation can't change after the field exists. A runtime type keeps one ID for the life of the store, unless someone deletes the Creator definition. `CREATOR_FIELDS` documents the Creator shape.
 
 For a smaller starting point covering only the ShopifyQL half, see [Build a sales dashboard with the GraphQL Admin API](https://shopify.dev/docs/apps/build/shopifyql/graphql-admin-api/build-a-sales-dashboard) and [`example-shopifyql--sales-dashboard--react`](https://github.com/Shopify/example-shopifyql--sales-dashboard--react).

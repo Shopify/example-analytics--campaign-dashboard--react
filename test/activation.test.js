@@ -9,9 +9,10 @@ import {
   writeMarks,
 } from '../app/campaign-mutations.server';
 import {mockAdmin} from './helpers/admin';
-import {node} from './helpers/campaign';
+import {SHOP, db, storedState} from './helpers/db';
 
 const campaign = (overrides = {}) => ({
+  shop: SHOP,
   gid: 'gid://shopify/Metaobject/1',
   id: 4210,
   title: 'Summer launch',
@@ -131,8 +132,6 @@ describe('writeMarks', () => {
       CreateCampaignAnnotation: () => ({
         data: {analyticsAnnotationCreate: {analyticsAnnotation: {id: `a${calls.length}`}, userErrors: []}},
       }),
-      CampaignById: () => ({data: {metaobject: null}}),
-      UpdateCampaign: () => ({data: {metaobjectUpdate: {metaobject: null, userErrors: []}}}),
     });
     const moved = campaign({qrCodes: codes('kept'), markers: {'qr:moved': 'gid://shopify/AnalyticsAnnotation/1', 'milestone:9:2026-09-12': 'm1', 'incident:2026-09-13': 'i1'}});
     const {markers, problems} = await writeMarks(admin, moved, appId, (date) => `${date}T09:00:00Z`);
@@ -152,8 +151,6 @@ describe('writeMarks', () => {
       CreateCampaignAnnotation: () => ({
         data: {analyticsAnnotationCreate: {analyticsAnnotation: {id: `a${calls.length}`}, userErrors: []}},
       }),
-      CampaignById: () => ({data: {metaobject: null}}),
-      UpdateCampaign: () => ({data: {metaobjectUpdate: {metaobject: null, userErrors: []}}}),
     });
     const bare = campaign({markers: {promo: 'gid://shopify/AnalyticsAnnotation/5', launch: 'gid://shopify/AnalyticsAnnotation/6'}});
     const {markers, problems} = await writeMarks(admin, bare, appId, (date) => `${date}T09:00:00Z`);
@@ -276,14 +273,24 @@ describe('stampTier', () => {
 });
 
 describe('recordMark', () => {
+  it('records the annotation ID beside the ones already stored', async () => {
+    const {admin} = mockAdmin({});
+    await recordMark(admin, campaign(), 'campaign', 'gid://shopify/AnalyticsAnnotation/4');
+    await recordMark(admin, campaign(), 'milestone:2026-09-20', 'gid://shopify/AnalyticsAnnotation/5');
+    expect(storedState(4210).markers).toEqual({
+      campaign: 'gid://shopify/AnalyticsAnnotation/4',
+      'milestone:2026-09-20': 'gid://shopify/AnalyticsAnnotation/5',
+    });
+  });
+
   it('deletes the annotation it created when saving its ID fails', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(db.campaignState, 'update').mockRejectedValueOnce(new Error('SQLITE_BUSY'));
     const {admin, calls} = mockAdmin({
-      CampaignById: () => ({data: {metaobject: node({id: 4210, updatedAt: '2026-09-20T10:05:00Z'})}}),
       DeleteCampaignAnnotation: () => ({data: {analyticsAnnotationDelete: {userErrors: []}}}),
     });
-    const stale = campaign({updatedAt: '2026-09-20T10:00:00Z'});
-    const {userErrors} = await recordMark(admin, stale, 'milestone:2026-09-20', 'gid://shopify/AnalyticsAnnotation/5');
-    expect(userErrors.map((error) => error.code)).toEqual(['STALE']);
+    const {userErrors} = await recordMark(admin, campaign(), 'milestone:2026-09-20', 'gid://shopify/AnalyticsAnnotation/5');
+    expect(userErrors).toEqual([{message: "Couldn't save the campaign's records. Try again."}]);
     expect(calls.find((call) => call.op === 'DeleteCampaignAnnotation').variables).toEqual({
       id: 'gid://shopify/AnalyticsAnnotation/5',
     });

@@ -320,7 +320,7 @@ export async function writeMarks(admin, campaign, appId, markedAt) {
     }
     const id = created?.analyticsAnnotation?.id;
     if (id) {
-      const saved = await rememberMarkers(admin, campaign, {[mark.key]: id});
+      const saved = await rememberMarkers(campaign, {[mark.key]: id});
       // An ID the record doesn't hold is an annotation nothing can find again.
       if (saved.userErrors.length) {
         const orphaned = await clearOwnMarks(admin, [id], appId);
@@ -557,7 +557,7 @@ export async function markMilestone(admin, target, markedAt, money) {
 // An ID the record doesn't hold is an annotation nothing can find again.
 export async function recordMark(admin, campaign, key, id) {
   if (!id) return null;
-  const saved = await rememberMarkers(admin, campaign, {[key]: id});
+  const saved = await rememberMarkers(campaign, {[key]: id});
   if (!saved.userErrors.length) return saved;
   const deleted = await (
     await admin.graphql(ANNOTATION_DELETE, {variables: {id}})

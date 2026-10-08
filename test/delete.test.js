@@ -1,5 +1,6 @@
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {ops} from './helpers/admin';
+import {seedState, tablesOf} from './helpers/db';
 import {base, planned, resetTargets, runWith} from './helpers/routes';
 
 vi.mock('../app/shopify.server', async () => (await import('./helpers/routes')).shopifyServer);
@@ -19,6 +20,18 @@ afterEach(() => {
 });
 
 describe('delete', () => {
+  it("deletes the campaign's records with its entry", async () => {
+    seedState({campaignId: 4211});
+    const {result} = run(
+      {
+        ...base(planned({status: 'canceled', targets: {store: 'gid://shopify/AnalyticsTarget/1'}})),
+        DeleteCampaign: () => ({data: {metaobjectDelete: {deletedId: 'x', userErrors: []}}}),
+      },
+      {intent: 'delete'},
+    );
+    await result;
+    expect(tablesOf().campaignState.map((row) => row.campaignId)).toEqual([4211]);
+  });
 
   it('deletes only a canceled campaign', async () => {
     const {mock, result} = run(base(planned()), {intent: 'delete'});

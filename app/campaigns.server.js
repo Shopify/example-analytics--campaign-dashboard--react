@@ -1,26 +1,32 @@
 import {AUDIENCE_TIERS, TIER_METAFIELD} from './audiences';
 import {
-  CAMPAIGN_BY_ID,
   CAMPAIGN_CREATE,
   CAMPAIGN_DELETE,
   CAMPAIGN_TYPE,
   CAMPAIGN_UPDATE,
   CAMPAIGN_UPSERT,
-  CAMPAIGN_VERSION,
   CAMPAIGNS_QUERY,
   CREATOR_BY_HANDLE,
   CREATOR_TYPE,
   CREATOR_UPSERT,
   CUSTOMER_TIER,
-  ID_KEY,
-  ID_NAMESPACE,
   METAFIELDS_DELETE,
-  METAFIELDS_SET,
   OBJECT_DEFINITION_CREATE,
   OBJECT_DEFINITION_QUERY,
   OBJECT_FIELDS_ADD,
   QR_CODE_CAMPAIGNS,
 } from './campaign-queries.server';
+import {
+  allocateCampaignId,
+  emptyState,
+  hasSpentIds,
+  mergeMarkers,
+  readStates,
+  releaseLock,
+  saveState,
+  spendThrough,
+  takeLock,
+} from './campaign-state.server';
 import {CHANNELS} from './channels';
 import {DIMENSION_NAMESPACE, sanitizeCode, statusLabel} from './campaigns';
 
@@ -31,18 +37,19 @@ export const FIRST_CAMPAIGN_ID = 4210;
 // The handle is the entry's lookup key. The integer is what App Events filters on.
 export const campaignHandle = (id) => `campaign-${id}`;
 
-// Count past the high-water mark. The highest stored ID alone forgets a deleted campaign.
-// Uninstall deletes the mark and keeps the entries. A reinstall can reuse a deleted ID.
-export const nextCampaignId = (campaigns, highWater) =>
+// The new ID comes from the app's database, above this floor. The highest stored ID alone
+// forgets a deleted campaign. The floor covers entries the database has no record of.
+export const campaignIdFloor = (campaigns) =>
   campaigns.reduce(
     (highest, campaign) => Math.max(highest, Number(campaign.id) || 0),
-    Math.max(FIRST_CAMPAIGN_ID - 1, Number(highWater) || 0),
-  ) + 1;
+    FIRST_CAMPAIGN_ID - 1,
+  );
 // [END campaign-dashboard.campaign-ids]
 
 // [START campaign-dashboard.campaign-store]
 // Every query, target, and annotation on the dashboard derives from these fields.
 // Each campaign is an entry the merchant can open in the admin. Descriptions show there.
+// The IDs the app tracks for each campaign live in its database. See campaign-state.server.js.
 const choices = (values) => [{name: 'choices', value: JSON.stringify(values)}];
 const atLeastZero = [{name: 'min', value: '0'}];
 
@@ -153,29 +160,6 @@ export const CAMPAIGN_FIELDS = [
     required: true,
     validations: choices(['planned', 'running', 'closed', 'canceled']),
     description: 'Planned, running, closed, or canceled.',
-  },
-  {
-    field: 'markers',
-    key: 'markers',
-    name: 'Annotation IDs',
-    type: 'json',
-    description: 'IDs of annotations this app created.',
-  },
-  {
-    field: 'targets',
-    key: 'targets',
-    name: 'Target IDs',
-    type: 'json',
-    description:
-      'IDs of targets this app created. Cancel deletes only these.',
-  },
-  {
-    field: 'sentEvents',
-    key: 'sent_events',
-    name: 'Sent events',
-    type: 'number_integer',
-    validations: atLeastZero,
-    description: 'Number of App Events sent. A recorded count blocks a second send.',
   },
 ];
 // [END campaign-dashboard.campaign-store]
@@ -347,7 +331,6 @@ export function campaignFromNode(node) {
   return {
     gid: node.id,
     handle: node.handle,
-    updatedAt: node.updatedAt ?? null,
     id: Number(values.campaign_id),
     title: values.title ?? '',
     startDate: values.start_date ?? '',
@@ -369,11 +352,17 @@ export function campaignFromNode(node) {
     audienceTarget: values.audience_target ?? '',
     qrTarget: values.qr_target ?? '',
     status: values.status ?? 'planned',
-    markers: isRecord(values.markers) ? values.markers : {},
-    targets: isRecord(values.targets) ? values.targets : {},
-    sentEvents: values.sent_events ?? null,
   };
 }
+
+// The entry's fields plus the app's own record of it. The shop keys every later write.
+// A row written for a different entry with this campaign ID doesn't apply.
+export const withState = (campaign, shop, state) => ({
+  ...campaign,
+  shop,
+  ...(state?.gid === campaign.gid ? state : emptyState()),
+  gid: campaign.gid,
+});
 
 // Entries are editable in the admin. Codes reach ShopifyQL filters.
 export function creatorFromNode(node) {
@@ -416,7 +405,7 @@ async function withQRCodes(admin, campaigns) {
 }
 
 // Returns this app's ID alongside the records. The namespace derives from it.
-export async function readCampaigns(admin) {
+export async function readCampaigns(admin, shop) {
   const campaigns = [];
   let installation = null;
   let failed = [];
@@ -438,6 +427,16 @@ export async function readCampaigns(admin) {
 
   if (!failed.length && campaigns.length) failed = await withQRCodes(admin, campaigns);
 
+  let states = new Map();
+  if (!failed.length && campaigns.length) {
+    try {
+      states = await readStates(shop, campaigns.map((campaign) => campaign.id));
+    } catch (error) {
+      console.error('Could not read campaign state', error);
+      failed = [{message: "Couldn't read the app's campaign records. Try again."}];
+    }
+  }
+
   return {
     // An empty list from a failed read is indistinguishable from a store with no
     // campaigns. Seeding and ID allocation refuse on a failed read.
@@ -445,9 +444,11 @@ export async function readCampaigns(admin) {
     appId: installation?.app?.id ?? null,
     // The value `app_name` holds in App Events. Every app writes it.
     appName: installation?.app?.title ?? null,
-    installationId: installation?.id ?? null,
-    highWater: Number(installation?.metafield?.value) || null,
-    campaigns: failed.length ? [] : campaigns.sort((first, second) => first.id - second.id),
+    campaigns: failed.length
+      ? []
+      : campaigns
+          .map((campaign) => withState(campaign, shop, states.get(campaign.id)))
+          .sort((first, second) => first.id - second.id),
   };
 }
 
@@ -487,53 +488,39 @@ const entryResult = (body, name) => {
   };
 };
 
-// metaobjectUpdate has no version check. Re-reading `updatedAt` narrows a race to one round
-// trip. It counts whole seconds, and the action's lock covers two writes inside one.
+const STATE_ERROR = {message: "Couldn't save the campaign's records. Try again."};
+
+// `markers` and `targets` go to the app's database, before the entry. Each holds IDs of
+// what's already on the store, and a failed entry write still leaves them accurate.
 export async function updateCampaign(admin, campaign, change) {
-  if (campaign.updatedAt) {
-    const version = await (
-      await admin.graphql(CAMPAIGN_VERSION, {variables: {id: campaign.gid}})
-    ).json();
-    const failed = transportErrors(version);
-    if (failed.length) return {campaign: null, userErrors: failed};
-    if (version.data?.metaobject?.updatedAt !== campaign.updatedAt) {
-      return {campaign: null, userErrors: [{code: 'STALE', message: STALE_MESSAGE}]};
+  const {markers, targets, ...fields} = change;
+  if (markers || targets) {
+    try {
+      await saveState(campaign.shop, campaign.id, campaign.gid, {markers, targets});
+    } catch (error) {
+      console.error('Could not save campaign state', error);
+      return {campaign: null, userErrors: [STATE_ERROR]};
     }
   }
+  if (!Object.keys(fields).length) return {campaign, userErrors: []};
   const body = await (
     await admin.graphql(CAMPAIGN_UPDATE, {
-      variables: {id: campaign.gid, metaobject: {fields: campaignFields(change)}},
+      variables: {id: campaign.gid, metaobject: {fields: campaignFields(fields)}},
     })
   ).json();
-  const result = entryResult(body, 'metaobjectUpdate');
-  // The next write in the same action compares against this one.
-  if (result.campaign?.updatedAt) campaign.updatedAt = result.campaign.updatedAt;
-  return result;
+  return entryResult(body, 'metaobjectUpdate');
 }
 
-export const STALE_MESSAGE =
-  'Someone else changed this campaign while you were working. Reload the page and try again.';
-
 // Annotation IDs per mark, to find and rewrite an annotation after the campaign runs.
-// Re-read first. Each ID lands as its mark saves, and the record in hand is stale.
-export async function rememberMarkers(admin, campaign, markers) {
-  const body = await (
-    await admin.graphql(CAMPAIGN_BY_ID, {variables: {id: campaign.gid}})
-  ).json();
-  const failed = transportErrors(body);
-  if (failed.length) return {campaign: null, userErrors: failed};
-  const current = body.data?.metaobject
-    ? campaignFromNode(body.data.metaobject)
-    : campaign;
-  // A version this action didn't write means another request changed the campaign.
-  if (campaign.updatedAt && current.updatedAt !== campaign.updatedAt) {
-    return {campaign: null, userErrors: [{code: 'STALE', message: STALE_MESSAGE}]};
+// The merge reads the stored IDs. Each ID lands as its mark saves.
+export async function rememberMarkers(campaign, markers) {
+  try {
+    await mergeMarkers(campaign.shop, campaign.id, campaign.gid, markers);
+    return {userErrors: []};
+  } catch (error) {
+    console.error('Could not save campaign state', error);
+    return {userErrors: [STATE_ERROR]};
   }
-  const result = await updateCampaign(admin, current, {
-    markers: {...current.markers, ...markers},
-  });
-  campaign.updatedAt = current.updatedAt;
-  return result;
 }
 // [END campaign-dashboard.campaign-write]
 
@@ -621,19 +608,19 @@ export async function forgetCustomer(admin, customerId) {
 // [START campaign-dashboard.qr-assign]
 // A code moves only between planned campaigns. The locks keep both campaigns planned
 // until the caller saves the code's `campaign` field and releases them.
-export async function lockQRCodeMove(admin, qrCodeId, campaignGid) {
-  const before = await readCampaigns(admin);
+export async function lockQRCodeMove(admin, shop, qrCodeId, campaignGid) {
+  const before = await readCampaigns(admin, shop);
   if (before.failed.length) return {problems: before.failed};
   const touched = before.campaigns.filter(
     (campaign) =>
       campaign.gid === campaignGid ||
       campaign.qrCodes.some((qrCode) => qrCode.id === qrCodeId),
   );
-  const lock = await lockCampaigns(admin, touched.map((campaign) => campaign.id));
+  const lock = await lockCampaigns(shop, touched.map((campaign) => campaign.id));
   if (lock.problems) return lock;
 
   // The form loaded before the lock. A campaign activated since then keeps its codes.
-  const {campaigns, failed} = await readCampaigns(admin);
+  const {campaigns, failed} = await readCampaigns(admin, shop);
   const now = campaignOf(campaigns, qrCodeId);
   const drifted = now && !touched.some((t) => t.gid === now.gid);
   const started = campaigns.find(
@@ -670,122 +657,26 @@ export const campaignOf = (campaigns, qrCodeId) =>
   ) ?? null;
 // [END campaign-dashboard.qr-assign]
 
-async function setHighWater(admin, installationId, id) {
-  const body = await (
-    await admin.graphql(METAFIELDS_SET, {
-      variables: {
-        metafields: [
-          {
-            ownerId: installationId,
-            namespace: ID_NAMESPACE,
-            key: ID_KEY,
-            type: 'number_integer',
-            value: String(id),
-          },
-        ],
-      },
-    })
-  ).json();
-  const failed = transportErrors(body);
-  if (failed.length) return failed;
-  return body.data?.metafieldsSet?.userErrors ?? [];
-}
-
 // [START campaign-dashboard.campaign-lock]
-// Two requests can read one campaign as planned and both activate it. `updatedAt` counts
-// whole seconds and misses the second write. A lock metafield holds the campaign instead.
-const LOCK_QUERY = `
-  query CampaignLock($key: String!) {
-    currentAppInstallation {
-      id
-      metafield(namespace: "${ID_NAMESPACE}", key: $key) {
-        value
-        compareDigest
-      }
-    }
-  }
-`;
-
-const LOCK_TAKE = `
-  mutation TakeCampaignLock($metafields: [MetafieldsSetInput!]!) {
-    metafieldsSet(metafields: $metafields) {
-      userErrors {
-        code
-        message
-      }
-    }
-  }
-`;
-
-const LOCK_RELEASE = `
-  mutation ReleaseCampaignLock($metafields: [MetafieldIdentifierInput!]!) {
-    metafieldsDelete(metafields: $metafields) {
-      userErrors {
-        message
-      }
-    }
-  }
-`;
-
-// A request that dies holding the lock leaves it behind. The next request takes it over
-// after five minutes.
-const LOCK_TTL_MS = 5 * 60 * 1000;
+// Two requests can read one campaign as planned and both activate it. A row in the app's
+// database holds the campaign until the first request finishes.
 const HELD = 'Another change to this campaign is in progress. Reload in a moment.';
-// A digest mismatch means another request set the lock between this read and this write.
-const LOST_RACE = new Set(['STALE_OBJECT', 'INVALID_COMPARE_DIGEST']);
 
-export async function lockCampaign(admin, campaignId) {
-  const key = `lock_${Number.parseInt(campaignId, 10) || 0}`;
-  const body = await (await admin.graphql(LOCK_QUERY, {variables: {key}})).json();
-  const installation = body.data?.currentAppInstallation;
-  if (!installation) {
-    const failed = transportErrors(body);
-    return {problems: failed.length ? failed : [{message: "Couldn't read the app installation. Try again."}]};
+export async function lockCampaign(shop, campaignId) {
+  const id = Number.parseInt(campaignId, 10) || 0;
+  let owner;
+  try {
+    owner = await takeLock(shop, id);
+  } catch (error) {
+    console.error('Could not take the campaign lock', error);
+    return {problems: [{message: "Couldn't lock the campaign. Try again."}]};
   }
-  const held = installation.metafield;
-  // The value holds when the lock was taken and which request took it.
-  if (held && Date.now() - Date.parse(held.value.split('|')[0]) < LOCK_TTL_MS) {
-    return {problems: [{message: HELD}]};
-  }
+  if (!owner) return {problems: [{message: HELD}]};
 
-  const owner = `${new Date().toISOString()}|${crypto.randomUUID()}`;
-  // A null digest fails if another request set the lock after this read. A stale lock's
-  // digest fails the same way if another request took it over first.
-  const taken = await (
-    await admin.graphql(LOCK_TAKE, {
-      variables: {
-        metafields: [
-          {
-            ownerId: installation.id,
-            namespace: ID_NAMESPACE,
-            key,
-            type: 'single_line_text_field',
-            value: owner,
-            compareDigest: held?.compareDigest ?? null,
-          },
-        ],
-      },
-    })
-  ).json();
-  const failed = transportErrors(taken);
-  if (failed.length) return {problems: failed};
-  const userErrors = taken.data?.metafieldsSet?.userErrors ?? [];
-  if (userErrors.some((error) => LOST_RACE.has(error.code))) return {problems: [{message: HELD}]};
-  if (userErrors.length) return {problems: userErrors.map((error) => ({message: error.message}))};
-
-  // Compare-then-delete narrows a takeover race to one round trip and doesn't close it.
   // A failed release logs and returns. The write it guarded has already answered.
   const release = async () => {
     try {
-      const now = await (await admin.graphql(LOCK_QUERY, {variables: {key}})).json();
-      if (now.data?.currentAppInstallation?.metafield?.value !== owner) return;
-      const done = await (
-        await admin.graphql(LOCK_RELEASE, {
-          variables: {metafields: [{ownerId: installation.id, namespace: ID_NAMESPACE, key}]},
-        })
-      ).json();
-      const left = [...transportErrors(done), ...(done.data?.metafieldsDelete?.userErrors ?? [])];
-      if (left.length) console.error('Could not release the campaign lock', left);
+      await releaseLock(shop, id, owner);
     } catch (error) {
       console.error('Could not release the campaign lock', error);
     }
@@ -794,10 +685,10 @@ export async function lockCampaign(admin, campaignId) {
 }
 
 // Takes each campaign's lock in turn. One held lock releases the rest and refuses.
-export async function lockCampaigns(admin, campaignIds) {
+export async function lockCampaigns(shop, campaignIds) {
   const locks = [];
   for (const id of [...new Set(campaignIds)]) {
-    const lock = await lockCampaign(admin, id);
+    const lock = await lockCampaign(shop, id);
     if (lock.problems) {
       for (const taken of locks) await taken.release();
       return {problems: lock.problems};
@@ -856,14 +747,21 @@ function seedRecords() {
   ];
 }
 
-export async function ensureCampaign(admin) {
+export async function ensureCampaign(admin, shop) {
   const {userErrors: missing} = await ensureDefinition(admin);
-  const state = await readCampaigns(admin);
+  const state = await readCampaigns(admin, shop);
   if (missing.length) return {...state, userErrors: missing};
   // Seeding on a failed read would write over campaigns already stored.
   if (state.failed.length) return {...state, userErrors: state.failed};
-  // Seed once per store. A high-water mark means the seed IDs went out already.
-  if (state.highWater || state.campaigns.length > 0) return {...state, userErrors: []};
+  if (state.campaigns.length > 0) return {...state, userErrors: []};
+  // Seed once per shop. Spent IDs mean the seeds went out already, and the merchant
+  // deleted them.
+  try {
+    if (await hasSpentIds(shop)) return {...state, userErrors: []};
+  } catch (error) {
+    console.error('Could not read campaign IDs', error);
+    return {...state, userErrors: [{message: "Couldn't read the app's campaign records. Try again."}]};
+  }
 
   // Upsert on fixed handles. Two first loads racing each other write the same entries.
   const seeded = await Promise.all(
@@ -888,27 +786,36 @@ export async function ensureCampaign(admin) {
   );
   const userErrors = seeded.flatMap((result) => result.userErrors);
   if (userErrors.length === 0) {
-    userErrors.push(
-      ...(await setHighWater(admin, state.installationId, FIRST_CAMPAIGN_ID + 1)),
-    );
+    try {
+      await spendThrough(shop, FIRST_CAMPAIGN_ID + 1);
+    } catch (error) {
+      console.error('Could not save campaign IDs', error);
+      userErrors.push({message: "Couldn't save the app's campaign records. Try again."});
+    }
   }
-  const campaigns = seeded.map((result) => result.campaign).filter(Boolean);
-  return {...state, campaigns, highWater: FIRST_CAMPAIGN_ID + 1, userErrors};
+  const campaigns = seeded
+    .map((result) => result.campaign && withState(result.campaign, shop, null))
+    .filter(Boolean);
+  return {...state, campaigns, userErrors};
 }
 // [END campaign-dashboard.seed-campaign]
 
 // [START campaign-dashboard.spawn-campaign]
 // Every App Events filter keys on the ID. It has to be an integer, and it has to be new.
-export async function createCampaign(admin, fields) {
-  const {installationId, campaigns, highWater, failed} = await readCampaigns(admin);
+export async function createCampaign(admin, shop, fields) {
+  const {campaigns, failed} = await readCampaigns(admin, shop);
   // A failed read hands out an ID that already has App Events data behind it.
   if (failed.length) return {campaign: null, userErrors: failed};
 
-  let id = nextCampaignId(campaigns, highWater);
-  for (let attempt = 0; attempt < 5; attempt += 1, id += 1) {
+  let id = campaignIdFloor(campaigns);
+  for (let attempt = 0; attempt < 5; attempt += 1) {
     // Spend the ID before using it. A failed create then skips the ID.
-    const unsaved = await setHighWater(admin, installationId, id);
-    if (unsaved.length) return {campaign: null, userErrors: unsaved};
+    try {
+      id = await allocateCampaignId(shop, id);
+    } catch (error) {
+      console.error('Could not allocate a campaign ID', error);
+      return {campaign: null, userErrors: [{message: "Couldn't assign a campaign ID. Try again."}]};
+    }
 
     const handle = campaignHandle(id);
     const body = await (
@@ -929,8 +836,11 @@ export async function createCampaign(admin, fields) {
     ).json();
     const result = entryResult(body, 'metaobjectCreate');
     if (!result.campaign) return result;
-    // Shopify suffixes a taken handle without an error. Another request claimed this ID.
-    if (result.campaign.handle === handle) return result;
+    // Shopify suffixes a taken handle without an error. An entry the database doesn't
+    // know about holds this ID.
+    if (result.campaign.handle === handle) {
+      return {...result, campaign: withState(result.campaign, shop, null)};
+    }
     const cleanup = await deleteCampaign(admin, result.campaign);
     if (cleanup.userErrors.length) return {campaign: null, userErrors: cleanup.userErrors};
   }

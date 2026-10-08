@@ -1,12 +1,14 @@
 import {CAMPAIGN_FIELDS, CREATOR_FIELDS, campaignFields} from '../../app/campaigns.server';
+import {seedState} from './db';
 
 export const INSTALLATION = {id: 'gid://shopify/AppInstallation/1', app: {id: 'gid://shopify/App/7', title: 'Campaign dashboard'}};
 
-// An entry as the list query returns it, built from a camelCase campaign.
-export function node({gid = 'gid://shopify/Metaobject/1', handle, updatedAt, products = [], qrCodes = [], creators, ...fields}) {
+// An entry as the list query returns it, built from a camelCase campaign. Markers, targets,
+// and a send count go to the app's database for the test shop, where the app keeps them.
+export function node({gid = 'gid://shopify/Metaobject/1', handle, products = [], qrCodes = [], creators, markers, targets, sentEvents, ...fields}) {
+  if (markers || targets || sentEvents != null) seedState({campaignId: fields.id, gid, markers, targets, sentEvents});
   return {
     id: gid,
-    updatedAt,
     handle: handle ?? `campaign-${fields.id}`,
     fields: campaignFields({...fields, products, ...(creators && {creators})}).map(({key, value}) => ({key, jsonValue: decode(key, value)})),
     products: {references: {nodes: products}},
@@ -19,10 +21,8 @@ export function node({gid = 'gid://shopify/Metaobject/1', handle, updatedAt, pro
 // The API hands back JSON for lists and json fields, a number for integers, strings otherwise.
 function decode(key, value) {
   if (value === '') return null;
-  if (['channels', 'products', 'creators', 'markers', 'targets'].includes(key)) {
-    return JSON.parse(value);
-  }
-  if (key === 'campaign_id' || key === 'sent_events') return Number(value);
+  if (['channels', 'products', 'creators'].includes(key)) return JSON.parse(value);
+  if (key === 'campaign_id') return Number(value);
   return value;
 }
 
@@ -62,9 +62,9 @@ export const CREATOR_KEYS = CREATOR_FIELDS.map(({key}) => ({key}));
 export const objectDefinitions = ({creator = {id: 'creator-def', fieldDefinitions: CREATOR_KEYS}, campaign = {id: 'def', fieldDefinitions: ALL_FIELDS}} = {}) =>
   ({type}) => ({data: {definition: type === 'campaign_dashboard_creator' ? creator : campaign}});
 
-export const listOf = (nodes, metafield = null) => () => ({
+export const listOf = (nodes) => () => ({
   data: {
-    currentAppInstallation: {...INSTALLATION, metafield},
+    currentAppInstallation: INSTALLATION,
     metaobjects: {nodes, pageInfo: {hasNextPage: false, endCursor: null}},
   },
 });

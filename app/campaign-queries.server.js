@@ -51,10 +51,6 @@ export const QR_CODE_CAMPAIGNS = `
 // [END campaign-dashboard.metafield-state]
 
 // [START campaign-dashboard.campaign-list-query]
-// The highest ID ever handed out, on the app installation. A deleted campaign's ID stays spent.
-export const ID_NAMESPACE = 'campaign_dashboard';
-export const ID_KEY = 'last_campaign_id';
-
 const CREATOR_NODE = `
   id
   handle
@@ -68,7 +64,6 @@ const CREATOR_NODE = `
 const CAMPAIGN_NODE = `
   id
   handle
-  updatedAt
   fields {
     key
     jsonValue
@@ -98,13 +93,9 @@ const CAMPAIGN_NODE = `
 export const CAMPAIGNS_QUERY = `
   query CampaignList($type: String!, $after: String) {
     currentAppInstallation {
-      id
       app {
         id
         title
-      }
-      metafield(namespace: "${ID_NAMESPACE}", key: "${ID_KEY}") {
-        value
       }
     }
     metaobjects(type: $type, first: 250, after: $after) {
@@ -115,22 +106,6 @@ export const CAMPAIGNS_QUERY = `
         hasNextPage
         endCursor
       }
-    }
-  }
-`;
-
-export const CAMPAIGN_BY_ID = `
-  query CampaignById($id: ID!) {
-    metaobject(id: $id) {
-      ${CAMPAIGN_NODE}
-    }
-  }
-`;
-
-export const CAMPAIGN_VERSION = `
-  query CampaignVersion($id: ID!) {
-    metaobject(id: $id) {
-      updatedAt
     }
   }
 `;
@@ -160,7 +135,7 @@ export const METAFIELDS_DELETE = `
   }
 `;
 
-// One mutation for the ID high-water mark, product stamps, and audience tags.
+// One mutation for product stamps and audience tags.
 export const METAFIELDS_SET = `
   mutation SetCampaignMetafields($metafields: [MetafieldsSetInput!]!) {
     metafieldsSet(metafields: $metafields) {

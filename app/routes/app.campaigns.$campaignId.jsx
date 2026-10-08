@@ -17,6 +17,12 @@ import {
   withReturnedErrors,
 } from '../campaigns.server';
 import {
+  claimSend,
+  forgetCampaign,
+  recordSend,
+  releaseSend,
+} from '../campaign-state.server';
+import {
   outcomeText,
   readSequence,
 } from '../campaign-report.server';
@@ -132,7 +138,7 @@ export async function loader({request, params}) {
   // and takes the app's navigation with it. The search params hold App Bridge's store and host.
   const {admin: client, session} = await authenticate.admin(request);
   const admin = withReturnedErrors(client);
-  const {appId, appName, campaigns, failed} = await readCampaigns(admin);
+  const {appId, appName, campaigns, failed} = await readCampaigns(admin, session.shop);
   // Report a failed read. A redirect would treat the campaign as deleted.
   if (failed.length) {
     return {
@@ -265,22 +271,23 @@ export async function loader({request, params}) {
 // One action for every write. The lock holds off a second write to the campaign until
 // this one ends.
 export async function action({request, params}) {
-  const admin = withReturnedErrors((await authenticate.admin(request)).admin);
-  const lock = await lockCampaign(admin, params.campaignId);
+  const {admin: client, session} = await authenticate.admin(request);
+  const admin = withReturnedErrors(client);
+  const lock = await lockCampaign(session.shop, params.campaignId);
   if (lock.problems) return {problems: lock.problems.map((error) => error.message)};
   try {
-    return await runIntent(admin, request, params);
+    return await runIntent(admin, session.shop, request, params);
   } finally {
     await lock.release();
   }
 }
 
-async function runIntent(admin, request, params) {
+async function runIntent(admin, shop, request, params) {
   const form = await request.formData();
   const intent = String(form.get('intent'));
 
   const [{appId, appName, campaigns, failed}, shopBody] = await Promise.all([
-    readCampaigns(admin),
+    readCampaigns(admin, shop),
     admin.graphql(SHOP_QUERY).then((response) => response.json()),
   ]);
   // Redirecting on a failed read would report the campaign gone.
@@ -388,15 +395,6 @@ async function runIntent(admin, request, params) {
     if (campaign.status !== 'running') {
       return {problems: ['Only active campaigns can send events.']};
     }
-    // The App Events API can't retract an event, and a second replay doubles every funnel
-    // denominator. The record gates it, because the funnel read lags ingestion by minutes.
-    if (campaign.sentEvents) {
-      return {
-        problems: [
-          'Events already sent. Create a new campaign to send them again.',
-        ],
-      };
-    }
     const blocked = sendBlocker(
       campaign,
       timeZone,
@@ -404,6 +402,20 @@ async function runIntent(admin, request, params) {
     );
     if (blocked) return {problems: [blocked]};
     if (!shopId) return {problems: ["Couldn't read the store ID. Reload and try again."]};
+    // The App Events API can't retract an event, and a second replay doubles every funnel
+    // denominator. The claim gates it, because the funnel read lags ingestion by minutes.
+    const claimed = await claimSend(shop, campaign.id, campaign.gid).catch((error) => {
+      console.error('Could not claim the send', error);
+      return null;
+    });
+    if (claimed === null) return {problems: ["Couldn't check for an earlier send. Try again."]};
+    if (!claimed) {
+      return {
+        problems: [
+          'Events already sent. Create a new campaign to send them again.',
+        ],
+      };
+    }
     const {accepted, failures} = await sendCampaignFunnel({
       shopId,
       campaignId: campaign.id,
@@ -420,13 +432,25 @@ async function runIntent(admin, request, params) {
         ]
       : [];
     if (sent > 0) {
-      const {userErrors} = await updateCampaign(admin, campaign, {sentEvents: sent});
-      if (userErrors.length) {
+      // A failed record keeps the claim, and a second send stays blocked.
+      const recorded = await recordSend(shop, campaign.id, sent).then(
+        () => true,
+        (error) => {
+          console.error('Could not record the send', error);
+          return false;
+        },
+      );
+      if (!recorded) {
         return {
           heading: "Events sent, but the campaign didn't record them",
-          problems: [...landed, ...failures, ...userErrors.map((error) => error.message)],
+          problems: [...landed, ...failures, "Couldn't save the campaign's records."],
         };
       }
+    } else {
+      // Nothing landed. Releasing the claim lets the merchant send again.
+      await releaseSend(shop, campaign.id).catch((error) =>
+        console.error('Could not release the send', error),
+      );
     }
     if (failures.length > 0) {
       return {heading: sent ? "Some events didn't send" : undefined, problems: [...landed, ...failures]};
@@ -844,6 +868,10 @@ async function runIntent(admin, request, params) {
     if (userErrors.length) {
       return {problems: userErrors.map((error) => error.message)};
     }
+    // The entry is gone, and its ID stays spent. A failed delete leaves an unused row.
+    await forgetCampaign(shop, campaign.id).catch((error) =>
+      console.error('Could not delete campaign state', error),
+    );
     return redirect(`/app/campaigns${new URL(request.url).search}`);
   }
 
@@ -1482,7 +1510,7 @@ export default function CampaignDashboard() {
           funnel={funnel}
           sendCount={sendCount}
           eventTotal={eventTotal}
-          alreadySent={Boolean(campaign.sentEvents)}
+          alreadySent={campaign.sentEvents != null}
           blocked={sendBlocked}
           busy={busy}
           submit={submit}

@@ -29,3 +29,37 @@ model Session {
   refreshToken        String?
   refreshTokenExpires DateTime?
 }
+
+// [START campaign-dashboard.campaign-state-model]
+// The highest campaign ID this shop has handed out. App Events keeps a deleted
+// campaign's events, and the ID stays spent.
+model ShopState {
+  shop           String @id
+  lastCampaignId Int
+}
+
+// What the app tracks for each campaign entry. The merchant can edit the entry, and these
+// IDs are the app's only handle on the annotations and targets it created.
+// SQLite has no JSON column. `markers` and `targets` hold JSON objects as text.
+model CampaignState {
+  shop        String
+  campaignId  Int
+  campaignGid String
+  markers     String   @default("{}")
+  targets     String   @default("{}")
+  sentEvents  Int?
+  updatedAt   DateTime @updatedAt
+
+  @@id([shop, campaignId])
+}
+
+// One row per campaign write in progress. The primary key lets one request in.
+model CampaignLock {
+  shop       String
+  campaignId Int
+  owner      String
+  expiresAt  DateTime
+
+  @@id([shop, campaignId])
+}
+// [END campaign-dashboard.campaign-state-model]

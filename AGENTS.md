@@ -38,12 +38,13 @@ npm run deploy
 
 ## How the app stores campaigns
 
-Prisma stores only Shopify sessions, in SQLite. Every campaign lives on the store. A fresh clone holds no campaign data.
+Prisma stores the app's private records in SQLite. Each campaign's fields live on the store. A fresh clone holds no campaign data.
 
-- Each campaign is an entry of the `campaign_dashboard_campaign` metaobject type. `CAMPAIGN_FIELDS` in `app/campaigns.server.js` lists its fields, including the IDs of the annotations and targets that the app writes.
+- Each campaign is an entry of the `campaign_dashboard_campaign` metaobject type. `CAMPAIGN_FIELDS` in `app/campaigns.server.js` lists its fields.
 - Each creator is an entry of the `campaign_dashboard_creator` type, with the creator's discount codes.
 - Three metafields make sales groupable in ShopifyQL: `campaign` on products, `tier` on customers, and `campaign_touch` on orders. `app/dimensions.server.js` defines them.
-- The `last_campaign_id` installation metafield keeps a deleted campaign's ID from coming back. Shopify deletes it at uninstall and keeps the campaign entries. After a reinstall, the app can reuse the ID of a campaign deleted before the uninstall.
+- `app/campaign-state.server.js` owns the Prisma records. `CampaignState` holds the IDs of the annotations and targets each campaign created and how many events it sent. `ShopState` holds the last campaign ID the app handed out, which keeps a deleted campaign's ID from coming back. `CampaignLock` holds one request's lock on a campaign. `readCampaigns` merges each campaign's record into the campaign as `markers`, `targets`, and `sentEvents`.
+- An uninstall deletes only the sessions. The `shop/redact` webhook deletes every record for the shop 48 hours later. After that, a reinstall can't remove the annotations and targets that earlier campaigns created, and the app can reuse the ID of a campaign deleted before the uninstall.
 
 ## How the campaign page works
 
