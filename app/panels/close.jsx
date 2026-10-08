@@ -1,3 +1,5 @@
+import {useEffect} from 'react';
+import {useRevalidator} from 'react-router';
 // [START campaign-dashboard.close-render]
 import {ConfirmButton} from './confirm';
 
@@ -84,3 +86,59 @@ export function CampaignLifecycle({
   );
 }
 // [END campaign-dashboard.close-render]
+
+// [START campaign-dashboard.stamp-status-render]
+// Stamping runs after the close returns. Reload while it runs, and offer a retry if it fails.
+const STAMP_POLL_MS = 5000;
+
+export function OrderStamping({stamping, busy, submit}) {
+  const revalidator = useRevalidator();
+  const running = stamping?.state === 'running';
+  useEffect(() => {
+    if (!running) return undefined;
+    const timer = setInterval(() => {
+      if (revalidator.state === 'idle') revalidator.revalidate();
+    }, STAMP_POLL_MS);
+    return () => clearInterval(timer);
+  }, [running, revalidator]);
+
+  if (!stamping) return null;
+  const problems = stamping.problems.map((problem) => problem.message).join(' ');
+
+  return (
+    <s-section heading="Order attribution">
+      {running && (
+        <s-banner tone="info" heading="Stamping orders">
+          <s-paragraph>
+            Shopify is writing each order's last campaign touch. {stamping.objectCount} done so
+            far. This page updates when it finishes.
+          </s-paragraph>
+        </s-banner>
+      )}
+      {stamping.state === 'done' && (
+        <s-banner tone="success" heading="Orders stamped">
+          <s-paragraph>Order attribution covers this campaign's orders.</s-paragraph>
+        </s-banner>
+      )}
+      {stamping.state === 'unread' && (
+        <s-banner tone="warning" heading="Couldn't check order stamping">
+          <s-paragraph>Reload the page to try again. The store returned: {problems}</s-paragraph>
+        </s-banner>
+      )}
+      {stamping.state === 'failed' && (
+        <s-banner tone="critical" heading="Some orders weren't stamped">
+          <s-paragraph>{problems}</s-paragraph>
+          <s-button
+            slot="secondary-actions"
+            loading={busy === 'stamp-orders'}
+            disabled={Boolean(busy)}
+            onClick={() => submit('stamp-orders')}
+          >
+            Stamp orders again
+          </s-button>
+        </s-banner>
+      )}
+    </s-section>
+  );
+}
+// [END campaign-dashboard.stamp-status-render]

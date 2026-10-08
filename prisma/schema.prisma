@@ -42,13 +42,15 @@ model ShopState {
 // IDs are the app's only handle on the annotations and targets it created.
 // SQLite has no JSON column. `markers` and `targets` hold JSON objects as text.
 model CampaignState {
-  shop        String
-  campaignId  Int
-  campaignGid String
-  markers     String   @default("{}")
-  targets     String   @default("{}")
-  sentEvents  Int?
-  updatedAt   DateTime @updatedAt
+  shop           String
+  campaignId     Int
+  campaignGid    String
+  markers        String   @default("{}")
+  targets        String   @default("{}")
+  sentEvents     Int?
+  // The bulk operation stamping a closed campaign's orders, until it finishes clean.
+  stampOperation String?
+  updatedAt      DateTime @updatedAt
 
   @@id([shop, campaignId])
 }

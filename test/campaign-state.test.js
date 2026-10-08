@@ -67,6 +67,7 @@ describe('campaign records', () => {
       markers: {campaign: 'a1'},
       targets: {store: 't1'},
       sentEvents: null,
+      stampOperation: null,
     });
   });
 

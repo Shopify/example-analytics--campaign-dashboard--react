@@ -9,7 +9,7 @@ const KEYS = {
   campaignLock: ['shop', 'campaignId'],
 };
 const DEFAULTS = {
-  campaignState: () => ({markers: '{}', targets: '{}', sentEvents: null, updatedAt: new Date()}),
+  campaignState: () => ({markers: '{}', targets: '{}', sentEvents: null, stampOperation: null, updatedAt: new Date()}),
 };
 const tables = Object.fromEntries(Object.keys(KEYS).map((name) => [name, []]));
 

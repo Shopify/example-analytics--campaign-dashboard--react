@@ -25,10 +25,11 @@ const stateOf = (row) => ({
   markers: parsed(row.markers),
   targets: parsed(row.targets),
   sentEvents: row.sentEvents,
+  stampOperation: row.stampOperation ?? null,
 });
 
 // A campaign created in the admin has no row, and no annotations or targets yet.
-export const emptyState = () => ({markers: {}, targets: {}, sentEvents: null});
+export const emptyState = () => ({markers: {}, targets: {}, sentEvents: null, stampOperation: null});
 
 export async function readStates(shop, campaignIds) {
   const rows = await db.campaignState.findMany({
@@ -111,6 +112,21 @@ export const forgetShop = async (shop) =>
     db.shopState.deleteMany({where: {shop}}),
   ]);
 // [END campaign-dashboard.campaign-state]
+
+// [START campaign-dashboard.stamp-operation-state]
+// The bulk operation stamping a closed campaign's orders. A retry replaces it.
+export async function recordStampOperation(shop, campaignId, gid, id) {
+  await claimRow(db, shop, campaignId, gid);
+  return db.campaignState.update({where: key(shop, campaignId), data: {stampOperation: id}});
+}
+
+// Only the operation the page read. A retry that started since keeps its own ID.
+export const clearStampOperation = async (shop, campaignId, id) =>
+  db.campaignState.updateMany({
+    where: {shop: ownShop(shop), campaignId: Number(campaignId), stampOperation: id},
+    data: {stampOperation: null},
+  });
+// [END campaign-dashboard.stamp-operation-state]
 
 // [START campaign-dashboard.allocate-campaign-id]
 // Raise the mark to `id` without ever lowering it.

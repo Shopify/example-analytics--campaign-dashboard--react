@@ -27,6 +27,7 @@ import {
   updateCampaign,
 } from './campaigns.server';
 import {detectIncident} from './campaign-report.server';
+import {startBulkMetafieldsSet} from './bulk-stamp.server';
 import {queryShopifyQL, shopifyqlErrors} from './shopifyql.server';
 import {
   DIMENSION_NAMESPACE,
@@ -450,44 +451,44 @@ export async function stampTier(admin, campaign, definition) {
 // [END campaign-dashboard.stamp-tier]
 
 // [START campaign-dashboard.stamp-orders]
+// A store can have thousands of orders in the window, so one bulk operation writes the
+// stamps. The close request starts it and returns. The campaign page polls it.
 export async function stampOrders(admin, campaign) {
   const touches = touchMarks(campaign);
-  const userErrors = [];
   // The query skips refund and edit rows. An order placed before the window has no
   // row, and each remaining order's first row is the day it was placed.
   const stamped = new Set();
+  const metafields = [];
   for (let offset = 0; ; offset += ORDER_PAGE_SIZE) {
     const body = await queryShopifyQL(admin, orderDaysQuery(campaign, offset));
     const unread = shopifyqlErrors(body);
-    if (unread.length) return [...userErrors, ...unread];
+    if (unread.length) return {operationId: null, count: 0, userErrors: unread};
 
     const rows = body.data?.shopifyqlQuery?.tableData?.rows ?? [];
-    const metafields = rows
-      .map((row) => ({id: row.order_id, touch: lastTouch(touches, row.day)}))
-      .filter((order) => order.id && !stamped.has(order.id) && stamped.add(order.id))
-      .filter((order) => order.touch)
-      .map((order) => ({
-        ownerId: `gid://shopify/Order/${order.id}`,
-        namespace: DIMENSION_NAMESPACE,
-        key: 'campaign_touch',
-        type: 'single_line_text_field',
-        value: order.touch,
-      }));
-
-    for (let start = 0; start < metafields.length; start += 25) {
-      const batch = await (
-        await admin.graphql(METAFIELDS_SET, {
-          variables: {metafields: metafields.slice(start, start + 25)},
-        })
-      ).json();
-      userErrors.push(
-        ...transportErrors(batch),
-        ...(batch.data?.metafieldsSet?.userErrors ?? []),
-      );
-    }
+    metafields.push(
+      ...rows
+        .map((row) => ({id: row.order_id, touch: lastTouch(touches, row.day)}))
+        .filter((order) => order.id && !stamped.has(order.id) && stamped.add(order.id))
+        .filter((order) => order.touch)
+        .map((order) => ({
+          ownerId: `gid://shopify/Order/${order.id}`,
+          namespace: DIMENSION_NAMESPACE,
+          key: 'campaign_touch',
+          type: 'single_line_text_field',
+          value: order.touch,
+        })),
+    );
     // A page shorter than the limit is the last one.
-    if (rows.length < ORDER_PAGE_SIZE) return userErrors;
+    if (rows.length < ORDER_PAGE_SIZE) break;
   }
+
+  // No orders to stamp starts no operation.
+  const started = await startBulkMetafieldsSet(
+    admin,
+    metafields,
+    `campaign-${campaign.id}-order-stamps.jsonl`,
+  );
+  return {...started, count: metafields.length};
 }
 // [END campaign-dashboard.stamp-orders]
 

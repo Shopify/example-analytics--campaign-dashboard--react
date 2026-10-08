@@ -20,8 +20,10 @@ import {
   claimSend,
   forgetCampaign,
   recordSend,
+  recordStampOperation,
   releaseSend,
 } from '../campaign-state.server';
+import {readStamping} from '../bulk-stamp.server';
 import {queryShopifyQL} from '../shopifyql.server';
 import {
   outcomeText,
@@ -103,7 +105,7 @@ import {
   stampTier,
   writeMarks,
 } from '../campaign-mutations.server';
-import {CampaignLifecycle} from '../panels/close';
+import {CampaignLifecycle, OrderStamping} from '../panels/close';
 import {ConfirmButton} from '../panels/confirm';
 import {
   SalesAndOrders,
@@ -222,7 +224,10 @@ export async function loader({request, params}) {
   if (fatal) return {campaign, locale, fatal};
   // [END campaign-dashboard.parse-errors]
 
-  const targets = await measureTargets(admin, campaign, targetsBody);
+  const [targets, stamping] = await Promise.all([
+    measureTargets(admin, campaign, targetsBody),
+    readStamping(admin, campaign),
+  ]);
 
   // Each image encodes the code's scan URL. Render it where the merchant
   // plans the campaign, ready to print.
@@ -263,6 +268,7 @@ export async function loader({request, params}) {
     qrFunnel,
     topProducts,
     qrCodes,
+    stamping,
     sendBlocked: sendBlocker(campaign, salesBody.data?.shop?.ianaTimezone ?? 'Etc/UTC', locale),
   };
 }
@@ -758,11 +764,9 @@ async function runIntent(admin, shop, request, params) {
 
     // Attribution needs the orders to exist, and close is the first point they do.
     // Skipped until the definition is a dimension.
-    const unattributed = dimensions.order.enabled
-      ? await stampOrders(admin, closing)
-      : [];
-    if (unattributed.length) {
-      return {problems: unattributed.map((error) => error.message)};
+    if (dimensions.order.enabled) {
+      const started = await startStamping(admin, shop, closing);
+      if (started.problems) return started;
     }
 
     const {userErrors} = await updateCampaign(admin, campaign, {
@@ -777,6 +781,20 @@ async function runIntent(admin, shop, request, params) {
       ? {ok: true, problems: kept.map((error) => error.message)}
       : {ok: true};
   }
+
+  // [START campaign-dashboard.stamp-orders-retry]
+  // A failed bulk operation leaves orders unstamped. Stamping again writes the same values.
+  if (intent === 'stamp-orders') {
+    if (campaign.status !== 'closed' || !dimensions.order.enabled) {
+      return {problems: ['Only closed campaigns with order attribution can stamp orders.']};
+    }
+    const current = await readStamping(admin, campaign);
+    if (current?.state === 'running') {
+      return {problems: ['Orders are still being stamped. Wait for that to finish.']};
+    }
+    return startStamping(admin, shop, campaign);
+  }
+  // [END campaign-dashboard.stamp-orders-retry]
 
   if (intent === 'cancel') {
     // A closed campaign keeps its outcome on the store's charts. A cancel only takes
@@ -877,6 +895,24 @@ async function runIntent(admin, shop, request, params) {
 }
 // [END campaign-dashboard.lifecycle]
 
+// [START campaign-dashboard.start-stamping]
+// The page polls the recorded operation. An unrecorded one still runs, but nothing reports it.
+async function startStamping(admin, shop, campaign) {
+  const {operationId, userErrors} = await stampOrders(admin, campaign);
+  if (userErrors.length) return {problems: userErrors.map((error) => error.message)};
+  if (!operationId) return {ok: true};
+  const recorded = await recordStampOperation(shop, campaign.id, campaign.gid, operationId)
+    .then(() => true)
+    .catch((error) => {
+      console.error('Could not record the stamp operation', error);
+      return false;
+    });
+  return recorded
+    ? {ok: true}
+    : {problems: ["Started stamping orders, but couldn't save the operation to track it."]};
+}
+// [END campaign-dashboard.start-stamping]
+
 // [START campaign-dashboard.unavailable-note]
 // A query that never ran looks like a store that sold nothing. Only the failure is actionable.
 function Unavailable({reason, heading}) {
@@ -903,6 +939,7 @@ const DONE = {
   'raise-target': 'Target raised',
   milestone: 'Milestone marked',
   'flag-incident': 'Incident flagged',
+  'stamp-orders': 'Order stamping started',
 };
 
 // [START campaign-dashboard.totals]
@@ -1003,6 +1040,7 @@ export default function CampaignDashboard() {
     qrFunnel,
     topProducts,
     qrCodes,
+    stamping,
   } = data;
 
   // [START campaign-dashboard.read]
@@ -1614,6 +1652,8 @@ export default function CampaignDashboard() {
 
         </Fragment>
       )}
+
+      <OrderStamping stamping={stamping} busy={busy} submit={submit} />
 
       <CampaignLifecycle
         campaign={campaign}
