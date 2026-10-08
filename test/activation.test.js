@@ -215,8 +215,29 @@ describe('stampTier', () => {
     const admin = {graphql: (document, options) => (documents.push(document), raw.graphql(document, options))};
     await stampTier(admin, vip, queryable);
     expect(documents.at(-1)).toContain(
-      `FROM customers SHOW total_number_of_orders WHERE customer.metafields.\\"app--7--campaign_dashboard\\".tier = 'vip' GROUP BY customer_id LIMIT 1000`,
+      `FROM customers SHOW total_number_of_orders WHERE customer.metafields.\\"app--7--campaign_dashboard\\".tier = 'vip' GROUP BY customer_id ORDER BY customer_id ASC LIMIT 1000`,
     );
+  });
+
+  it('pages the holders with OFFSET until a short page', async () => {
+    const page = Array.from({length: 1000}, (_unused, index) => String(index + 10));
+    const {admin, calls} = mockAdmin({
+      AudienceRanking: rows('10'),
+      SetCampaignMetafields: stamped,
+      CampaignTierHolders: (_variables, seen) =>
+        seen.filter((call) => call.op === 'CampaignTierHolders').length === 1 ? rows(...page)() : rows('5000')(),
+      DeleteCustomerTier: () => ({data: {metafieldsDelete: {userErrors: []}}}),
+    });
+    const documents = [];
+    const spy = {graphql: (document, options) => (documents.push(document), admin.graphql(document, options))};
+    expect(await stampTier(spy, vip, queryable)).toEqual({userErrors: []});
+    const holderQueries = documents.filter((document) => document.includes('CampaignTierHolders'));
+    expect(holderQueries).toHaveLength(2);
+    expect(holderQueries[0]).toMatch(/ORDER BY customer_id ASC LIMIT 1000"/);
+    expect(holderQueries[1]).toMatch(/ORDER BY customer_id ASC LIMIT 1000 OFFSET 1000"/);
+    const deleted = calls.find((call) => call.op === 'DeleteCustomerTier').variables.metafields;
+    expect(deleted).toHaveLength(1000);
+    expect(deleted.at(-1).ownerId).toBe(customer(5000));
   });
 
   it('deletes nothing when every holder stays in the tier', async () => {

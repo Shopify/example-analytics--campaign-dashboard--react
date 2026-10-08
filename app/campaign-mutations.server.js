@@ -3,6 +3,7 @@ import {
   ANNOTATION_DELETE,
   ANNOTATION_UPDATE,
   BUNDLE_QUERY,
+  HOLDERS_PAGE_SIZE,
   METAFIELDS_DELETE,
   METAFIELDS_SET,
   ORDER_PAGE_SIZE,
@@ -370,11 +371,23 @@ export async function stampProducts(admin, campaign) {
 async function customerIds(admin, query) {
   const body = await queryShopifyQL(admin, query);
   const userErrors = shopifyqlErrors(body);
-  const ids = (body.data?.shopifyqlQuery?.tableData?.rows ?? [])
+  const rows = body.data?.shopifyqlQuery?.tableData?.rows ?? [];
+  const ids = rows
     .map((row) => row.customer_id)
     .filter(Boolean)
     .map((id) => `gid://shopify/Customer/${id}`);
-  return {ids: userErrors.length ? [] : ids, userErrors};
+  return {ids: userErrors.length ? [] : ids, rowCount: rows.length, userErrors};
+}
+
+// A tier can outgrow one page. A page shorter than the limit is the last one.
+async function tierHolders(admin, dimension, tier) {
+  const ids = [];
+  for (let offset = 0; ; offset += HOLDERS_PAGE_SIZE) {
+    const page = await customerIds(admin, tierHoldersQuery(dimension, tier, offset));
+    if (page.userErrors.length) return {ids: [], userErrors: page.userErrors};
+    ids.push(...page.ids);
+    if (page.rowCount < HOLDERS_PAGE_SIZE) return {ids, userErrors: []};
+  }
 }
 
 // A re-rank moves customers out of the tier. ShopifyQL finds who holds the tier now,
@@ -411,7 +424,7 @@ export async function stampTier(admin, campaign, definition) {
 
   // Until the tier is queryable, ShopifyQL can't find its holders. A later activation clears them.
   if (!definition.enabled) return {userErrors: []};
-  const holders = await customerIds(admin, tierHoldersQuery(definition.dimension, campaign.audience));
+  const holders = await tierHolders(admin, definition.dimension, campaign.audience);
   const dropped = holders.ids.filter((id) => !ranked.ids.includes(id));
   if (!dropped.length) return {userErrors: holders.userErrors};
 

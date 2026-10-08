@@ -752,11 +752,12 @@ export const tierRankQuery = ({size, skip = 0}) => `
 `;
 
 // Every customer who holds the tier now, from any campaign. The customers dataset
-// needs no date range.
-export const tierHoldersQuery = (dimension, tier) => `
+// needs no date range. ORDER BY keeps the pages stable as OFFSET walks them.
+export const HOLDERS_PAGE_SIZE = 1000;
+export const tierHoldersQuery = (dimension, tier, offset = 0) => `
   query CampaignTierHolders {
     shopifyqlQuery(
-      query: "FROM customers SHOW total_number_of_orders WHERE ${inGraphQLString(dimension)} = '${tier}' GROUP BY customer_id LIMIT 1000"
+      query: "FROM customers SHOW total_number_of_orders WHERE ${inGraphQLString(dimension)} = '${tier}' GROUP BY customer_id ORDER BY customer_id ASC LIMIT ${HOLDERS_PAGE_SIZE}${offset > 0 ? ` OFFSET ${offset}` : ''}"
     ) {
       tableData {
         rows
