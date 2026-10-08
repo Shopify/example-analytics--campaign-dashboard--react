@@ -1,3 +1,5 @@
+import {useState} from 'react';
+
 import {annotateClause, exploreLink} from '../annotations';
 import {
   campaignWindow,
@@ -154,6 +156,7 @@ export function PromotedProductSales({
   currency,
   shortDate,
 }) {
+  const [showDays, setShowDays] = useState(false);
   if (!promotedRows.some((row) => row.promoted > 0)) return null;
 
   return (
@@ -181,8 +184,10 @@ export function PromotedProductSales({
         This report groups sales by the campaign ID on each product&rsquo;s{' '}
         <s-text type="strong">{dimensions.product.name}</s-text> metafield.
       </s-paragraph>
-      <details>
-        <summary>Daily breakdown</summary>
+      <s-button variant="tertiary" onClick={() => setShowDays(!showDays)}>
+        {showDays ? 'Hide daily breakdown' : 'Show daily breakdown'}
+      </s-button>
+      {showDays && (
         <s-box paddingBlockStart="base">
           <s-table variant="auto">
             <s-table-header-row>
@@ -201,7 +206,7 @@ export function PromotedProductSales({
             </s-table-body>
           </s-table>
         </s-box>
-      </details>
+      )}
     </s-section>
   );
 }
@@ -218,6 +223,7 @@ export function SegmentSales({
   currency,
   shortDate,
 }) {
+  const [showDays, setShowDays] = useState(false);
   if (tierRows.length === 0) return null;
 
   return (
@@ -242,8 +248,10 @@ export function SegmentSales({
           sales totals aren&rsquo;t available for this period yet.
         </s-paragraph>
       )}
-      <details>
-        <summary>Daily breakdown</summary>
+      <s-button variant="tertiary" onClick={() => setShowDays(!showDays)}>
+        {showDays ? 'Hide daily breakdown' : 'Show daily breakdown'}
+      </s-button>
+      {showDays && (
         <s-box paddingBlockStart="base">
           <s-table variant="auto">
             <s-table-header-row>
@@ -260,7 +268,7 @@ export function SegmentSales({
             </s-table-body>
           </s-table>
         </s-box>
-      </details>
+      )}
     </s-section>
   );
 }
@@ -398,16 +406,18 @@ export function QRCodeSales({
           components: 'A Shopify metric card, running the query it displays.',
         }}
       />
-      <div style={{height: '320px', marginBottom: '16px'}}>
-        {cardReady ? (
-          <s-shopifyql-metric-card
-            heading="QR code sales by day"
-            query={qrCardQuery(campaign)}
-          />
-        ) : (
-          <s-spinner accessibilityLabel="Loading the QR sales chart" />
-        )}
-      </div>
+      <s-box paddingBlockEnd="base">
+        <s-box blockSize="320px">
+          {cardReady ? (
+            <s-shopifyql-metric-card
+              heading="QR code sales by day"
+              query={qrCardQuery(campaign)}
+            />
+          ) : (
+            <s-spinner accessibilityLabel="Loading the QR sales chart" />
+          )}
+        </s-box>
+      </s-box>
       {/* Attribution can credit an order whose session predates the window. The QR
           total can outrun the store's daily dataset. No total, no share. */}
       {Number(totalSales) > 0 ? (

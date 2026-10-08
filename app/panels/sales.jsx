@@ -181,6 +181,7 @@ export function SalesAndOrders({
   percent,
 }) {
   const cardReady = useMetricCardsReady();
+  const [showDays, setShowDays] = useState(false);
   const showSends = [...sends.values()].some((value) => value > 0);
 
   return (
@@ -213,24 +214,28 @@ export function SalesAndOrders({
       {/* [END campaign-dashboard.totals-render] */}
 
       {/* [START campaign-dashboard.sales-card-render] */}
-      {/* The card fills its container's height. Without one, the chart collapses
-          to its minimum. */}
-      <div style={{height: '320px', marginBottom: '16px'}}>
-        {cardReady ? (
-          <s-shopifyql-metric-card
-            heading="Sales and orders by day"
-            query={salesCardQuery(campaign)}
-          />
-        ) : (
-          <s-spinner accessibilityLabel="Loading the sales chart" />
-        )}
-      </div>
+      {/* The card fills its container's height, or the chart collapses to its minimum.
+          Padding counts inside `blockSize`, so the outer box holds the gap. */}
+      <s-box paddingBlockEnd="base">
+        <s-box blockSize="320px">
+          {cardReady ? (
+            <s-shopifyql-metric-card
+              heading="Sales and orders by day"
+              query={salesCardQuery(campaign)}
+            />
+          ) : (
+            <s-spinner accessibilityLabel="Loading the sales chart" />
+          )}
+        </s-box>
+      </s-box>
       {/* [END campaign-dashboard.sales-card-render] */}
 
       {/* [START campaign-dashboard.sales-table-render] */}
       {/* The rows render as the query returned them. `cell` reads the generated columns. */}
-      <details>
-        <summary>Daily breakdown</summary>
+      <s-button variant="tertiary" onClick={() => setShowDays(!showDays)}>
+        {showDays ? 'Hide daily breakdown' : 'Show daily breakdown'}
+      </s-button>
+      {showDays && (
         <s-box paddingBlockStart="base">
           <s-table variant="auto">
             <s-table-header-row>
@@ -255,7 +260,7 @@ export function SalesAndOrders({
             </s-table-body>
           </s-table>
         </s-box>
-      </details>
+      )}
       {/* [END campaign-dashboard.sales-table-render] */}
 
       <s-stack direction="block" gap="base">

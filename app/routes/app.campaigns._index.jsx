@@ -380,460 +380,461 @@ export default function CampaignsIndex() {
   }
 
   return (
-    <s-page heading="Campaigns">
-      {composing ? (
-        <s-button slot="secondary-actions" onClick={discard}>
-          Cancel
-        </s-button>
-      ) : (
-        <s-button
-          slot="primary-action"
-          variant="primary"
-          onClick={() => setComposing(true)}
-        >
-          New campaign
-        </s-button>
-      )}
+    <form onSubmit={submit}>
+      <s-page heading="Campaigns">
+        {composing ? (
+          <s-button slot="secondary-actions" onClick={discard}>
+            Cancel
+          </s-button>
+        ) : (
+          <s-button
+            slot="primary-action"
+            variant="primary"
+            onClick={() => setComposing(true)}
+          >
+            New campaign
+          </s-button>
+        )}
 
-      {composing && (
-        // The form is one box to the page layout, and the sections inside it
-        // lose their spacing. `display: contents` hands them back to the page.
-        <form onSubmit={submit} style={{display: 'contents'}}>
-          {/* [START campaign-dashboard.spawn-form] */}
-          <s-section heading="Campaign details">
+        {composing && (
+          // The form wraps `s-page`, which spaces these sections as its own children.
+          <Fragment>
+            {/* [START campaign-dashboard.spawn-form] */}
+            <s-section heading="Campaign details">
+              <s-box paddingBlockStart="base" />
+              {problems.length > 0 && (
+                <s-banner tone="critical" heading="Campaign not created">
+                  <s-unordered-list>
+                    {problems.map((problem) => (
+                      <s-list-item key={problem}>{problem}</s-list-item>
+                    ))}
+                  </s-unordered-list>
+                </s-banner>
+              )}
+
+              <s-stack direction="block" gap="base">
+                <s-text-field
+                  label="Campaign name"
+                  name="title"
+                  placeholder="Summer launch"
+                  details="Names the campaign in reports."
+                />
+                <s-stack direction="inline" gap="base">
+                  <s-date-field label="Start date" name="startDate" />
+                  <s-date-field label="End date" name="endDate" />
+                </s-stack>
+
+                <s-select
+                  label="Customer segment"
+                  name="audience"
+                  value={audience}
+                  onChange={(event) => setAudience(event.currentTarget.value)}
+                  details="Activation writes the segment to a metafield on each customer in the segment. The customer segment target measures sales to the segment."
+                >
+                  {AUDIENCE_TIERS.map((tier) => (
+                    <s-option key={tier.value} value={tier.value}>
+                      {tier.label}
+                    </s-option>
+                  ))}
+                </s-select>
+
+                {/* The codes exist in Discounts. This records who hands each code out. */}
+                <s-text-field
+                  label="Creator codes"
+                  name="creatorCodes"
+                  placeholder="AVERY10:Avery, JUNO15:Juno"
+                  details="Enter CODE:Creator pairs. Separate the pairs with commas. A creator can have more than one code."
+                />
+              </s-stack>
+            </s-section>
+            {/* [END campaign-dashboard.spawn-form] */}
+
             <s-box paddingBlockStart="base" />
-            {problems.length > 0 && (
-              <s-banner tone="critical" heading="Campaign not created">
+
+            {/* [START campaign-dashboard.picker-render] */}
+            <s-section heading="Promoted products">
+              <s-box paddingBlockStart="base" />
+              <s-paragraph>
+                Select up to five products. The promoted product target measures
+                sales of these products.
+              </s-paragraph>
+              {products.length > 0 && (
                 <s-unordered-list>
-                  {problems.map((problem) => (
-                    <s-list-item key={problem}>{problem}</s-list-item>
+                  {products.map((product) => (
+                    <s-list-item key={product.id}>{product.title}</s-list-item>
                   ))}
                 </s-unordered-list>
-              </s-banner>
-            )}
+              )}
+              <s-button onClick={pickProducts}>
+                {products.length > 0 ? 'Change products' : 'Select products'}
+              </s-button>
+            </s-section>
+            {/* [END campaign-dashboard.picker-render] */}
 
-            <s-stack direction="block" gap="base">
-              <s-text-field
-                label="Campaign name"
-                name="title"
-                placeholder="Summer launch"
-                details="Names the campaign in reports."
-              />
-              <s-stack direction="inline" gap="base">
-                <s-date-field label="Start date" name="startDate" />
-                <s-date-field label="End date" name="endDate" />
-              </s-stack>
+            <s-box paddingBlockStart="base" />
 
-              <s-select
-                label="Customer segment"
-                name="audience"
-                value={audience}
-                onChange={(event) => setAudience(event.currentTarget.value)}
-                details="Activation writes the segment to a metafield on each customer in the segment. The customer segment target measures sales to the segment."
+            {/* [START campaign-dashboard.channel-picker] */}
+            {/* Each channel reports a different set of stages, and a different funnel. */}
+            <s-section heading="Channels">
+              <s-box paddingBlockStart="base" />
+              <s-choice-list
+                label="Send on"
+                name="channels"
+                multiple
+                onChange={(event) => setChannels([...event.currentTarget.values])}
               >
-                {AUDIENCE_TIERS.map((tier) => (
-                  <s-option key={tier.value} value={tier.value}>
-                    {tier.label}
-                  </s-option>
+                {CHANNEL_KEYS.map((key) => (
+                  <s-choice
+                    key={key}
+                    value={key}
+                    defaultSelected={channels.includes(key) || undefined}
+                  >
+                    {CHANNELS[key].label}
+                    <s-text slot="details">
+                      Reports{' '}
+                      {CHANNELS[key].stages
+                        .map((stage) => stage.label.toLowerCase())
+                        .join(', ')}
+                      .
+                    </s-text>
+                  </s-choice>
                 ))}
-              </s-select>
+              </s-choice-list>
+            </s-section>
+            {/* [END campaign-dashboard.channel-picker] */}
 
-              {/* The codes exist in Discounts. This records who hands each code out. */}
-              <s-text-field
-                label="Creator codes"
-                name="creatorCodes"
-                placeholder="AVERY10:Avery, JUNO15:Juno"
-                details="Enter CODE:Creator pairs. Separate the pairs with commas. A creator can have more than one code."
-              />
-            </s-stack>
-          </s-section>
-          {/* [END campaign-dashboard.spawn-form] */}
-
-          <s-box paddingBlockStart="base" />
-
-          {/* [START campaign-dashboard.picker-render] */}
-          <s-section heading="Promoted products">
             <s-box paddingBlockStart="base" />
-            <s-paragraph>
-              Select up to five products. The promoted product target measures
-              sales of these products.
-            </s-paragraph>
-            {products.length > 0 && (
-              <s-unordered-list>
-                {products.map((product) => (
-                  <s-list-item key={product.id}>{product.title}</s-list-item>
-                ))}
-              </s-unordered-list>
-            )}
-            <s-button onClick={pickProducts}>
-              {products.length > 0 ? 'Change products' : 'Select products'}
-            </s-button>
-          </s-section>
-          {/* [END campaign-dashboard.picker-render] */}
 
-          <s-box paddingBlockStart="base" />
-
-          {/* [START campaign-dashboard.channel-picker] */}
-          {/* Each channel reports a different set of stages, and a different funnel. */}
-          <s-section heading="Channels">
-            <s-box paddingBlockStart="base" />
-            <s-choice-list
-              label="Send on"
-              name="channels"
-              multiple
-              onChange={(event) => setChannels([...event.currentTarget.values])}
-            >
-              {CHANNEL_KEYS.map((key) => (
-                <s-choice
-                  key={key}
-                  value={key}
-                  defaultSelected={channels.includes(key) || undefined}
-                >
-                  {CHANNELS[key].label}
-                  <s-text slot="details">
-                    Reports{' '}
-                    {CHANNELS[key].stages
-                      .map((stage) => stage.label.toLowerCase())
-                      .join(', ')}
-                    .
-                  </s-text>
-                </s-choice>
-              ))}
-            </s-choice-list>
-          </s-section>
-          {/* [END campaign-dashboard.channel-picker] */}
-
-          <s-box paddingBlockStart="base" />
-
-          {/* [START campaign-dashboard.spawn-targets] */}
-          {/* Each amount becomes a target at activation. The form offers only the
-              targets this campaign can create. */}
-          <s-section heading="Targets">
-            <s-box paddingBlockStart="base" />
-            <s-stack direction="block" gap="base">
-              <s-paragraph>
-                Activation creates a target for each amount. Leave an amount
-                blank for no target.
-              </s-paragraph>
-              <s-money-field
-                label="Store sales target"
-                name="revenueTarget"
-                placeholder="5000.00"
-                details="Measures total sales."
-              />
-              <s-money-field
-                label="Promoted product target"
-                name="productTarget"
-                placeholder="5000.00"
-                disabled={products.length === 0}
-                details={
-                  products.length > 0
-                    ? 'Sales of the promoted products.'
-                    : 'Select promoted products to set this target.'
-                }
-              />
-              {isTargetedTier(audience) && (
+            {/* [START campaign-dashboard.spawn-targets] */}
+            {/* Each amount becomes a target at activation. The form offers only the
+                targets this campaign can create. */}
+            <s-section heading="Targets">
+              <s-box paddingBlockStart="base" />
+              <s-stack direction="block" gap="base">
+                <s-paragraph>
+                  Activation creates a target for each amount. Leave an amount
+                  blank for no target.
+                </s-paragraph>
                 <s-money-field
-                  label="Customer segment target"
-                  name="audienceTarget"
-                  placeholder="2500.00"
-                  disabled={!dimensions.customer.enabled}
+                  label="Store sales target"
+                  name="revenueTarget"
+                  placeholder="5000.00"
+                  details="Measures total sales."
+                />
+                <s-money-field
+                  label="Promoted product target"
+                  name="productTarget"
+                  placeholder="5000.00"
+                  disabled={products.length === 0}
                   details={
-                    dimensions.customer.enabled
-                      ? `Sales to the ${tierLabel(audience)} segment.`
-                      : 'Make the customer dimension queryable under Analytics dimensions to set this target.'
+                    products.length > 0
+                      ? 'Sales of the promoted products.'
+                      : 'Select promoted products to set this target.'
                   }
                 />
-              )}
-              <s-money-field
-                label="QR code target"
-                name="qrTarget"
-                placeholder="1000.00"
-                details="One target for each QR code. Pick this campaign in each QR code's Campaign field before you activate."
-              />
-              <s-stack direction="inline" gap="base">
-                <s-button variant="primary" type="submit" loading={saving}>
-                  Create campaign
-                </s-button>
+                {isTargetedTier(audience) && (
+                  <s-money-field
+                    label="Customer segment target"
+                    name="audienceTarget"
+                    placeholder="2500.00"
+                    disabled={!dimensions.customer.enabled}
+                    details={
+                      dimensions.customer.enabled
+                        ? `Sales to the ${tierLabel(audience)} segment.`
+                        : 'Make the customer dimension queryable under Analytics dimensions to set this target.'
+                    }
+                  />
+                )}
+                <s-money-field
+                  label="QR code target"
+                  name="qrTarget"
+                  placeholder="1000.00"
+                  details="One target for each QR code. Pick this campaign in each QR code's Campaign field before you activate."
+                />
+                <s-stack direction="inline" gap="base">
+                  <s-button variant="primary" type="submit" loading={saving}>
+                    Create campaign
+                  </s-button>
+                </s-stack>
               </s-stack>
-            </s-stack>
+            </s-section>
+            {/* [END campaign-dashboard.spawn-targets] */}
+
+            <s-box paddingBlockStart="base" />
+          </Fragment>
+        )}
+
+        {/* [START campaign-dashboard.overview-card-render] */}
+        {since && (
+          <s-section heading="Store sales overview">
+            <s-box paddingBlockStart="base" />
+            {cardReady ? (
+              <s-metrics-bar accessibilityLabel="Store sales over the campaign period">
+                <s-shopifyql-metric-card
+                  heading="Total sales"
+                  query={cardQuery('total_sales')}
+                />
+                <s-shopifyql-metric-card
+                  heading="Orders"
+                  query={cardQuery('orders')}
+                />
+                <s-shopifyql-metric-card
+                  heading="Average order value"
+                  query={cardQuery('average_order_value')}
+                />
+              </s-metrics-bar>
+            ) : (
+              <s-metrics-bar loading accessibilityLabel="Loading store sales" />
+            )}
           </s-section>
-          {/* [END campaign-dashboard.spawn-targets] */}
+        )}
+        {/* [END campaign-dashboard.overview-card-render] */}
 
-          <s-box paddingBlockStart="base" />
-        </form>
-      )}
-
-      {/* [START campaign-dashboard.overview-card-render] */}
-      {since && (
-        <s-section heading="Store sales overview">
-          <s-box paddingBlockStart="base" />
-          {cardReady ? (
-            <s-metrics-bar accessibilityLabel="Store sales over the campaign period">
-              <s-shopifyql-metric-card
-                heading="Total sales"
-                query={cardQuery('total_sales')}
-              />
-              <s-shopifyql-metric-card
-                heading="Orders"
-                query={cardQuery('orders')}
-              />
-              <s-shopifyql-metric-card
-                heading="Average order value"
-                query={cardQuery('average_order_value')}
-              />
-            </s-metrics-bar>
+        <s-section>
+          {seedErrors.length > 0 && (
+            <s-banner
+              tone="critical"
+              heading="Campaign setup failed"
+            >
+              <s-unordered-list>
+                {seedErrors.map((problem) => (
+                  <s-list-item key={problem}>{problem}</s-list-item>
+                ))}
+              </s-unordered-list>
+            </s-banner>
+          )}
+          {targetsUnavailable && (
+            <s-banner tone="info" heading="Target progress didn't load">
+              <s-paragraph>
+                Reload the page to try again. The store returned: {targetsUnavailable}
+              </s-paragraph>
+            </s-banner>
+          )}
+          {sendsUnavailable && (
+            <s-banner tone="info" heading="Messages sent didn't load">
+              <s-paragraph>
+                Reload the page to try again. The store returned: {sendsUnavailable}
+              </s-paragraph>
+            </s-banner>
+          )}
+          {campaigns.length === 0 ? (
+            <s-paragraph>No campaigns yet.</s-paragraph>
           ) : (
-            <s-metrics-bar loading accessibilityLabel="Loading store sales" />
+            // [START campaign-dashboard.overview-render]
+            <s-table variant="auto">
+              <s-table-header-row>
+                <s-table-header listSlot="primary">Campaign</s-table-header>
+                <s-table-header listSlot="labeled">Dates</s-table-header>
+                <s-table-header listSlot="labeled">Segment and channels</s-table-header>
+                <s-table-header listSlot="labeled">Messages sent</s-table-header>
+                <s-table-header listSlot="labeled">Target progress</s-table-header>
+                <s-table-header listSlot="labeled">Annotations and targets</s-table-header>
+                <s-table-header listSlot="inline">Status</s-table-header>
+              </s-table-header-row>
+              <s-table-body>
+                {campaigns.map((campaign) => {
+                  const reach = sendsFor(campaign, sends, appName);
+                  const target = targetProgress(campaign, targets, targetsUnavailable);
+                  return (
+                    <s-table-row key={campaign.id}>
+                      <s-table-cell>
+                        <s-link href={`/app/campaigns/${campaign.id}`}>
+                          {campaign.title}
+                        </s-link>
+                      </s-table-cell>
+                      <s-table-cell>
+                        {shortDate(campaign.startDate)} to{' '}
+                        {shortDate(campaign.endDate)}
+                      </s-table-cell>
+                      <s-table-cell>
+                        {tierLabel(campaign.audience)} on{' '}
+                        {(campaign.channels ?? [])
+                          .map((key) => CHANNELS[key]?.label ?? key)
+                          .join(', ')}
+                      </s-table-cell>
+                      <s-table-cell>
+                        {reach ? (
+                          <Fragment>
+                            {integer(reach.sent)} messages
+                            {reach.openRate !== null &&
+                              `, ${reach.openRate}% email open rate`}
+                          </Fragment>
+                        ) : sendsUnavailable && campaign.status !== 'planned' ? (
+                          <s-text color="subdued">Couldn’t load</s-text>
+                        ) : (
+                          <s-text color="subdued">Nothing sent</s-text>
+                        )}
+                      </s-table-cell>
+                      <s-table-cell>
+                        {target.unmeasured ? (
+                          <s-text color="subdued">Couldn’t measure</s-text>
+                        ) : target.percent !== null ? (
+                          <s-text tone={target.percent >= 100 ? 'success' : 'info'}>
+                            {target.percent}% of the store sales target
+                          </s-text>
+                        ) : target.count > 0 ? (
+                          <s-text>
+                            {target.count} {target.count === 1 ? 'target' : 'targets'}
+                          </s-text>
+                        ) : (
+                          <s-text color="subdued">None</s-text>
+                        )}
+                      </s-table-cell>
+                      <s-table-cell>{writtenBack(campaign)}</s-table-cell>
+                      <s-table-cell>
+                        <s-badge
+                          tone={
+                            {
+                              planned: 'info',
+                              running: 'success',
+                              closed: 'neutral',
+                              canceled: 'neutral',
+                            }[campaign.status]
+                          }
+                        >
+                          {statusLabel(campaign.status)}
+                        </s-badge>
+                      </s-table-cell>
+                    </s-table-row>
+                  );
+                })}
+              </s-table-body>
+            </s-table>
+            // [END campaign-dashboard.overview-render]
           )}
         </s-section>
-      )}
-      {/* [END campaign-dashboard.overview-card-render] */}
 
-      <s-section>
-        {seedErrors.length > 0 && (
-          <s-banner
-            tone="critical"
-            heading="Campaign setup failed"
-          >
-            <s-unordered-list>
-              {seedErrors.map((problem) => (
-                <s-list-item key={problem}>{problem}</s-list-item>
-              ))}
-            </s-unordered-list>
-          </s-banner>
-        )}
-        {targetsUnavailable && (
-          <s-banner tone="info" heading="Target progress didn't load">
+        {/* [START campaign-dashboard.overview-chart-render] */}
+        {anySends && (
+          <s-section heading="Messages sent by campaign">
+            <s-box paddingBlockStart="base" />
             <s-paragraph>
-              Reload the page to try again. The store returned: {targetsUnavailable}
+              Messages sent in the last 29 days. App Events keeps 30 days of
+              data. Older campaigns don’t appear.
             </s-paragraph>
-          </s-banner>
+            <s-table variant="auto">
+              <s-table-header-row>
+                <s-table-header listSlot="primary">Campaign</s-table-header>
+                <s-table-header listSlot="labeled">Email</s-table-header>
+                <s-table-header listSlot="labeled">SMS</s-table-header>
+                <s-table-header listSlot="labeled">Push</s-table-header>
+              </s-table-header-row>
+              <s-table-body>
+                {mix.map((row) => (
+                  <s-table-row key={row.title}>
+                    <s-table-cell>{row.title}</s-table-cell>
+                    <s-table-cell>{integer(row.email)}</s-table-cell>
+                    <s-table-cell>{integer(row.sms)}</s-table-cell>
+                    <s-table-cell>{integer(row.push)}</s-table-cell>
+                  </s-table-row>
+                ))}
+              </s-table-body>
+            </s-table>
+          </s-section>
         )}
-        {sendsUnavailable && (
-          <s-banner tone="info" heading="Messages sent didn't load">
-            <s-paragraph>
-              Reload the page to try again. The store returned: {sendsUnavailable}
-            </s-paragraph>
-          </s-banner>
-        )}
-        {campaigns.length === 0 ? (
-          <s-paragraph>No campaigns yet.</s-paragraph>
-        ) : (
-          // [START campaign-dashboard.overview-render]
+        {/* [END campaign-dashboard.overview-chart-render] */}
+
+        {/* [START campaign-dashboard.metafield-dimension-render] */}
+        <s-section heading="Analytics dimensions">
+          <s-box paddingBlockStart="base" />
+          <s-paragraph>
+            The app writes campaign values to products, customers, and orders as
+            metafields. Create a dimension from each metafield. Campaign reports
+            group sales by each dimension. Each dimension works for every
+            campaign.
+          </s-paragraph>
+          {dimensionProblems.length > 0 && (
+            <s-banner tone="critical" heading="Dimension not created">
+              <s-unordered-list>
+                {dimensionProblems.map((problem) => (
+                  <s-list-item key={problem}>{problem}</s-list-item>
+                ))}
+              </s-unordered-list>
+            </s-banner>
+          )}
+          {dimensions.product.reference &&
+            dimensions.product.defined &&
+            !dimensions.product.enabled && (
+              <s-paragraph>
+                Turn on analytics for the Campaign metaobject to use the product
+                dimension.
+              </s-paragraph>
+            )}
           <s-table variant="auto">
             <s-table-header-row>
-              <s-table-header listSlot="primary">Campaign</s-table-header>
-              <s-table-header listSlot="labeled">Dates</s-table-header>
-              <s-table-header listSlot="labeled">Segment and channels</s-table-header>
-              <s-table-header listSlot="labeled">Messages sent</s-table-header>
-              <s-table-header listSlot="labeled">Target progress</s-table-header>
-              <s-table-header listSlot="labeled">Annotations and targets</s-table-header>
-              <s-table-header listSlot="inline">Status</s-table-header>
+              <s-table-header listSlot="primary">Dimension</s-table-header>
+              <s-table-header listSlot="labeled">Status</s-table-header>
+              <s-table-header listSlot="labeled">Report</s-table-header>
+              <s-table-header listSlot="inline" />
             </s-table-header-row>
             <s-table-body>
-              {campaigns.map((campaign) => {
-                const reach = sendsFor(campaign, sends, appName);
-                const target = targetProgress(campaign, targets, targetsUnavailable);
+              {['product', 'customer', 'order'].map((which) => {
+                const definition = dimensions[which];
                 return (
-                  <s-table-row key={campaign.id}>
+                  <s-table-row key={which}>
                     <s-table-cell>
-                      <s-link href={`/app/campaigns/${campaign.id}`}>
-                        {campaign.title}
-                      </s-link>
+                      <s-text>{definition.name}</s-text>
                     </s-table-cell>
                     <s-table-cell>
-                      {shortDate(campaign.startDate)} to{' '}
-                      {shortDate(campaign.endDate)}
+                      {definition.enabled
+                        ? 'Queryable'
+                        : !definition.defined
+                          ? 'Not created'
+                          : definition.reference
+                            ? 'Analytics off for Campaign'
+                            : definition.eligible
+                              ? 'Created, not queryable'
+                              : 'Not eligible. Check the field type and owner type.'}
                     </s-table-cell>
                     <s-table-cell>
-                      {tierLabel(campaign.audience)} on{' '}
-                      {(campaign.channels ?? [])
-                        .map((key) => CHANNELS[key]?.label ?? key)
-                        .join(', ')}
-                    </s-table-cell>
-                    <s-table-cell>
-                      {reach ? (
-                        <Fragment>
-                          {integer(reach.sent)} messages
-                          {reach.openRate !== null &&
-                            `, ${reach.openRate}% email open rate`}
-                        </Fragment>
-                      ) : sendsUnavailable && campaign.status !== 'planned' ? (
-                        <s-text color="subdued">Couldn't load</s-text>
+                      {reported && definition.enabled ? (
+                        <s-link
+                          href={`/app/campaigns/${reported.id}#${definition.anchor}`}
+                        >
+                          {definition.report}
+                        </s-link>
                       ) : (
-                        <s-text color="subdued">Nothing sent</s-text>
+                        definition.report
                       )}
                     </s-table-cell>
                     <s-table-cell>
-                      {target.unmeasured ? (
-                        <s-text color="subdued">Couldn't measure</s-text>
-                      ) : target.percent !== null ? (
-                        <s-text tone={target.percent >= 100 ? 'success' : 'info'}>
-                          {target.percent}% of the store sales target
-                        </s-text>
-                      ) : target.count > 0 ? (
-                        <s-text>
-                          {target.count} {target.count === 1 ? 'target' : 'targets'}
-                        </s-text>
-                      ) : (
-                        <s-text color="subdued">None</s-text>
-                      )}
-                    </s-table-cell>
-                    <s-table-cell>{writtenBack(campaign)}</s-table-cell>
-                    <s-table-cell>
-                      <s-badge
-                        tone={
-                          {
-                            planned: 'info',
-                            running: 'success',
-                            closed: 'neutral',
-                            canceled: 'neutral',
-                          }[campaign.status]
-                        }
-                      >
-                        {statusLabel(campaign.status)}
-                      </s-badge>
+                      <s-stack direction="inline" gap="base" alignItems="center">
+                        {!definition.enabled &&
+                          (!definition.defined ||
+                            (definition.eligible && !definition.reference)) && (
+                            <s-button
+                              loading={enabling === which}
+                              disabled={Boolean(enabling) && enabling !== which}
+                              onClick={() =>
+                                dimensionFetcher.submit(
+                                  {intent: 'enable-dimension', which},
+                                  {method: 'post'},
+                                )
+                              }
+                            >
+                              {definition.defined
+                                ? 'Enable as dimension'
+                                : 'Create dimension'}
+                            </s-button>
+                          )}
+                        {definition.href && (
+                          <s-link href={definition.href} target="_blank">
+                            {definition.reference && definition.defined && !definition.enabled
+                              ? 'Turn on analytics'
+                              : 'View definition'}
+                          </s-link>
+                        )}
+                      </s-stack>
                     </s-table-cell>
                   </s-table-row>
                 );
               })}
             </s-table-body>
           </s-table>
-          // [END campaign-dashboard.overview-render]
-        )}
-      </s-section>
-
-      {/* [START campaign-dashboard.overview-chart-render] */}
-      {anySends && (
-        <s-section heading="Messages sent by campaign">
-          <s-box paddingBlockStart="base" />
-          <s-paragraph>
-            Messages sent in the last 29 days. App Events keeps 30 days of
-            data. Older campaigns don't appear.
-          </s-paragraph>
-          <s-table variant="auto">
-            <s-table-header-row>
-              <s-table-header listSlot="primary">Campaign</s-table-header>
-              <s-table-header listSlot="labeled">Email</s-table-header>
-              <s-table-header listSlot="labeled">SMS</s-table-header>
-              <s-table-header listSlot="labeled">Push</s-table-header>
-            </s-table-header-row>
-            <s-table-body>
-              {mix.map((row) => (
-                <s-table-row key={row.title}>
-                  <s-table-cell>{row.title}</s-table-cell>
-                  <s-table-cell>{integer(row.email)}</s-table-cell>
-                  <s-table-cell>{integer(row.sms)}</s-table-cell>
-                  <s-table-cell>{integer(row.push)}</s-table-cell>
-                </s-table-row>
-              ))}
-            </s-table-body>
-          </s-table>
         </s-section>
-      )}
-      {/* [END campaign-dashboard.overview-chart-render] */}
-
-      {/* [START campaign-dashboard.metafield-dimension-render] */}
-      <s-section heading="Analytics dimensions">
-        <s-box paddingBlockStart="base" />
-        <s-paragraph>
-          The app writes campaign values to products, customers, and orders as
-          metafields. Create a dimension from each metafield. Campaign reports
-          group sales by each dimension. Each dimension works for every
-          campaign.
-        </s-paragraph>
-        {dimensionProblems.length > 0 && (
-          <s-banner tone="critical" heading="Dimension not created">
-            <s-unordered-list>
-              {dimensionProblems.map((problem) => (
-                <s-list-item key={problem}>{problem}</s-list-item>
-              ))}
-            </s-unordered-list>
-          </s-banner>
-        )}
-        {dimensions.product.reference &&
-          dimensions.product.defined &&
-          !dimensions.product.enabled && (
-            <s-paragraph>
-              Turn on analytics for the Campaign metaobject to use the product
-              dimension.
-            </s-paragraph>
-          )}
-        <s-table variant="auto">
-          <s-table-header-row>
-            <s-table-header listSlot="primary">Dimension</s-table-header>
-            <s-table-header listSlot="labeled">Status</s-table-header>
-            <s-table-header listSlot="labeled">Report</s-table-header>
-            <s-table-header listSlot="inline" />
-          </s-table-header-row>
-          <s-table-body>
-            {['product', 'customer', 'order'].map((which) => {
-              const definition = dimensions[which];
-              return (
-                <s-table-row key={which}>
-                  <s-table-cell>
-                    <s-text>{definition.name}</s-text>
-                  </s-table-cell>
-                  <s-table-cell>
-                    {definition.enabled
-                      ? 'Queryable'
-                      : !definition.defined
-                        ? 'Not created'
-                        : definition.reference
-                          ? 'Analytics off for Campaign'
-                          : definition.eligible
-                            ? 'Created, not queryable'
-                            : 'Not eligible. Check the field type and owner type.'}
-                  </s-table-cell>
-                  <s-table-cell>
-                    {reported && definition.enabled ? (
-                      <s-link
-                        href={`/app/campaigns/${reported.id}#${definition.anchor}`}
-                      >
-                        {definition.report}
-                      </s-link>
-                    ) : (
-                      definition.report
-                    )}
-                  </s-table-cell>
-                  <s-table-cell>
-                    <s-stack direction="inline" gap="base" alignItems="center">
-                      {!definition.enabled &&
-                        (!definition.defined ||
-                          (definition.eligible && !definition.reference)) && (
-                          <s-button
-                            loading={enabling === which}
-                            disabled={Boolean(enabling) && enabling !== which}
-                            onClick={() =>
-                              dimensionFetcher.submit(
-                                {intent: 'enable-dimension', which},
-                                {method: 'post'},
-                              )
-                            }
-                          >
-                            {definition.defined
-                              ? 'Enable as dimension'
-                              : 'Create dimension'}
-                          </s-button>
-                        )}
-                      {definition.href && (
-                        <s-link href={definition.href} target="_blank">
-                          {definition.reference && definition.defined && !definition.enabled
-                            ? 'Turn on analytics'
-                            : 'View definition'}
-                        </s-link>
-                      )}
-                    </s-stack>
-                  </s-table-cell>
-                </s-table-row>
-              );
-            })}
-          </s-table-body>
-        </s-table>
-      </s-section>
-      {/* [END campaign-dashboard.metafield-dimension-render] */}
-    </s-page>
+        {/* [END campaign-dashboard.metafield-dimension-render] */}
+      </s-page>
+    </form>
   );
 }
 

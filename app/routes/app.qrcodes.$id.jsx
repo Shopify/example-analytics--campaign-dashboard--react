@@ -407,7 +407,7 @@ export default function QRCodeForm() {
           {initialFormState.handle &&
             <s-modal id="delete-qr-code" heading="Delete this QR code?">
               <s-paragraph>
-                Scans of the printed code stop reaching the product. You can't undo this.
+                Scans of the printed code stop reaching the product. You can’t undo this.
               </s-paragraph>
               <s-button slot="secondary-actions" commandFor="delete-qr-code" command="--hide">
                 Go back

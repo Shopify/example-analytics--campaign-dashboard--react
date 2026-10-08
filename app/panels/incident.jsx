@@ -30,7 +30,7 @@ export function IncidentBanner({
         ) : canFlag && (
           <>
             <s-paragraph>
-              Flag the incident to annotate the store's sales charts.
+              Flag the incident to annotate the store’s sales charts.
             </s-paragraph>
             <s-box paddingBlockStart="base">
               <s-button

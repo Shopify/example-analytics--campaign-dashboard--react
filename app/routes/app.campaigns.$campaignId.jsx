@@ -271,6 +271,8 @@ export async function loader({request, params}) {
     qrCodes,
     stamping,
     sendBlocked: sendBlocker(campaign, salesBody.data?.shop?.ianaTimezone ?? 'Etc/UTC', locale),
+    // Read the clock on the server. Render runs twice and must return the same day.
+    now: Date.now(),
   };
 }
 
@@ -1165,7 +1167,7 @@ export default function CampaignDashboard() {
     rate,
   });
 
-  const today = dayOf(Date.now());
+  const today = dayOf(data.now);
   // Closing early ends it today. The action clamps the same.
   const closesOn = today < campaign.endDate ? today : campaign.endDate;
 
@@ -1386,7 +1388,7 @@ export default function CampaignDashboard() {
               <s-stack direction="block" gap="base">
                 <s-text>
                   Print the code or scan it from the screen. Each scan opens
-                  the storefront with the code's UTM parameters. QR code sales
+                  the storefront with the code’s UTM parameters. QR code sales
                   reports orders placed after a scan.
                 </s-text>
                 {qrCodes.map((code) => (

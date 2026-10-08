@@ -52,11 +52,11 @@ function TargetCard({target, scope, by, format, cardReady}) {
           </s-text>
 
           {/* The card fills its container's height. */}
-          <div style={{height: '200px'}}>
+          <s-box blockSize="200px">
             {noSales ? (
               <s-paragraph color="subdued">
                 No sales from this code yet. Sales appear here after customers check out through
-                the code's link.
+                the code’s link.
               </s-paragraph>
             ) : cardReady ? (
               <s-shopifyql-metric-card
@@ -68,7 +68,7 @@ function TargetCard({target, scope, by, format, cardReady}) {
             ) : (
               <s-spinner accessibilityLabel="Loading the target chart" />
             )}
-          </div>
+          </s-box>
 
           {queryError && (
             <s-banner tone="warning">
@@ -162,7 +162,7 @@ export function TargetsPanel({
       />
       <s-paragraph>
         Each line is the running total since its target started, against the target.
-        Each chart marks the store's annotations, including the day each QR code went
+        Each chart marks the store’s annotations, including the day each QR code went
         live.
       </s-paragraph>
 

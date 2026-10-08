@@ -35,7 +35,7 @@ export function CampaignLifecycle({
         )}
         {campaign.status === 'canceled' && (
           <s-paragraph>
-            Canceled. The app removed this campaign's annotations and targets.
+            Canceled. The app removed this campaign’s annotations and targets.
           </s-paragraph>
         )}
         <s-stack direction="inline" gap="base">
@@ -118,14 +118,14 @@ export function OrderStamping({campaignId, stamping, busy, submit}) {
       {running && (
         <s-banner tone="info" heading="Stamping orders">
           <s-paragraph>
-            Shopify is writing each order's last campaign touch. {(poll.data ?? stamping).objectCount} done so
+            Shopify is writing each order’s last campaign touch. {(poll.data ?? stamping).objectCount} done so
             far. This page updates when it finishes.
           </s-paragraph>
         </s-banner>
       )}
       {stamping.state === 'done' && (
         <s-banner tone="success" heading="Orders stamped">
-          <s-paragraph>Order attribution covers this campaign's orders.</s-paragraph>
+          <s-paragraph>Order attribution covers this campaign’s orders.</s-paragraph>
         </s-banner>
       )}
       {stamping.state === 'unread' && (
