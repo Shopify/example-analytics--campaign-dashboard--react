@@ -180,8 +180,8 @@ export const salesQuery = (campaign) => `
 // [END campaign-dashboard.query]
 
 // [START campaign-dashboard.top-products-query]
-// TOP 5 ranks by the ORDER BY metric. Without ORDER BY, it doesn't pick the best sellers.
-// TOP 5 folds every other product into one remainder row. rowMetadata marks it.
+// TOP 5 keeps the five products with the most total_sales, the metric the query
+// aggregates. Every other product folds into one `Other` row, and rowMetadata marks it.
 export const topProductsQuery = (campaign) => `
   query CampaignTopProducts {
     shopifyqlQuery(

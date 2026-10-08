@@ -865,8 +865,8 @@ async function runIntent(admin, shop, request, params) {
     if (campaign.status !== 'canceled') {
       return {problems: ['You can replan only canceled campaigns.']};
     }
-    // Canceling already took everything off the store, leaving the same state a
-    // planned campaign is in.
+    // Canceling removed the annotations and targets. The promoted products keep their
+    // `campaign` metafield, and the next activation writes it again.
     const {userErrors} = await updateCampaign(admin, campaign, {status: 'planned'});
     if (userErrors.length) {
       return {problems: userErrors.map((error) => error.message)};
@@ -875,8 +875,8 @@ async function runIntent(admin, shop, request, params) {
   }
 
   if (intent === 'delete') {
-    // A canceled campaign holds nothing on the store. Deleting any other status
-    // would abandon its annotations and targets on the charts.
+    // Canceling removed the annotations and targets. Deleting any other status would
+    // abandon them on the charts. The promoted products keep their `campaign` metafield.
     if (campaign.status !== 'canceled') {
       return {problems: ['Only a canceled campaign can be deleted.']};
     }
