@@ -17,6 +17,7 @@ import {
   targetNodes,
 } from '../campaign-queries.server';
 import {enableDimension, readDimensions} from '../dimensions.server';
+import {queryShopifyQL} from '../shopifyql.server';
 import {
   isCalendarDate,
   isPositiveAmount,
@@ -53,7 +54,7 @@ export const loader = async ({request}) => {
     (target) => target.shopifyqlQuery && owner.has(target.id),
   );
   const progress = measurable.length
-    ? ((await (await admin.graphql(progressQuery(measurable))).json()).data ?? {})
+    ? ((await queryShopifyQL(admin, progressQuery(measurable))).data ?? {})
     : {};
 
   // Alias back by position, indexed off `measurable`.

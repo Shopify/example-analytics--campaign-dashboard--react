@@ -26,6 +26,7 @@ import {
   updateCampaign,
 } from './campaigns.server';
 import {detectIncident} from './campaign-report.server';
+import {queryShopifyQL, shopifyqlErrors} from './shopifyql.server';
 import {
   DIMENSION_NAMESPACE,
   QR_MARK_PREFIX,
@@ -367,11 +368,8 @@ export async function stampProducts(admin, campaign) {
 // [START campaign-dashboard.stamp-tier]
 // GROUP BY customer_id returns a numeric ID. Every mutation below wants a GID.
 async function customerIds(admin, query) {
-  const body = await (await admin.graphql(query)).json();
-  const userErrors = [
-    ...transportErrors(body),
-    ...(body.data?.shopifyqlQuery?.parseErrors ?? []).map((message) => ({message})),
-  ];
+  const body = await queryShopifyQL(admin, query);
+  const userErrors = shopifyqlErrors(body);
   const ids = (body.data?.shopifyqlQuery?.tableData?.rows ?? [])
     .map((row) => row.customer_id)
     .filter(Boolean)
@@ -446,10 +444,8 @@ export async function stampOrders(admin, campaign) {
   // row, and each remaining order's first row is the day it was placed.
   const stamped = new Set();
   for (let offset = 0; ; offset += ORDER_PAGE_SIZE) {
-    const body = await (
-      await admin.graphql(orderDaysQuery(campaign, offset))
-    ).json();
-    const unread = transportErrors(body);
+    const body = await queryShopifyQL(admin, orderDaysQuery(campaign, offset));
+    const unread = shopifyqlErrors(body);
     if (unread.length) return [...userErrors, ...unread];
 
     const rows = body.data?.shopifyqlQuery?.tableData?.rows ?? [];
@@ -519,13 +515,13 @@ export async function closeCampaign(admin, campaign, text, endedAt) {
 // [START campaign-dashboard.milestone]
 // A milestone is one moment. Leave `endedAt` off.
 export async function markMilestone(admin, target, markedAt, money) {
-  const body = await (
-    await admin.graphql(measureQuery(target.shopifyqlQuery))
-  ).json();
-  const failed = transportErrors(body);
+  const body = await queryShopifyQL(admin, measureQuery(target.shopifyqlQuery));
+  // A parse error has no value to compare. It isn't a target that fell short.
+  const failed = shopifyqlErrors(body);
   if (failed.length) return {userErrors: failed};
   const actual = progressValue(body.data?.shopifyqlQuery);
-  if (actual === null || actual < Number(target.expectedValue)) {
+  if (actual === null) return {userErrors: [{message: "Couldn't measure the target."}]};
+  if (actual < Number(target.expectedValue)) {
     return {userErrors: [{message: 'Target not reached yet.'}]};
   }
 

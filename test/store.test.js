@@ -587,9 +587,24 @@ describe('returned errors', () => {
   const answering = (status) => mockAdmin({Probe: () => new Response('{}', {status})});
   const probe = (admin) => admin.graphql('query Probe { shop { id } }');
 
-  it.each([429, 503])('returns HTTP %s as errors in the body', async (status) => {
-    const body = await (await probe(answering(status).admin)).json();
-    expect(body).toEqual({data: null, errors: [{message: `Shopify returned HTTP ${status}. Try again.`}]});
+  it('returns HTTP 503 as errors in the body', async () => {
+    const body = await (await probe(answering(503).admin)).json();
+    expect(body).toEqual({data: null, errors: [{message: 'Shopify returned HTTP 503. Try again.'}]});
+  });
+
+  it('marks HTTP 429 as throttled', async () => {
+    const body = await (await probe(answering(429).admin)).json();
+    expect(body).toEqual({
+      data: null,
+      errors: [{message: 'Shopify returned HTTP 429. Try again.', extensions: {code: 'THROTTLED'}}],
+    });
+  });
+
+  it('keeps the extensions of a GraphQL error', async () => {
+    const extensions = {shopifyqlCost: {windowResetAt: '2026-09-30T12:00:05Z'}};
+    const {admin} = mockAdmin({Probe: () => ({data: null, errors: [{message: 'Throttled', extensions: {code: 'THROTTLED'}}], extensions})});
+    const body = await (await probe(admin)).json();
+    expect(body.extensions).toEqual(extensions);
   });
 
   it.each([302, 401])('lets HTTP %s through to reauthorize', async (status) => {

@@ -299,10 +299,15 @@ export function withReturnedErrors(admin) {
           // A redirect or a 401 sends the merchant to reauthorize. Let both through.
           if ((error.status >= 300 && error.status < 400) || error.status === 401) throw error;
           const message = `Shopify returned HTTP ${error.status}. Try again.`;
-          return new Response(JSON.stringify({data: null, errors: [{message}]}));
+          // The library drops a 429's body. The code still marks it for a retry.
+          const extensions = error.status === 429 ? {code: 'THROTTLED'} : undefined;
+          return new Response(JSON.stringify({data: null, errors: [{message, extensions}]}));
         }
         const errors = error.body?.errors?.graphQLErrors ?? [{message: error.message}];
-        return new Response(JSON.stringify({data: error.body?.data ?? null, errors}));
+        // `extensions` carries the ShopifyQL budget, including when it refills.
+        return new Response(
+          JSON.stringify({data: error.body?.data ?? null, errors, extensions: error.body?.extensions}),
+        );
       }
     },
   };

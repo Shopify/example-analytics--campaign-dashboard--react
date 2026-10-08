@@ -22,6 +22,7 @@ import {
   recordSend,
   releaseSend,
 } from '../campaign-state.server';
+import {queryShopifyQL} from '../shopifyql.server';
 import {
   outcomeText,
   readSequence,
@@ -176,7 +177,7 @@ export async function loader({request, params}) {
     qrFunnel,
     topProducts,
   ] = await Promise.all([
-    admin.graphql(salesQuery(campaign)).then((response) => response.json()),
+    queryShopifyQL(admin, salesQuery(campaign)),
     readTargets(admin, campaign).catch(() => ({data: null})),
     runIfSupported(admin, annotationsQuery(campaign)),
     runOptional(admin, appEventsQuery(campaign, appName)),
@@ -580,9 +581,7 @@ async function runIntent(admin, shop, request, params) {
     const target = recordedTarget(campaign, targetsBody, form.get('targetId'));
     if (!target?.shopifyqlQuery) return {problems: ["Couldn't measure this target."]};
 
-    const measured = await (
-      await admin.graphql(measureQuery(target.shopifyqlQuery))
-    ).json();
+    const measured = await queryShopifyQL(admin, measureQuery(target.shopifyqlQuery));
     const actual = progressValue(measured.data?.shopifyqlQuery);
     // A raise is permanent. An unmeasured target would move the goal to the floor.
     if (actual === null) {
@@ -707,14 +706,13 @@ async function runIntent(admin, shop, request, params) {
       (node) => node.id === campaign.targets?.store,
     );
     // Targets are optional. Without one, measure the window's sales directly.
-    const measured = await (
-      await admin.graphql(
-        measureQuery(
-          store?.shopifyqlQuery ??
-            `FROM sales SHOW total_sales SINCE ${closing.startDate} UNTIL ${closedOn}`,
-        ),
-      )
-    ).json();
+    const measured = await queryShopifyQL(
+      admin,
+      measureQuery(
+        store?.shopifyqlQuery ??
+          `FROM sales SHOW total_sales SINCE ${closing.startDate} UNTIL ${closedOn}`,
+      ),
+    );
     const revenue = progressValue(measured.data?.shopifyqlQuery);
     // Closing is permanent, and a failed read would record the campaign at zero.
     if (revenue === null) {

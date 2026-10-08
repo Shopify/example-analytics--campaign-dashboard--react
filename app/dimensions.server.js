@@ -11,6 +11,7 @@ import {
   dimensionProbeQuery,
 } from './campaign-queries.server';
 import {ensureDefinition, transportErrors} from './campaigns.server';
+import {queryShopifyQL} from './shopifyql.server';
 
 // [START campaign-dashboard.metafield-dimension-read]
 const DIMENSIONS = {
@@ -82,12 +83,11 @@ export async function readDimensions(admin, appId) {
   // The analytics setting lives on the Campaign type, and the API doesn't expose it.
   // A query that parses is the only signal.
   if (product.defined) {
-    const probe = await (
-      await admin.graphql(dimensionProbeQuery(product.dimension))
-    ).json();
+    const probe = await queryShopifyQL(admin, dimensionProbeQuery(product.dimension));
     const parseErrors = probe.data?.shopifyqlQuery?.parseErrors;
     product.eligible = true;
-    // A throttled probe says nothing about the setting. Report it as on.
+    // A probe still throttled after its retry says nothing about the setting. Report it
+    // as on. A false off hides panels, and a panel that fails shows its own reason.
     product.enabled = transportErrors(probe).length > 0 || parseErrors?.length === 0;
   }
   product.href = `shopify://admin/settings/custom_data/metaobjects/${CAMPAIGN_TYPE}`;

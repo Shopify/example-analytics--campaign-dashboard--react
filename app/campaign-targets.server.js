@@ -1,4 +1,5 @@
 import {progressQuery, progressValue, targetNodes as readNodes} from './campaign-queries.server';
+import {queryShopifyQL} from './shopifyql.server';
 
 // [START campaign-dashboard.measure-targets]
 // Results read back by position. `measurable.indexOf` maps each result to its target.
@@ -9,7 +10,7 @@ export async function measureTargets(admin, campaign, targetsBody) {
   );
   const measurable = targetNodes.filter((target) => target.shopifyqlQuery);
   const body = measurable.length
-    ? await (await admin.graphql(progressQuery(measurable))).json()
+    ? await queryShopifyQL(admin, progressQuery(measurable))
     : {};
   const progress = body.data ?? {};
   // A throttled or failed read shows on every card. Silence reads as no progress.

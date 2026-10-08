@@ -18,7 +18,7 @@ export function mockAdmin(handlers) {
     if (body instanceof Response) throw body;
     if (body?.errors?.length) {
       const error = new Error(body.errors[0].message);
-      error.body = {data: body.data ?? null, errors: {graphQLErrors: body.errors}};
+      error.body = {data: body.data ?? null, extensions: body.extensions, errors: {graphQLErrors: body.errors}};
       throw error;
     }
     return {json: async () => body};

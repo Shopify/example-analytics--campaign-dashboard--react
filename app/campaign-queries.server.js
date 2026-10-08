@@ -1,6 +1,7 @@
 import {TIER_METAFIELD} from './audiences';
 import {DIMENSION_NAMESPACE, campaignWindow, recentWindow} from './campaigns';
 import {FUNNEL_METRICS, SEQUENCE_METRICS} from './channels';
+import {queryShopifyQL} from './shopifyql.server';
 
 // [START campaign-dashboard.shop-query]
 export const SHOP_QUERY = `
@@ -215,7 +216,7 @@ export const emptyTable = () => ({
 // Either way the panel gets its reason in `unavailable`.
 export async function runOptional(admin, query) {
   try {
-    const body = await (await admin.graphql(query)).json();
+    const body = await queryShopifyQL(admin, query);
     if (body.errors?.length) {
       return {...emptyTable(), unavailable: body.errors[0].message};
     }
