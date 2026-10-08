@@ -122,8 +122,12 @@ async function rejectedLines(url) {
     .split('\n')
     .filter(Boolean)
     .flatMap((line) => {
-      const result = JSON.parse(line);
-      return [...(result.errors ?? []), ...(result.data?.metafieldsSet?.userErrors ?? [])];
+      try {
+        const result = JSON.parse(line);
+        return [...(result.errors ?? []), ...(result.data?.metafieldsSet?.userErrors ?? [])];
+      } catch {
+        return [{message: "A line in the bulk operation's results didn't parse."}];
+      }
     })
     .map((error) => ({message: error.message}));
 }

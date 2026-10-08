@@ -1,5 +1,5 @@
 import {useEffect} from 'react';
-import {useRevalidator} from 'react-router';
+import {useFetcher, useRevalidator} from 'react-router';
 // [START campaign-dashboard.close-render]
 import {ConfirmButton} from './confirm';
 
@@ -88,19 +88,27 @@ export function CampaignLifecycle({
 // [END campaign-dashboard.close-render]
 
 // [START campaign-dashboard.stamp-status-render]
-// Stamping runs after the close returns. Reload while it runs, and offer a retry if it fails.
+// Stamping runs after the close returns. Poll the status route while it runs, then reload
+// the page once it ends. A failure offers a retry.
 const STAMP_POLL_MS = 5000;
 
-export function OrderStamping({stamping, busy, submit}) {
+export function OrderStamping({campaignId, stamping, busy, submit}) {
   const revalidator = useRevalidator();
+  const poll = useFetcher();
   const running = stamping?.state === 'running';
+  const polled = poll.data?.state;
   useEffect(() => {
     if (!running) return undefined;
     const timer = setInterval(() => {
-      if (revalidator.state === 'idle') revalidator.revalidate();
+      if (poll.state === 'idle') poll.load(`/app/campaigns/${campaignId}/stamping`);
     }, STAMP_POLL_MS);
     return () => clearInterval(timer);
-  }, [running, revalidator]);
+  }, [running, campaignId, poll]);
+  useEffect(() => {
+    if (running && polled && polled !== 'running' && revalidator.state === 'idle') {
+      revalidator.revalidate();
+    }
+  }, [running, polled, revalidator]);
 
   if (!stamping) return null;
   const problems = stamping.problems.map((problem) => problem.message).join(' ');
@@ -110,7 +118,7 @@ export function OrderStamping({stamping, busy, submit}) {
       {running && (
         <s-banner tone="info" heading="Stamping orders">
           <s-paragraph>
-            Shopify is writing each order's last campaign touch. {stamping.objectCount} done so
+            Shopify is writing each order's last campaign touch. {(poll.data ?? stamping).objectCount} done so
             far. This page updates when it finishes.
           </s-paragraph>
         </s-banner>

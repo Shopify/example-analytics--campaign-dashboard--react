@@ -8,6 +8,7 @@ import {markMilestone, stampOrders} from '../app/campaign-mutations.server';
 vi.mock('../app/shopify.server', async () => (await import('./helpers/routes')).shopifyServer);
 
 const {action: campaignAction, loader} = await import('../app/routes/app.campaigns.$campaignId.jsx');
+const {loader: statusLoader} = await import('../app/routes/app.campaigns.$campaignId.stamping.jsx');
 const run = runWith(campaignAction);
 
 const OPERATION = 'gid://shopify/BulkOperation/77';
@@ -157,6 +158,12 @@ describe('readBulkOperation', () => {
     expect(result.problems).toEqual([{message: 'Owner not found'}, {message: 'Variable $metafields is invalid'}]);
   });
 
+  it('reports a results line that does not parse', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('{"data":{"metafieldsSet"\n')));
+    const result = await readBulkOperation(operation({status: 'COMPLETED', url: 'https://results.test/out'}), OPERATION);
+    expect(result).toMatchObject({state: 'failed', problems: [{message: "A line in the bulk operation's results didn't parse."}]});
+  });
+
   it('fails an operation that ended in a system error', async () => {
     const result = await readBulkOperation(operation({status: 'FAILED', errorCode: 'INTERNAL_SERVER_ERROR'}), OPERATION);
     expect(result).toMatchObject({state: 'failed', problems: [{message: 'The bulk operation ended failed (INTERNAL_SERVER_ERROR).'}]});
@@ -270,6 +277,15 @@ describe('stamp-orders intent', () => {
     expect(tablesOf().campaignState[0].stampOperation).toBe(OPERATION);
   });
 
+  it('clears a failed operation when nothing is left to stamp', async () => {
+    const handlers = {...base(closed()), ...queryableOrders, ...bulkHandlers([])};
+    const extra = withOperation('FAILED');
+    const {mock, result} = run({...handlers, ...extra}, {intent: 'stamp-orders'});
+    expect(await result).toEqual({ok: true});
+    expect(ops(mock.calls)).not.toContain('RunBulkMutation');
+    expect(tablesOf().campaignState[0].stampOperation).toBeNull();
+  });
+
   it('refuses while the last operation still runs', async () => {
     const handlers = {...base(closed()), ...queryableOrders, ...bulkHandlers([{order_id: '1', day: '2026-09-12'}])};
     const extra = withOperation('RUNNING');
@@ -299,5 +315,26 @@ describe('campaign page stamping status', () => {
     session.admin = mock.raw;
     const data = await loader({request: new Request('https://app.test/app/campaigns/4210'), params: {campaignId: '4210'}});
     expect(data.stamping).toEqual({state: 'running', objectCount: 4, problems: []});
+  });
+});
+
+describe('stamping status route', () => {
+  const poll = () =>
+    statusLoader({request: new Request('https://app.test/app/campaigns/4210/stamping'), params: {campaignId: '4210'}});
+
+  it('reads only the recorded bulk operation', async () => {
+    seedState({campaignId: 4210});
+    tablesOf().campaignState[0].stampOperation = OPERATION;
+    const mock = mockAdmin({StampOperation: () => ({data: {bulkOperation: {id: OPERATION, status: 'RUNNING', objectCount: '9'}}})});
+    session.admin = mock.raw;
+    expect(await poll()).toEqual({state: 'running', objectCount: 9, problems: []});
+    expect(ops(mock.calls)).toEqual(['StampOperation']);
+  });
+
+  it('reports done once the record is cleared', async () => {
+    const mock = mockAdmin({});
+    session.admin = mock.raw;
+    expect((await poll()).state).toBe('done');
+    expect(mock.calls).toHaveLength(0);
   });
 });

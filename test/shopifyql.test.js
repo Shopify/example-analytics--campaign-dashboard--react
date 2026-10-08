@@ -37,6 +37,19 @@ describe('queryShopifyQL', () => {
     expect(calls).toHaveLength(2);
   });
 
+  it("waits for a 429 until the refill time an earlier response reported", async () => {
+    const counted = {...rows, extensions: {shopifyqlCost: {windowResetAt: '2026-10-07T12:00:04Z'}}};
+    const answers = [counted, new Response(null, {status: 429}), rows];
+    const {admin, calls} = mockAdmin({CampaignSales: () => answers.shift()});
+    await queryShopifyQL(admin, QUERY);
+    const pending = queryShopifyQL(admin, QUERY);
+    await vi.advanceTimersByTimeAsync(3999);
+    expect(calls).toHaveLength(2);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(await pending).toEqual(rows);
+    expect(calls).toHaveLength(3);
+  });
+
   it('gives up when the budget refills past the cap', async () => {
     const resetAt = new Date(Date.now() + MAX_THROTTLE_WAIT_MS + 1000).toISOString();
     const {admin, calls} = mockAdmin({CampaignSales: () => throttled(resetAt)});

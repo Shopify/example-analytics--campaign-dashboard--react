@@ -111,6 +111,19 @@ describe('sendCampaignFunnel', () => {
     expect(delays).toEqual([250, 1000]);
   });
 
+  it('stops the send at the first event that stays throttled', async () => {
+    let posts = 0;
+    vi.stubGlobal('fetch', vi.fn(async (url) => {
+      if (url.endsWith('/access_token')) return token();
+      posts += 1;
+      return new Response('slow down', {status: 429});
+    }));
+    const {accepted, failures} = await send();
+    expect(posts).toBe(3);
+    expect(failures).toHaveLength(1);
+    expect(Object.values(accepted).reduce((sum, count) => sum + count, 0)).toBe(0);
+  });
+
   it("doesn't retry a rejected event", async () => {
     let posts = 0;
     vi.stubGlobal('fetch', vi.fn(async (url) => {

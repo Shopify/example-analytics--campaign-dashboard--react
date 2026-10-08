@@ -20,6 +20,7 @@ import {
 } from '../campaigns.server';
 import {
   claimSend,
+  clearStampOperation,
   forgetCampaign,
   recordSend,
   recordStampOperation,
@@ -898,7 +899,15 @@ async function runIntent(admin, shop, request, params, redirect) {
 async function startStamping(admin, shop, campaign) {
   const {operationId, userErrors} = await stampOrders(admin, campaign);
   if (userErrors.length) return {problems: userErrors.map((error) => error.message)};
-  if (!operationId) return {ok: true};
+  // Nothing left to stamp. Clear a failed operation, or its retry banner stays.
+  if (!operationId) {
+    if (campaign.stampOperation) {
+      await clearStampOperation(shop, campaign.id, campaign.stampOperation).catch((error) =>
+        console.error('Could not clear the stamp operation', error),
+      );
+    }
+    return {ok: true};
+  }
   const recorded = await recordStampOperation(shop, campaign.id, campaign.gid, operationId)
     .then(() => true)
     .catch((error) => {
@@ -1652,7 +1661,7 @@ export default function CampaignDashboard() {
         </Fragment>
       )}
 
-      <OrderStamping stamping={stamping} busy={busy} submit={submit} />
+      <OrderStamping campaignId={campaign.id} stamping={stamping} busy={busy} submit={submit} />
 
       <CampaignLifecycle
         campaign={campaign}

@@ -1,20 +1,29 @@
 // [START campaign-dashboard.shopifyql-throttle]
-// A throttled query returns THROTTLED, and `windowResetAt` says when the ShopifyQL budget
-// refills. Wait and retry once, unless the wait would hold the request open too long.
+// A query over the ShopifyQL budget gets HTTP 429, and the library drops that response's
+// body. Successful responses carry `windowResetAt`, the time the budget refills. Keep the
+// latest one per request client, wait until then, and retry once.
 export const MAX_THROTTLE_WAIT_MS = 10_000;
-// The standard API budget throttles too, without a `windowResetAt`.
+// With no refill time seen yet, wait a second.
 const UNKNOWN_RESET_WAIT_MS = 1_000;
+const resets = new WeakMap();
 
 const isThrottled = (body) =>
   (body.errors ?? []).some((error) => error.extensions?.code === 'THROTTLED');
 
 const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-export async function queryShopifyQL(admin, query) {
+async function run(admin, query) {
   const body = await (await admin.graphql(query)).json();
+  const resetAt = body.extensions?.shopifyqlCost?.windowResetAt;
+  if (resetAt) resets.set(admin, resetAt);
+  return body;
+}
+
+export async function queryShopifyQL(admin, query) {
+  const body = await run(admin, query);
   if (!isThrottled(body)) return body;
 
-  const resetAt = Date.parse(body.extensions?.shopifyqlCost?.windowResetAt ?? '');
+  const resetAt = Date.parse(resets.get(admin) ?? '');
   const wait = Number.isNaN(resetAt) ? UNKNOWN_RESET_WAIT_MS : Math.max(0, resetAt - Date.now());
   if (wait > MAX_THROTTLE_WAIT_MS) {
     const at = new Date(resetAt).toISOString().slice(11, 19);
@@ -24,7 +33,7 @@ export async function queryShopifyQL(admin, query) {
     };
   }
   await pause(wait);
-  return (await admin.graphql(query)).json();
+  return run(admin, query);
 }
 // [END campaign-dashboard.shopifyql-throttle]
 

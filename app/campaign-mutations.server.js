@@ -380,15 +380,20 @@ async function customerIds(admin, query) {
   return {ids: userErrors.length ? [] : ids, rowCount: rows.length, userErrors};
 }
 
-// A tier can outgrow one page. A page shorter than the limit is the last one.
+// A tier can outgrow one page. A page shorter than the limit is the last one. The cap
+// stops a query that keeps returning full pages.
+const MAX_PAGES = 200;
+const tooManyPages = {message: `Stopped after ${MAX_PAGES} pages. Narrow the campaign and try again.`};
+
 async function tierHolders(admin, dimension, tier) {
   const ids = [];
-  for (let offset = 0; ; offset += HOLDERS_PAGE_SIZE) {
+  for (let offset = 0; offset < MAX_PAGES * HOLDERS_PAGE_SIZE; offset += HOLDERS_PAGE_SIZE) {
     const page = await customerIds(admin, tierHoldersQuery(dimension, tier, offset));
     if (page.userErrors.length) return {ids: [], userErrors: page.userErrors};
     ids.push(...page.ids);
     if (page.rowCount < HOLDERS_PAGE_SIZE) return {ids, userErrors: []};
   }
+  return {ids: [], userErrors: [tooManyPages]};
 }
 
 // A re-rank moves customers out of the tier. ShopifyQL finds who holds the tier now,
@@ -460,6 +465,7 @@ export async function stampOrders(admin, campaign) {
   const stamped = new Set();
   const metafields = [];
   for (let offset = 0; ; offset += ORDER_PAGE_SIZE) {
+    if (offset >= MAX_PAGES * ORDER_PAGE_SIZE) return {operationId: null, count: 0, userErrors: [tooManyPages]};
     const body = await queryShopifyQL(admin, orderDaysQuery(campaign, offset));
     const unread = shopifyqlErrors(body);
     if (unread.length) return {operationId: null, count: 0, userErrors: unread};

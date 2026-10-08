@@ -304,17 +304,22 @@ export async function sendCampaignFunnel({
   const failures = [];
 
   // The API takes one event per request and asks for them in sequence. A real send
-  // would work off a queue.
+  // would work off a queue. The send stops at the first event that still fails after
+  // its retries, which keeps a sustained 429 from holding the request open.
   for (const stage of selected(channels)) {
-    const results = [];
-    for (let index = 0; index < stage.count; index += 1) {
-      results.push(await sendWithRetry({token, shopId, stage, campaignId, start, index}));
+    let sent = 0;
+    let failed = null;
+    for (let index = 0; index < stage.count && !failed; index += 1) {
+      const result = await sendWithRetry({token, shopId, stage, campaignId, start, index});
+      if (result.ok) sent += 1;
+      else failed = result;
     }
     // Several sends share one handle. This accumulates.
-    accepted[stage.handle] =
-      (accepted[stage.handle] ?? 0) + results.filter((r) => r.ok).length;
-    const failed = results.find((result) => !result.ok);
-    if (failed) failures.push(`${stage.handle}: ${failed.status} ${failed.body}`);
+    accepted[stage.handle] = (accepted[stage.handle] ?? 0) + sent;
+    if (failed) {
+      failures.push(`${stage.handle}: ${failed.status} ${failed.body}`);
+      break;
+    }
   }
 
   return {accepted, failures};
