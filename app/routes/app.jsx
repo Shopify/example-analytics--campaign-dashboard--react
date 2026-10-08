@@ -14,7 +14,7 @@ export default function App() {
   const {apiKey} = useLoaderData();
 
   return (
-    <AppProvider embedded apiKey={apiKey}>
+    <AppProvider apiKey={apiKey}>
       {/* [START campaign-dashboard.analytics-script] */}
       {/* AppProvider leaves out the analytics UI script. It registers s-metrics-bar
           and s-shopifyql-metric-card. */}

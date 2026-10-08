@@ -19,7 +19,7 @@ This repository holds the finished app. It starts from the app that [Build a Sho
 
 ## Setup
 
-You'll need Node 20.19+ or 22.12+, [app development permissions](https://shopify.dev/docs/apps/build/dev-dashboard/user-permissions), a [dev store](https://shopify.dev/docs/apps/build/stores/development-stores), and the latest [Shopify CLI](https://shopify.dev/docs/api/shopify-cli).
+You'll need Node 22.12 or later, [app development permissions](https://shopify.dev/docs/apps/build/dev-dashboard/user-permissions), a [dev store](https://shopify.dev/docs/apps/build/stores/development-stores), and the latest [Shopify CLI](https://shopify.dev/docs/api/shopify-cli).
 
 1. Install Shopify CLI:
 

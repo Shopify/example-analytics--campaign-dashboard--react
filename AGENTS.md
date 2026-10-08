@@ -2,7 +2,7 @@
 
 This repository is the sample app for the [campaign dashboard tutorial series](https://shopify.dev/docs/apps/build/analytics) on shopify.dev. It's an embedded Shopify app built with React Router, Prisma, and Vitest. For setup steps and troubleshooting, read `README.md`.
 
-Use npm. `package-lock.json` is the only tracked lockfile. The app needs Node 20.19 or later, or 22.12 or later.
+Use npm. `package-lock.json` is the only tracked lockfile. The app needs Node 22.12 or later.
 
 ## Know which part you're on
 

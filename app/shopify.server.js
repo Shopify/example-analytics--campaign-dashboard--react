@@ -1,5 +1,6 @@
 import '@shopify/shopify-app-react-router/adapters/node';
 import {
+  ApiVersion,
   AppDistribution,
   shopifyApp,
 } from '@shopify/shopify-app-react-router/server';
@@ -10,7 +11,7 @@ const shopify = shopifyApp({
   apiKey: process.env.SHOPIFY_API_KEY,
   apiSecretKey: process.env.SHOPIFY_API_SECRET || '',
   // [START campaign-dashboard.api-version]
-  apiVersion: '2026-10',
+  apiVersion: ApiVersion.October26,
   // [END campaign-dashboard.api-version]
   scopes: process.env.SCOPES?.split(','),
   appUrl: process.env.SHOPIFY_APP_URL || '',
@@ -20,14 +21,11 @@ const shopify = shopifyApp({
   future: {
     expiringOfflineAccessTokens: true,
   },
-  ...(process.env.SHOP_CUSTOM_DOMAIN
-    ? {customShopDomains: [process.env.SHOP_CUSTOM_DOMAIN]}
-    : {}),
 });
 
 export default shopify;
 // [START campaign-dashboard.api-version]
-export const apiVersion = '2026-10';
+export const apiVersion = ApiVersion.October26;
 // [END campaign-dashboard.api-version]
 export const addDocumentResponseHeaders = shopify.addDocumentResponseHeaders;
 export const authenticate = shopify.authenticate;
