@@ -68,7 +68,7 @@ Prisma stores the app's private records in SQLite. Each campaign's fields live o
 - Write JavaScript and JSX as ES modules. The repository has no TypeScript.
 - Files that end in `.server.js` run only on the server. Other modules in `app/` can load in the browser.
 - Build the UI with Polaris web components, such as `s-section`, `s-stack`, and `s-table`.
-- The repository has no lint or format script.
+- `npm run lint` runs the ESLint config from the React Router app template. It reports two findings, `process` in `app/routes/app.jsx` and the effect in `app/routes/app.qrcodes.$id.jsx`. Both lines match the template and the QR code example exactly. Leave them as they are.
 
 ## Run the checks
 

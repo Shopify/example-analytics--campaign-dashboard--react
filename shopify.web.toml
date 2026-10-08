@@ -1,5 +1,5 @@
-name = "web"
-roles = ["backend", "frontend"]
+name = "React Router"
+roles = ["frontend", "backend"]
 webhooks_path = "/webhooks/app/uninstalled"
 
 [commands]

@@ -481,7 +481,7 @@ describe('cancel', () => {
 
   it('keeps the recorded targets when they fail to read', async () => {
     const entry = planned({status: 'running', targets: {store: 'gid://shopify/AnalyticsTarget/1'}});
-    const {mock, result} = run(
+    const {result} = run(
       {
         ...base(entry),
         CampaignTargets: () => ({errors: [{message: 'Throttled'}]}),
