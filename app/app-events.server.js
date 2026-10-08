@@ -1,4 +1,5 @@
 import {shopMorning} from './campaigns';
+import {apiVersion} from './shopify.server';
 
 // [START campaign-dashboard.app-events-token]
 let cached = {token: null, expiresAt: 0};
@@ -249,7 +250,7 @@ async function sendEvent({token, shopId, stage, campaignId, start, index}) {
 }
 
 async function postEvent({token, shopId, stage, campaignId, start, index}) {
-  const response = await fetch('https://api.shopify.com/app/2027-01/events', {
+  const response = await fetch(`https://api.shopify.com/app/${apiVersion}/events`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

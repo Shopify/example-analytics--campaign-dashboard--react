@@ -11,6 +11,8 @@ import {
 import {mockAdmin} from './helpers/admin';
 import {SHOP, db, storedState} from './helpers/db';
 
+vi.mock('../app/shopify.server', async () => (await import('./helpers/routes')).shopifyServer);
+
 const campaign = (overrides = {}) => ({
   shop: SHOP,
   gid: 'gid://shopify/Metaobject/1',

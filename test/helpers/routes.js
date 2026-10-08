@@ -5,6 +5,7 @@ import {qrCodesFor, listOf, node} from './campaign';
 export const session = {admin: null};
 
 export const shopifyServer = {
+  apiVersion: '2026-10',
   authenticate: {
     admin: async () => ({
       admin: session.admin,

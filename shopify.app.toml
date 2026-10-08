@@ -6,7 +6,7 @@ embedded = true
 
 # [START campaign-dashboard.access-scopes]
 [access_scopes]
-scopes = "read_reports,write_reports,read_analytics_annotations,write_analytics_annotations,write_products,write_customers,write_orders,write_metaobject_definitions,write_metaobjects,write_marketing_events"
+scopes = "write_reports,write_analytics_annotations,write_products,write_customers,write_orders,write_metaobject_definitions,write_metaobjects,write_marketing_events"
 # [END campaign-dashboard.access-scopes]
 
 # [START campaign-dashboard.direct-api]
