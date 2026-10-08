@@ -53,9 +53,10 @@ export const loader = async ({request}) => {
   const measurable = nodes.filter(
     (target) => target.shopifyqlQuery && owner.has(target.id),
   );
-  const progress = measurable.length
-    ? ((await queryShopifyQL(admin, progressQuery(measurable))).data ?? {})
+  const progressBody = measurable.length
+    ? await queryShopifyQL(admin, progressQuery(measurable))
     : {};
+  const progress = progressBody.data ?? {};
 
   // Alias back by position, indexed off `measurable`.
   const targets = measurable.map((target, index) => ({
@@ -64,15 +65,21 @@ export const loader = async ({request}) => {
     expected: Number(target.expectedValue),
     actual: progressValue(progress[`t${index}`]),
   }));
+  // A failed read finds no targets, and a failed measure finds no sales. Report both.
+  const targetsUnavailable =
+    targetsBody.errors?.[0]?.message ?? progressBody.errors?.[0]?.message ?? null;
 
   return {
     campaigns,
     appName,
     dimensions,
     targets,
+    targetsUnavailable,
     // The admin's locale rides in on the request. Formatting here matches the client.
     locale: safeLocale(new URL(request.url).searchParams.get('locale')),
     sends: sends.tableData.rows ?? [],
+    // A failed read has no rows, the same as a store that sent nothing.
+    sendsUnavailable: sends.unavailable,
     seedErrors: userErrors.map((error) => error.message),
   };
 };
@@ -188,15 +195,20 @@ function writtenBack(campaign) {
 
 // Product and QR code sales are part of store sales. Summing them with the store
 // target would count the same orders twice.
-function targetProgress(campaign, targets) {
+function targetProgress(campaign, targets, unavailable) {
   const mine = targets.filter(
     (target) => target.campaignId === String(campaign.id),
   );
   const store = mine.find((target) => target.id === campaign.targets?.store);
+  // An unmeasured target isn't one at 0%.
+  const recorded = Object.keys(campaign.targets ?? {}).length > 0;
+  if ((unavailable && recorded) || store?.actual === null) {
+    return {count: mine.length, percent: null, unmeasured: true};
+  }
   if (!store || store.expected <= 0) return {count: mine.length, percent: null};
   return {
     count: mine.length,
-    percent: Math.round(((store.actual ?? 0) / store.expected) * 100),
+    percent: Math.round((store.actual / store.expected) * 100),
   };
 }
 
@@ -255,8 +267,17 @@ function overviewSince(campaigns) {
 // [END campaign-dashboard.overview-shape]
 
 export default function CampaignsIndex() {
-  const {campaigns, appName, dimensions, targets, locale, sends, seedErrors} =
-    useLoaderData();
+  const {
+    campaigns,
+    dimensions,
+    targets,
+    targetsUnavailable,
+    locale,
+    seedErrors,
+    appName,
+    sends,
+    sendsUnavailable,
+  } = useLoaderData();
   const fetcher = useFetcher();
   // A separate fetcher keeps a dimension error off the create form.
   const dimensionFetcher = useFetcher();
@@ -579,6 +600,20 @@ export default function CampaignsIndex() {
             </s-unordered-list>
           </s-banner>
         )}
+        {targetsUnavailable && (
+          <s-banner tone="info" heading="Target progress didn't load">
+            <s-paragraph>
+              Reload the page to try again. The store returned: {targetsUnavailable}
+            </s-paragraph>
+          </s-banner>
+        )}
+        {sendsUnavailable && (
+          <s-banner tone="info" heading="Messages sent didn't load">
+            <s-paragraph>
+              Reload the page to try again. The store returned: {sendsUnavailable}
+            </s-paragraph>
+          </s-banner>
+        )}
         {campaigns.length === 0 ? (
           <s-paragraph>No campaigns yet.</s-paragraph>
         ) : (
@@ -596,7 +631,7 @@ export default function CampaignsIndex() {
             <s-table-body>
               {campaigns.map((campaign) => {
                 const reach = sendsFor(campaign, sends, appName);
-                const target = targetProgress(campaign, targets);
+                const target = targetProgress(campaign, targets, targetsUnavailable);
                 return (
                   <s-table-row key={campaign.id}>
                     <s-table-cell>
@@ -621,12 +656,16 @@ export default function CampaignsIndex() {
                           {reach.openRate !== null &&
                             `, ${reach.openRate}% email open rate`}
                         </Fragment>
+                      ) : sendsUnavailable && campaign.status !== 'planned' ? (
+                        <s-text color="subdued">Couldn't load</s-text>
                       ) : (
                         <s-text color="subdued">Nothing sent</s-text>
                       )}
                     </s-table-cell>
                     <s-table-cell>
-                      {target.percent !== null ? (
+                      {target.unmeasured ? (
+                        <s-text color="subdued">Couldn't measure</s-text>
+                      ) : target.percent !== null ? (
                         <s-text tone={target.percent >= 100 ? 'success' : 'info'}>
                           {target.percent}% of the store sales target
                         </s-text>

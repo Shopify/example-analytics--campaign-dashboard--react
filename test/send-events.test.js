@@ -1,11 +1,13 @@
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {sendBlocker, sendCampaignFunnel} from '../app/app-events.server';
 import {storedState} from './helpers/db';
-import {base, planned, runWith} from './helpers/routes';
+import {mockAdmin} from './helpers/admin';
+import {base, planned, runWith, session} from './helpers/routes';
 
 vi.mock('../app/shopify.server', async () => (await import('./helpers/routes')).shopifyServer);
 
 const {action: campaignAction} = await import('../app/routes/app.campaigns.$campaignId.jsx');
+const {loader: overviewLoader} = await import('../app/routes/app.campaigns._index.jsx');
 const run = runWith(campaignAction);
 
 const campaign = {startDate: '2026-09-10', endDate: '2026-10-07'};
@@ -93,5 +95,19 @@ describe('send-events intent', () => {
     const {result} = run(base(running()), {intent: 'send-events'});
     await result;
     expect(storedState(4210).sentEvents).toBeGreaterThan(0);
+  });
+});
+
+describe('overview sends', () => {
+  it('keeps a failed send read apart from a store that sent nothing', async () => {
+    const mock = mockAdmin({
+      ...base(planned({status: 'running'})),
+      CampaignTargets: () => ({data: {targets: []}}),
+      CampaignComparison: () => ({data: null, errors: [{message: 'Access denied for app events'}]}),
+    });
+    session.admin = mock.raw;
+    const data = await overviewLoader({request: new Request('https://app.test/app/campaigns')});
+    expect(data.sendsUnavailable).toBe('Access denied for app events');
+    expect(data.sends).toEqual([]);
   });
 });

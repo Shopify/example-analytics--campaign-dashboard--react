@@ -342,8 +342,9 @@ export async function readAllTargets(admin, campaigns) {
   );
   try {
     return await readTargets(admin, {targets});
-  } catch {
-    return {data: null};
+  } catch (error) {
+    // The overview shows this read's errors. A bare null would read as no targets.
+    return {data: null, errors: [{message: `Couldn't read targets: ${error.message}`}]};
   }
 }
 // [END campaign-dashboard.all-targets-read]
