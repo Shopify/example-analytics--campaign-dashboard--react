@@ -53,7 +53,7 @@ You'll need Node 22.12 or later, [app development permissions](https://shopify.d
 
    ```toml
    [access_scopes]
-   scopes = "read_reports,write_reports,read_analytics_annotations,write_analytics_annotations,write_products,write_customers,write_orders,write_metaobject_definitions,write_metaobjects,write_marketing_events"
+   scopes = "write_reports,write_analytics_annotations,write_products,write_customers,write_orders,write_metaobject_definitions,write_metaobjects,write_marketing_events"
    ```
 
 6. Create the local database and start the app. Shopify CLI asks for a dev store and installs the app with the scopes from step 5. Press `p` to open the app:
