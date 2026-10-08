@@ -270,6 +270,26 @@ async function postEvent({token, shopId, stage, campaignId, start, index}) {
   if (response.status === 202) return {ok: true};
   return {ok: false, status: response.status, body: await response.text()};
 }
+// [END campaign-dashboard.app-events-send]
+
+// [START campaign-dashboard.app-events-retry]
+// A 429, a 5xx, or a dropped connection gets two more tries, each after a longer wait.
+// The retry reuses the idempotency key, and the API counts the event once.
+const RETRY_DELAYS_MS = [250, 1000];
+const retryable = ({status}) => status === 429 || status === 'network' || status >= 500;
+
+async function sendWithRetry(event) {
+  let result = await sendEvent(event);
+  for (const delay of RETRY_DELAYS_MS) {
+    if (result.ok || !retryable(result)) break;
+    await new Promise((resolve) => setTimeout(resolve, delay));
+    result = await sendEvent(event);
+  }
+  return result;
+}
+// [END campaign-dashboard.app-events-retry]
+
+// [START campaign-dashboard.app-events-send]
 
 export async function sendCampaignFunnel({
   shopId,
@@ -283,13 +303,13 @@ export async function sendCampaignFunnel({
   const accepted = {};
   const failures = [];
 
-  // A real send would work off a queue.
+  // The API takes one event per request and asks for them in sequence. A real send
+  // would work off a queue.
   for (const stage of selected(channels)) {
-    const results = await Promise.all(
-      Array.from({length: stage.count}, (_unused, index) =>
-        sendEvent({token, shopId, stage, campaignId, start, index}),
-      ),
-    );
+    const results = [];
+    for (let index = 0; index < stage.count; index += 1) {
+      results.push(await sendWithRetry({token, shopId, stage, campaignId, start, index}));
+    }
     // Several sends share one handle. This accumulates.
     accepted[stage.handle] =
       (accepted[stage.handle] ?? 0) + results.filter((r) => r.ok).length;
