@@ -401,7 +401,7 @@ export default function CampaignsIndex() {
         <form onSubmit={submit} style={{display: 'contents'}}>
           {/* [START campaign-dashboard.spawn-form] */}
           <s-section heading="Campaign details">
-            <div style={{height: '12px'}} />
+            <s-box paddingBlockStart="base" />
             {problems.length > 0 && (
               <s-banner tone="critical" heading="Campaign not created">
                 <s-unordered-list>
@@ -449,11 +449,11 @@ export default function CampaignsIndex() {
           </s-section>
           {/* [END campaign-dashboard.spawn-form] */}
 
-          <div style={{height: '12px'}} />
+          <s-box paddingBlockStart="base" />
 
           {/* [START campaign-dashboard.picker-render] */}
           <s-section heading="Promoted products">
-            <div style={{height: '12px'}} />
+            <s-box paddingBlockStart="base" />
             <s-paragraph>
               Select up to five products. The promoted product target measures
               sales of these products.
@@ -471,12 +471,12 @@ export default function CampaignsIndex() {
           </s-section>
           {/* [END campaign-dashboard.picker-render] */}
 
-          <div style={{height: '12px'}} />
+          <s-box paddingBlockStart="base" />
 
           {/* [START campaign-dashboard.channel-picker] */}
           {/* Each channel reports a different set of stages, and a different funnel. */}
           <s-section heading="Channels">
-            <div style={{height: '12px'}} />
+            <s-box paddingBlockStart="base" />
             <s-choice-list
               label="Send on"
               name="channels"
@@ -503,13 +503,13 @@ export default function CampaignsIndex() {
           </s-section>
           {/* [END campaign-dashboard.channel-picker] */}
 
-          <div style={{height: '12px'}} />
+          <s-box paddingBlockStart="base" />
 
           {/* [START campaign-dashboard.spawn-targets] */}
           {/* Each amount becomes a target at activation. The form offers only the
               targets this campaign can create. */}
           <s-section heading="Targets">
-            <div style={{height: '12px'}} />
+            <s-box paddingBlockStart="base" />
             <s-stack direction="block" gap="base">
               <s-paragraph>
                 Activation creates a target for each amount. Leave an amount
@@ -560,14 +560,14 @@ export default function CampaignsIndex() {
           </s-section>
           {/* [END campaign-dashboard.spawn-targets] */}
 
-          <div style={{height: '12px'}} />
+          <s-box paddingBlockStart="base" />
         </form>
       )}
 
       {/* [START campaign-dashboard.overview-card-render] */}
       {since && (
         <s-section heading="Store sales overview">
-          <div style={{height: '12px'}} />
+          <s-box paddingBlockStart="base" />
           {cardReady ? (
             <s-metrics-bar accessibilityLabel="Store sales over the campaign period">
               <s-shopifyql-metric-card
@@ -707,7 +707,7 @@ export default function CampaignsIndex() {
       {/* [START campaign-dashboard.overview-chart-render] */}
       {anySends && (
         <s-section heading="Messages sent by campaign">
-          <div style={{height: '12px'}} />
+          <s-box paddingBlockStart="base" />
           <s-paragraph>
             Messages sent in the last 29 days. App Events keeps 30 days of
             data. Older campaigns don't appear.
@@ -736,7 +736,7 @@ export default function CampaignsIndex() {
 
       {/* [START campaign-dashboard.metafield-dimension-render] */}
       <s-section heading="Analytics dimensions">
-        <div style={{height: '12px'}} />
+        <s-box paddingBlockStart="base" />
         <s-paragraph>
           The app writes campaign values to products, customers, and orders as
           metafields. Create a dimension from each metafield. Campaign reports

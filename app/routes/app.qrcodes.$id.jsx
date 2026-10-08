@@ -581,10 +581,10 @@ export default function QRCodeForm() {
                   </s-button>
                 )}
                 {errors.productId ? (
-                  <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                  <s-stack direction="inline" alignItems="center" gap="small-300">
                     <s-icon type="alert-circle" tone="critical" size="small" />
                     <s-text tone="critical">{errors.productId}</s-text>
-                  </div>
+                  </s-stack>
                 ) : null}
               </s-stack>
             </s-stack>

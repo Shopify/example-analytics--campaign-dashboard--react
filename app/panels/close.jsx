@@ -21,7 +21,7 @@ export function CampaignLifecycle({
 
   return (
     <s-section heading="Campaign actions">
-      <div style={{height: '12px'}} />
+      <s-box paddingBlockStart="base" />
       <s-stack direction="block" gap="base">
         {openCampaign && (
           <s-paragraph>

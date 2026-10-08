@@ -1309,7 +1309,7 @@ export default function CampaignDashboard() {
         <Fragment>
           {/* Everything activation writes, listed before it writes it. */}
           <s-section heading="Campaign setup">
-            <div style={{height: '12px'}} />
+            <s-box paddingBlockStart="base" />
             <s-paragraph>Activation creates:</s-paragraph>
             <s-unordered-list>
               <s-list-item>
@@ -1334,7 +1334,7 @@ export default function CampaignDashboard() {
               </s-list-item>
             </s-unordered-list>
 
-            <div style={{height: '12px'}} />
+            <s-box paddingBlockStart="base" />
 
             <s-stack direction="block" gap="small-200">
               <s-text>
@@ -1372,7 +1372,7 @@ export default function CampaignDashboard() {
 
           {/* [START campaign-dashboard.qr-setup-render] */}
           <s-section heading="QR codes">
-            <div style={{height: '12px'}} />
+            <s-box paddingBlockStart="base" />
             {(qrCodes ?? []).length > 0 ? (
               <s-stack direction="block" gap="base">
                 <s-text>
@@ -1414,7 +1414,7 @@ export default function CampaignDashboard() {
             {/* Codes join a campaign before activation. */}
             {campaign.status === 'planned' && (
               <>
-                <div style={{height: '12px'}} />
+                <s-box paddingBlockStart="base" />
                 <s-link
                   href={`/app/qrcodes/new?campaign=${encodeURIComponent(campaign.gid)}`}
                 >
@@ -1428,7 +1428,7 @@ export default function CampaignDashboard() {
           {/* Each amount becomes a target at activation. A blank one is no target. */}
           <form onSubmit={saveTargets}>
             <s-section heading="Targets">
-              <div style={{height: '12px'}} />
+              <s-box paddingBlockStart="base" />
               <s-stack direction="block" gap="base">
                 <s-money-field
                   label="Store sales target"

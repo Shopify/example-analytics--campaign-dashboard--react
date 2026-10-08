@@ -121,7 +121,7 @@ export function StoreTotals({statusLine, cardReady, range, setRange, cardQuery})
             "Each card's query, including the VISUALIZE clause.",
         }}
       />
-      <div style={{marginBottom: '20px'}}>{statusLine}</div>
+      <s-box paddingBlockEnd="large">{statusLine}</s-box>
       {cardReady ? (
         <s-metrics-bar accessibilityLabel="Store totals over the selected range">
           <s-metrics-bar-date-picker
@@ -196,7 +196,7 @@ export function SalesAndOrders({
       />
       {/* [START campaign-dashboard.totals-render] */}
       {/* The percentages are Shopify's, from PERCENT_CHANGE. */}
-      <div style={{marginBottom: '32px'}}>
+      <s-box paddingBlockEnd="large-200">
         <s-stack direction="block" gap="small-200">
           <s-stack direction="inline" gap="base" alignItems="center">
             <s-text color="subdued">Total sales:</s-text>
@@ -209,7 +209,7 @@ export function SalesAndOrders({
             {currency(firstTimeSales)}.
           </s-text>
         </s-stack>
-      </div>
+      </s-box>
       {/* [END campaign-dashboard.totals-render] */}
 
       {/* [START campaign-dashboard.sales-card-render] */}

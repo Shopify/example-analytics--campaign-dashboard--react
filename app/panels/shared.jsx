@@ -35,8 +35,8 @@ export function PanelHeader({title, uses}) {
           );
         })}
       </s-stack>
-      {/* The stack drops a style prop. The spacer holds the gap under the header. */}
-      <div style={{height: '16px'}} />
+      {/* The stack drops a style prop. The box holds the gap under the header. */}
+      <s-box paddingBlockStart="base" />
     </Fragment>
   );
 }
