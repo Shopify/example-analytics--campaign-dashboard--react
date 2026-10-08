@@ -5,7 +5,9 @@ import {
   useSubmit,
   useParams,
   useRouteError,
+  isRouteErrorResponse,
 } from "react-router";
+import { useAppBridge } from "@shopify/app-bridge-react";
 import { authenticate } from "../shopify.server";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 
@@ -258,6 +260,7 @@ export async function action({ request, params }) {
 // [END action]
 
 export default function QRCodeForm() {
+  const shopify = useAppBridge();
   const { id } = useParams();
 
   // [START state]
@@ -275,7 +278,7 @@ export default function QRCodeForm() {
 
   // [START select-product]
   async function selectProduct() {
-    const products = await window.shopify.resourcePicker({
+    const products = await shopify.resourcePicker({
       type: "product",
       action: "select",
       filter: { variants: true },
@@ -652,7 +655,9 @@ export default function QRCodeForm() {
 // Without a boundary here, a failed load takes AppProvider and the app's navigation with it.
 export function ErrorBoundary() {
   const error = useRouteError();
-  const detail = error?.data ?? error?.message ?? "The load failed.";
+  // A response Shopify threw, such as a re-auth, renders the way the library expects.
+  if (isRouteErrorResponse(error)) return boundary.error(error);
+  const detail = error?.message ?? "The load failed.";
   return (
     <s-page heading="QR code">
       <s-section>

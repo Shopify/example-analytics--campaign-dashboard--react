@@ -44,7 +44,15 @@ describe('delete', () => {
     );
     const response = await canceled.result;
     expect(response.headers.get('Location')).toBe('/app/campaigns');
+    expect(response.headers.get('X-Authenticated-Redirect')).toBe('1');
     expect(canceled.mock.calls.find((call) => call.op === 'DeleteCampaign').variables).toEqual({id: 'gid://shopify/Metaobject/1'});
+  });
+
+  it('sends an action on a missing campaign back to the list', async () => {
+    const {result} = run(base(planned({id: 4211})), {intent: 'close'});
+    const response = await result;
+    expect(response.headers.get('Location')).toBe('/app/campaigns');
+    expect(response.headers.get('X-Authenticated-Redirect')).toBe('1');
   });
 
   it('leaves the creator entries for other campaigns', async () => {

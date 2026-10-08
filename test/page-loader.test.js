@@ -47,3 +47,21 @@ describe('campaign page loader', () => {
     expect(ran).toContain('CampaignTopProducts');
   });
 });
+
+describe('route redirects', () => {
+  const authenticated = (response) => [response.status, response.headers.get('Location'), response.headers.get('X-Authenticated-Redirect')];
+
+  it('sends the app root to the campaign list', async () => {
+    const {loader: rootLoader} = await import('../app/routes/app._index.jsx');
+    session.admin = mockAdmin({}).raw;
+    const response = await rootLoader({request: new Request('https://app.test/app?shop=example.test&host=abc')});
+    expect(authenticated(response)).toEqual([302, '/app/campaigns', '1']);
+  });
+
+  it('sends a campaign page with no campaign back to the list', async () => {
+    const mock = mockAdmin({...base(planned()), CampaignList: () => ({data: {metaobjects: {nodes: [], pageInfo: {hasNextPage: false}}}})});
+    session.admin = mock.raw;
+    const response = await loader({request: new Request('https://app.test/app/campaigns/9999'), params: {campaignId: '9999'}});
+    expect(authenticated(response)).toEqual([302, '/app/campaigns', '1']);
+  });
+});

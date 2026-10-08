@@ -46,6 +46,7 @@ describe('create', () => {
     const response = await createAction({request: post('/app/campaigns', fields)});
     expect(response.status).toBe(302);
     expect(response.headers.get('Location')).toBe('/app/campaigns/4212');
+    expect(response.headers.get('X-Authenticated-Redirect')).toBe('1');
     const saved = Object.fromEntries(mock.calls.find((call) => call.op === 'CreateCampaign').variables.metaobject.fields.map((f) => [f.key, f.value]));
     expect(saved).toMatchObject({revenue_target: '', qr_target: '', status: 'planned'});
   });

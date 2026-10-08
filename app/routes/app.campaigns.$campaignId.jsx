@@ -1,5 +1,7 @@
 import {Fragment, useEffect, useRef, useState} from 'react';
-import {redirect, useFetcher, useLoaderData, useRouteError} from 'react-router';
+import {isRouteErrorResponse, useFetcher, useLoaderData, useRouteError} from 'react-router';
+import {useAppBridge} from '@shopify/app-bridge-react';
+import {boundary} from '@shopify/shopify-app-react-router/server';
 import {authenticate} from '../shopify.server';
 import {
   eventTotal,
@@ -138,8 +140,8 @@ import {readDimensions} from '../dimensions.server';
 export async function loader({request, params}) {
   // [START campaign-dashboard.campaign-load]
   // Redirect on a miss. A thrown response renders above this route's layout
-  // and takes the app's navigation with it. The search params hold App Bridge's store and host.
-  const {admin: client, session} = await authenticate.admin(request);
+  // and takes the app's navigation with it. The redirect keeps App Bridge's search params.
+  const {admin: client, session, redirect} = await authenticate.admin(request);
   const admin = withReturnedErrors(client);
   const {appId, appName, campaigns, failed} = await readCampaigns(admin, session.shop);
   // Report a failed read. A redirect would treat the campaign as deleted.
@@ -151,9 +153,7 @@ export async function loader({request, params}) {
     };
   }
   const campaign = findCampaign(campaigns, params.campaignId);
-  if (!campaign) {
-    return redirect(`/app/campaigns${new URL(request.url).search}`);
-  }
+  if (!campaign) return redirect('/app/campaigns');
   // [END campaign-dashboard.campaign-load]
 
   // [START campaign-dashboard.locale]
@@ -278,18 +278,18 @@ export async function loader({request, params}) {
 // One action for every write. The lock holds off a second write to the campaign until
 // this one ends.
 export async function action({request, params}) {
-  const {admin: client, session} = await authenticate.admin(request);
+  const {admin: client, session, redirect} = await authenticate.admin(request);
   const admin = withReturnedErrors(client);
   const lock = await lockCampaign(session.shop, params.campaignId);
   if (lock.problems) return {problems: lock.problems.map((error) => error.message)};
   try {
-    return await runIntent(admin, session.shop, request, params);
+    return await runIntent(admin, session.shop, request, params, redirect);
   } finally {
     await lock.release();
   }
 }
 
-async function runIntent(admin, shop, request, params) {
+async function runIntent(admin, shop, request, params, redirect) {
   const form = await request.formData();
   const intent = String(form.get('intent'));
 
@@ -301,9 +301,7 @@ async function runIntent(admin, shop, request, params) {
   if (failed.length) return {problems: failed.map((error) => error.message)};
 
   const campaign = findCampaign(campaigns, params.campaignId);
-  if (!campaign) {
-    return redirect(`/app/campaigns${new URL(request.url).search}`);
-  }
+  if (!campaign) return redirect('/app/campaigns');
 
   const shopId = shopBody.data?.shop?.id ?? null;
   const timeZone = shopBody.data?.shop?.ianaTimezone ?? 'Etc/UTC';
@@ -888,7 +886,7 @@ async function runIntent(admin, shop, request, params) {
     await forgetCampaign(shop, campaign.id).catch((error) =>
       console.error('Could not delete campaign state', error),
     );
-    return redirect(`/app/campaigns${new URL(request.url).search}`);
+    return redirect('/app/campaigns');
   }
 
   return {problems: ['Unknown action.']};
@@ -968,6 +966,7 @@ export function salesTotals(rows) {
 export default function CampaignDashboard() {
   const data = useLoaderData();
   const fetcher = useFetcher();
+  const shopify = useAppBridge();
 
   const cardReady = useMetricCardsReady();
 
@@ -989,7 +988,7 @@ export default function CampaignDashboard() {
     if (fetcher.state !== 'idle' || !fetcher.data?.ok || fetcher.data.problems?.length) return;
     const message = DONE[pending.current];
     if (message) shopify.toast.show(message);
-  }, [fetcher.state, fetcher.data]);
+  }, [fetcher.state, fetcher.data, shopify]);
   // The select keeps the value picked in it. A rejected save puts the saved one back.
   const audienceSelect = useRef(null);
   const savedAudience = data.campaign?.audience;
@@ -1687,7 +1686,9 @@ export default function CampaignDashboard() {
 // load takes AppProvider and the app's navigation with it.
 export function ErrorBoundary() {
   const error = useRouteError();
-  const detail = error?.data ?? error?.message ?? 'The load failed.';
+  // A response Shopify threw, such as a re-auth, renders the way the library expects.
+  if (isRouteErrorResponse(error)) return boundary.error(error);
+  const detail = error?.message ?? 'The load failed.';
   return (
     <s-page heading="Campaign">
       <s-section>
@@ -1701,3 +1702,5 @@ export function ErrorBoundary() {
     </s-page>
   );
 }
+
+export const headers = (headersArgs) => boundary.headers(headersArgs);

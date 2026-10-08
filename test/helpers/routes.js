@@ -10,7 +10,8 @@ export const shopifyServer = {
     admin: async () => ({
       admin: session.admin,
       session: {shop: 'example.test'},
-      redirect: (url) => new Response(null, {status: 302, headers: {Location: url}}),
+      // The header marks a redirect from this helper, which keeps App Bridge's search params.
+      redirect: (url) => new Response(null, {status: 302, headers: {Location: url, 'X-Authenticated-Redirect': '1'}}),
     }),
   },
 };

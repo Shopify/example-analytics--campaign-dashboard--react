@@ -1,5 +1,7 @@
 import {Fragment, useEffect, useState} from 'react';
-import {redirect, useFetcher, useLoaderData, useRouteError} from 'react-router';
+import {isRouteErrorResponse, useFetcher, useLoaderData, useRouteError} from 'react-router';
+import {useAppBridge} from '@shopify/app-bridge-react';
+import {boundary} from '@shopify/shopify-app-react-router/server';
 import {authenticate} from '../shopify.server';
 import {
   createCampaign,
@@ -87,7 +89,7 @@ export const loader = async ({request}) => {
 
 // [START campaign-dashboard.spawn-action]
 export const action = async ({request}) => {
-  const {admin: client, session} = await authenticate.admin(request);
+  const {admin: client, session, redirect} = await authenticate.admin(request);
   const admin = withReturnedErrors(client);
   const form = await request.formData();
 
@@ -180,7 +182,7 @@ export const action = async ({request}) => {
     return {problems: userErrors.map((error) => error.message)};
   }
 
-  return redirect(`/app/campaigns/${campaign.id}${new URL(request.url).search}`);
+  return redirect(`/app/campaigns/${campaign.id}`);
 };
 // [END campaign-dashboard.spawn-action]
 
@@ -279,6 +281,7 @@ export default function CampaignsIndex() {
     sendsUnavailable,
   } = useLoaderData();
   const fetcher = useFetcher();
+  const shopify = useAppBridge();
   // A separate fetcher keeps a dimension error off the create form.
   const dimensionFetcher = useFetcher();
   const enabling =
@@ -838,7 +841,9 @@ export default function CampaignsIndex() {
 // load takes AppProvider and the app's navigation with it.
 export function ErrorBoundary() {
   const error = useRouteError();
-  const detail = error?.data ?? error?.message ?? 'The load failed.';
+  // A response Shopify threw, such as a re-auth, renders the way the library expects.
+  if (isRouteErrorResponse(error)) return boundary.error(error);
+  const detail = error?.message ?? 'The load failed.';
   return (
     <s-page heading="Campaigns">
       <s-section>
@@ -849,3 +854,5 @@ export function ErrorBoundary() {
     </s-page>
   );
 }
+
+export const headers = (headersArgs) => boundary.headers(headersArgs);
