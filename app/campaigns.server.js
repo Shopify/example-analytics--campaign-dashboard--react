@@ -611,6 +611,13 @@ export async function forgetCustomer(admin, customerId) {
 // [END campaign-dashboard.customer-data]
 
 // [START campaign-dashboard.qr-assign]
+// A failed activation leaves the campaign planned with its targets saved. Its codes wait
+// for a cancel, which deletes the targets.
+export const heldByTargets = (campaign) =>
+  Object.keys(campaign.targets ?? {}).length > 0
+    ? `${campaign.title} already has targets from an activation. Cancel the campaign, then change its QR codes.`
+    : null;
+
 // A code moves only between planned campaigns. The locks keep both campaigns planned
 // until the caller saves the code's `campaign` field and releases them.
 export async function lockQRCodeMove(admin, shop, qrCodeId, campaignGid) {
@@ -628,10 +635,9 @@ export async function lockQRCodeMove(admin, shop, qrCodeId, campaignGid) {
   const {campaigns, failed} = await readCampaigns(admin, shop);
   const now = campaignOf(campaigns, qrCodeId);
   const drifted = now && !touched.some((t) => t.gid === now.gid);
-  const started = campaigns.find(
-    (campaign) =>
-      touched.some((t) => t.gid === campaign.gid) && campaign.status !== 'planned',
-  );
+  const touchedNow = campaigns.filter((campaign) => touched.some((t) => t.gid === campaign.gid));
+  const started = touchedNow.find((campaign) => campaign.status !== 'planned');
+  const held = touchedNow.map(heldByTargets).find(Boolean);
   const problems = failed.length
     ? failed
     : drifted
@@ -648,7 +654,9 @@ export async function lockQRCodeMove(admin, shop, qrCodeId, campaignGid) {
               message: `${started.title} is ${statusLabel(started.status).toLowerCase()}. QR codes move only between planned campaigns.`,
             },
           ]
-        : [];
+        : held
+          ? [{code: 'HAS_TARGETS', message: held}]
+          : [];
   if (problems.length) {
     await lock.release();
     return {problems};

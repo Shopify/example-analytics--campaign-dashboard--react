@@ -364,6 +364,22 @@ describe('close', () => {
     expect(mock.calls.find((call) => call.op === 'CloseCampaignAnnotation').variables.input.title).toBe('Summer launch: 50% of target');
   });
 
+  it("measures only the day a one-day campaign ran", async () => {
+    vi.setSystemTime(new Date('2026-09-10T12:00:00Z'));
+    const store = {id: 'gid://shopify/AnalyticsTarget/3', startDate: '2026-09-10', endDate: '2026-09-11', expectedValue: '2000', shopifyqlQuery: 'FROM sales SHOW total_sales SINCE 2026-09-10 UNTIL 2026-09-11'};
+    const {mock, result} = run(
+      closing(running({endDate: '2026-09-10', targets: {store: store.id}}), [store], () => ({
+        data: {shopifyqlQuery: {tableData: {rows: [{total_sales: '1000'}]}, parseErrors: []}},
+      })),
+      {intent: 'close'},
+    );
+    expect(await result).toMatchObject({ok: true});
+    const measure = mock.calls.find((call) => call.op === 'MeasureTarget').document;
+    expect(measure).toContain('SINCE 2026-09-10 UNTIL 2026-09-10');
+    expect(measure).not.toContain('2026-09-11');
+    expect(mock.calls.find((call) => call.op === 'CloseCampaignAnnotation').variables.input.title).toBe('Summer launch: 50% of target');
+  });
+
   it("ends each target on the close day, or the day after its start for a code that wasn't live", async () => {
     const store = {id: 'gid://shopify/AnalyticsTarget/3', startDate: '2026-09-10', expectedValue: '2000', shopifyqlQuery: 'FROM sales SHOW total_sales'};
     const later = {id: 'gid://shopify/AnalyticsTarget/4', startDate: '2026-10-03', expectedValue: '100', shopifyqlQuery: 'FROM campaign_sales SHOW x'};

@@ -699,6 +699,18 @@ describe('QR code moves under the lock', () => {
     expect(held()).toEqual([]);
   });
 
+  it('refuses a planned campaign that kept targets from a failed activation', async () => {
+    const entries = [
+      node({gid: 'g1', id: 4210, title: 'Fall'}),
+      node({gid: 'g2', id: 4211, title: 'Winter', targets: {store: 'gid://shopify/AnalyticsTarget/3'}}),
+    ];
+    const {admin} = moving(entries, entries);
+    expect((await lockQRCodeMove(admin, SHOP, 'gid://shopify/Metaobject/901', 'g2')).problems).toEqual([
+      {code: 'HAS_TARGETS', message: 'Winter already has targets from an activation. Cancel the campaign, then change its QR codes.'},
+    ]);
+    expect(held()).toEqual([]);
+  });
+
   it('refuses when another request moved the code to an unlocked campaign', async () => {
     const entries = [node({gid: 'g1', id: 4210}), node({gid: 'g2', id: 4211}), node({gid: 'g3', id: 4212})];
     const {admin} = moving(entries, entries, 'g3');

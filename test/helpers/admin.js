@@ -11,7 +11,7 @@ export function mockAdmin(handlers) {
   const calls = [];
   const graphql = async (document, {variables} = {}) => {
     const op = document.match(/(?:query|mutation)\s+(\w+)/)?.[1];
-    calls.push({op, variables});
+    calls.push({op, variables, document});
     const handler = handlers[op] ?? DEFAULTS[op];
     if (!handler) throw new Error(`No handler for ${op ?? 'anonymous operation'}`);
     const body = await handler(variables ?? {}, calls);

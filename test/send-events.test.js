@@ -170,6 +170,17 @@ describe('send-events intent', () => {
     expect(storedState(4210)).toMatchObject({campaignGid: 'gid://shopify/Metaobject/1', sentEvents: null});
   });
 
+  it('releases the claim when the token request fails', async () => {
+    // Past the token an earlier test cached, so the action requests a new one.
+    vi.setSystemTime(new Date('2099-01-01T12:00:00Z'));
+    const fetch = vi.fn(async () => new Response(null, {status: 500}));
+    vi.stubGlobal('fetch', fetch);
+    const {result} = run(base(running()), {intent: 'send-events'});
+    expect(await result).toEqual({problems: ["Couldn't start the send. Try again."]});
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(storedState(4210).sentEvents).toBeNull();
+  });
+
   it('records the count that landed', async () => {
     vi.stubGlobal('fetch', vi.fn(async (url) =>
       url.endsWith('/access_token')

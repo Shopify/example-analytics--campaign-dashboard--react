@@ -193,6 +193,30 @@ describe('QR code save', () => {
     expect(ops(mock.calls)).not.toContain('UpsertQRCode');
   });
 
+  it("keeps a code's live date while its campaign holds targets from an activation", async () => {
+    const entry = planned({gid: 'g1', targets: {store: 'gid://shopify/AnalyticsTarget/3'}, qrCodes: [{id: 'gid://shopify/Metaobject/50', handle: 'hat-front'}]});
+    const mock = mockAdmin(qrHandlers([entry]));
+    session.admin = mock.raw;
+    const response = await qrAction({request: post('/app/qrcodes/hat-front', {...form('g1'), initialCampaign: 'g1', liveOn: '2026-09-20'}), params: {id: 'hat-front'}});
+    expect(response.status).toBe(422);
+    expect(await response.json()).toEqual({
+      errors: {campaign: 'Summer launch already has targets from an activation. Cancel the campaign, then change its QR codes.'},
+    });
+    expect(ops(mock.calls)).not.toContain('UpsertQRCode');
+  });
+
+  it('refuses to delete a code while its campaign holds targets from an activation', async () => {
+    const entry = planned({gid: 'g1', targets: {store: 'gid://shopify/AnalyticsTarget/3'}, qrCodes: [{id: 'gid://shopify/Metaobject/50', handle: 'hat-front'}]});
+    const mock = mockAdmin(qrHandlers([entry]));
+    session.admin = mock.raw;
+    const response = await qrAction({request: post('/app/qrcodes/hat-front', {action: 'delete'}), params: {id: 'hat-front'}});
+    expect(response.status).toBe(422);
+    expect(await response.json()).toEqual({
+      errors: {campaign: 'Summer launch already has targets from an activation. Cancel the campaign, then change its QR codes.'},
+    });
+    expect(ops(mock.calls)).not.toContain('DeleteQRCode');
+  });
+
   it('names the campaign status when a delete is refused', async () => {
     const canceled = planned({gid: 'g-canceled', status: 'canceled', qrCodes: [{id: 'gid://shopify/Metaobject/50', handle: 'hat-front'}]});
     const mock = mockAdmin(qrHandlers([canceled]));

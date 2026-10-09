@@ -424,13 +424,25 @@ async function runIntent(admin, shop, request, params, redirect) {
         ],
       };
     }
-    const {accepted, failures} = await sendCampaignFunnel({
+    // A failed event comes back in `failures`. A throw, such as a failed token request,
+    // happens before the first event, and releasing the claim lets the merchant retry.
+    const funnel = await sendCampaignFunnel({
       shopId,
       campaignId: campaign.id,
       startDate: campaign.startDate,
       timeZone,
       channels: campaign.channels,
+    }).catch((error) => {
+      console.error('Could not start the send', error);
+      return null;
     });
+    if (!funnel) {
+      await releaseSend(shop, campaign.id).catch((error) =>
+        console.error('Could not release the send', error),
+      );
+      return {problems: ["Couldn't start the send. Try again."]};
+    }
+    const {accepted, failures} = funnel;
     const sent = Object.values(accepted).reduce((total, n) => total + n, 0);
     // Record what landed before reporting failures. Idempotency keys expire after 24 hours,
     // and an unrecorded partial send would let a later run duplicate it.
@@ -712,12 +724,12 @@ async function runIntent(admin, shop, request, params, redirect) {
     const store = targetNodes(targetsBody).find(
       (node) => node.id === campaign.targets?.store,
     );
-    // Targets are optional. Without one, measure the window's sales directly.
+    // Measure the days that ran. A one-day target's query ends a day later and would
+    // count a day outside the campaign.
     const measured = await queryShopifyQL(
       admin,
       measureQuery(
-        store?.shopifyqlQuery ??
-          `FROM sales SHOW total_sales SINCE ${closing.startDate} UNTIL ${closedOn}`,
+        `FROM sales SHOW total_sales SINCE ${closing.startDate} UNTIL ${closedOn}`,
       ),
     );
     const revenue = progressValue(measured.data?.shopifyqlQuery);

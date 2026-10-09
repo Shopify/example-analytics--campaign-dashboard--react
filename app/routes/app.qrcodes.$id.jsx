@@ -22,6 +22,7 @@ import {
 } from "../models/QRCode.server";
 import {
   campaignOf,
+  heldByTargets,
   readCampaigns,
   lockCampaigns,
   lockQRCodeMove,
@@ -37,10 +38,12 @@ const assignable = (campaign) => campaign.status === "planned";
 async function campaignChoices(admin, shop, qrCodeId) {
   const { campaigns, failed } = await readCampaigns(withReturnedErrors(admin), shop);
   const current = qrCodeId ? campaignOf(campaigns, qrCodeId) : null;
+  const held = current ? heldByTargets(current) : null;
   return {
     failed,
     current,
-    locked: Boolean(current && !assignable(current)),
+    held,
+    locked: Boolean(current && (!assignable(current) || held)),
     campaigns: campaigns
       .filter((campaign) => assignable(campaign) || campaign === current)
       .map((campaign) => ({
@@ -99,7 +102,7 @@ export async function loader({ request, params }) {
 
   const qrCode = await getQRCode(params.id, admin.graphql, session.shop);
   if (!qrCode) throw new Response("No QR code has this handle.", { status: 404 });
-  const { campaigns, current, failed, locked } = await campaignChoices(
+  const { campaigns, current, failed, held, locked } = await campaignChoices(
     admin,
     session.shop,
     qrCode?.id,
@@ -110,6 +113,7 @@ export async function loader({ request, params }) {
     liveOn: (current && qrCode?.liveOn) || "",
     campaigns,
     campaignLocked: locked,
+    campaignHeld: held,
     campaignsFailed: failed.length > 0,
     campaignError: failed.length ? CAMPAIGNS_FAILED : null,
     shop: session.shop,
@@ -147,7 +151,8 @@ export async function action({ request, params }) {
       if (choices.failed.length) return refuse("Couldn't load campaigns. Try again.");
       if (choices.locked) {
         return refuse(
-          `Only a planned campaign's codes can be deleted. This code's campaign is ${statusLabel(choices.current.status).toLowerCase()}.`,
+          choices.held ??
+            `Only a planned campaign's codes can be deleted. This code's campaign is ${statusLabel(choices.current.status).toLowerCase()}.`,
         );
       }
       // A failed delete leaves the code and its campaign as they were.
@@ -196,7 +201,7 @@ export async function action({ request, params }) {
     : choices.failed.length
       ? "Couldn't load campaigns. Try again."
       : choices.locked
-        ? "QR codes move only between planned campaigns."
+        ? choices.held ?? "QR codes move only between planned campaigns."
         : campaign && !choice
           ? "Select a planned campaign."
           : null;
@@ -476,9 +481,10 @@ export default function QRCodeForm() {
                 name="campaign"
                 label="Campaign"
                 details={
-                  loaderData.campaignLocked
+                  loaderData.campaignHeld ??
+                  (loaderData.campaignLocked
                     ? "QR codes move only between planned campaigns. A code whose campaign has left planning can't be deleted."
-                    : "The campaign page reports this code's attributed sales."
+                    : "The campaign page reports this code's attributed sales.")
                 }
                 disabled={loaderData.campaignLocked || loaderData.campaignsFailed}
                 error={errors.campaign ?? loaderData.campaignError}
