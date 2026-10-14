@@ -55,7 +55,7 @@ describe('create', () => {
     const mock = mockAdmin(creating());
     session.admin = mock.raw;
     const result = await createAction({request: post('/app/campaigns', {...fields, qrTarget: '0'})});
-    expect(result.problems).toEqual(['QR code target must be greater than 0. Leave it blank for no target.']);
+    expect(result.problems).toEqual(['QR code target must be an amount above 0 with at most two decimals. Leave it blank for no target.']);
   });
 
   it('drops a target the form hides', async () => {

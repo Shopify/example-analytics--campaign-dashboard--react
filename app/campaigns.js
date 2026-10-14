@@ -69,6 +69,10 @@ export const statusLabel = (status) => STATUS_LABELS[status] ?? status;
 export const isPositiveAmount = (value) =>
   Number.isFinite(Number(value)) && Number(value) > 0;
 
+// A typed target amount has at most two decimals and no exponent, such as `1e3`.
+export const isTargetAmount = (value) =>
+  /^\d+(\.\d{1,2})?$/.test(value) && isPositiveAmount(value);
+
 // Every date reaches a ShopifyQL range or a target's startedAt. A string that
 // isn't a real calendar day fails there, and the error never names the field.
 export function isCalendarDate(value) {

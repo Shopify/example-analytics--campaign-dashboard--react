@@ -22,7 +22,7 @@ import {enableDimension, readDimensions} from '../dimensions.server';
 import {queryShopifyQL} from '../shopifyql.server';
 import {
   isCalendarDate,
-  isPositiveAmount,
+  isTargetAmount,
   parseCreatorCodes,
   parseProducts,
   safeLocale,
@@ -162,8 +162,8 @@ export const action = async ({request}) => {
     [fields.qrTarget, 'QR code target'],
   ];
   for (const [amount, name] of amounts) {
-    if (amount && !isPositiveAmount(amount)) {
-      problems.push(`${name} must be greater than 0. Leave it blank for no target.`);
+    if (amount && !isTargetAmount(amount)) {
+      problems.push(`${name} must be an amount above 0 with at most two decimals. Leave it blank for no target.`);
     }
   }
   if (problems.length > 0) return {problems};

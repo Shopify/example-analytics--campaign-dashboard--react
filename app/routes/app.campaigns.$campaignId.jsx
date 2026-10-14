@@ -61,6 +61,7 @@ import {
   campaignWindow,
   codeFilter,
   isPositiveAmount,
+  isTargetAmount,
   parseProducts,
   productId,
   promotedFilter,
@@ -232,13 +233,16 @@ export async function loader({request, params}) {
 
   // Each image encodes the code's scan URL. Render it where the merchant
   // plans the campaign, ready to print.
-  const qrCodes = (
-    await Promise.all(
-      campaign.qrCodes
-        .filter((qrCode) => qrCode.handle)
-        .map((qrCode) => getQRCode(qrCode.handle, admin.graphql, session.shop)),
-    )
-  ).filter(Boolean);
+  const qrCodes =
+    campaign.status === 'planned'
+      ? (
+          await Promise.all(
+            campaign.qrCodes
+              .filter((qrCode) => qrCode.handle)
+              .map((qrCode) => getQRCode(qrCode.handle, admin.graphql, session.shop)),
+          )
+        ).filter(Boolean)
+      : [];
 
   const annotations = annotationsBody.data?.shop?.analyticsAnnotations?.nodes ?? [];
 
@@ -383,7 +387,7 @@ async function runIntent(admin, shop, request, params, redirect) {
     for (const key of ['revenueTarget', 'productTarget', 'audienceTarget', 'qrTarget']) {
       if (!form.has(key)) continue;
       const value = String(form.get(key)).trim();
-      if (value && !(/^\d+(\.\d{1,2})?$/.test(value) && isPositiveAmount(value))) {
+      if (value && !isTargetAmount(value)) {
         return {
           problems: ['Enter a target above zero, or leave it blank.'],
         };
@@ -1435,16 +1439,10 @@ export default function CampaignDashboard() {
               </s-text>
             )}
             {/* Codes join a campaign before activation. */}
-            {campaign.status === 'planned' && (
-              <>
-                <s-box paddingBlockStart="base" />
-                <s-link
-                  href={`/app/qrcodes/new?campaign=${encodeURIComponent(campaign.gid)}`}
-                >
-                  Create a QR code for this campaign
-                </s-link>
-              </>
-            )}
+            <s-box paddingBlockStart="base" />
+            <s-link href={`/app/qrcodes/new?campaign=${encodeURIComponent(campaign.gid)}`}>
+              Create a QR code for this campaign
+            </s-link>
           </s-section>
           {/* [END campaign-dashboard.qr-setup-render] */}
 
