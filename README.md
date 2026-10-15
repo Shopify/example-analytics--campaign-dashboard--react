@@ -30,7 +30,7 @@ You'll need Node 22.12 or later, [app development permissions](https://shopify.d
 2. Clone the repository and install dependencies:
 
    ```shell
-   git clone https://github.com/shopify-playground/example-analytics--campaign-dashboard--react.git
+   git clone https://github.com/Shopify/example-analytics--campaign-dashboard--react.git
    cd example-analytics--campaign-dashboard--react
    npm ci
    ```
