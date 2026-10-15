@@ -24,6 +24,7 @@ const campaign = {
   products: [],
   creators: [],
   qrCodes: [],
+  markers: {campaign: 'gid://shopify/AnalyticsAnnotation/9', email: 'gid://shopify/AnalyticsAnnotation/10'},
 };
 
 const orderRows = (rows) => () => ({data: {shopifyqlQuery: {tableData: {rows}, parseErrors: []}}});
@@ -225,9 +226,10 @@ describe('close with order stamping', () => {
     vi.setSystemTime(new Date('2026-09-30T12:00:00Z'));
   });
   // Built in each test. The database starts empty for every test.
-  const running = () => planned({status: 'running', markers: {campaign: 'gid://shopify/AnnotationAnalytics/9'}});
-  const closing = (overrides = {}) => ({
-    ...base(running()),
+  const markers = {campaign: 'gid://shopify/AnalyticsAnnotation/9', email: 'gid://shopify/AnalyticsAnnotation/10'};
+  const running = () => planned({status: 'running', markers});
+  const closing = (overrides = {}, entry = running()) => ({
+    ...base(entry),
     ...queryableOrders,
     CampaignSequence: () => ({data: {shopifyqlQuery: {tableData: {columns: [], rows: []}, parseErrors: []}}}),
     CampaignTargets: () => ({data: {targets: []}}),
@@ -259,10 +261,36 @@ describe('close with order stamping', () => {
     expect(ops(mock.calls)).not.toContain('StageBulkVariables');
     expect(tablesOf().campaignState[0]?.stampOperation ?? null).toBeNull();
   });
+
+  it("stamps no order with a touch an early close took down", async () => {
+    vi.setSystemTime(new Date('2026-10-07T12:00:00Z'));
+    const entry = planned({
+      status: 'running',
+      startDate: '2026-10-01',
+      endDate: '2026-10-14',
+      channels: ['email', 'sms'],
+      markers: {...markers, sms: 'gid://shopify/AnalyticsAnnotation/11'},
+    });
+    const {mock, result} = run(
+      closing(
+        {
+          RecordedAnnotations: ({ids}) => ({data: {annotations: ids.map((id) => ({id, createdByApp: {id: 'gid://shopify/App/7'}}))}}),
+          DeleteCampaignAnnotation: () => ({data: {analyticsAnnotationDelete: {userErrors: []}}}),
+          ...bulkHandlers([{order_id: '1', day: '2026-10-07'}]),
+        },
+        entry,
+      ),
+      {intent: 'close'},
+    );
+    expect(await result).toEqual({ok: true});
+    expect(mock.calls.find((call) => call.op === 'DeleteCampaignAnnotation').variables.id).toBe('gid://shopify/AnalyticsAnnotation/11');
+    const [line] = (await uploads[0].init.body.get('file').text()).trim().split('\n').map((text) => JSON.parse(text));
+    expect(line.metafields.map((field) => field.value)).toEqual(['Announcement for Summer launch']);
+  });
 });
 
 describe('stamp-orders intent', () => {
-  const closed = () => planned({status: 'closed', markers: {campaign: 'gid://shopify/AnnotationAnalytics/9'}});
+  const closed = () => planned({status: 'closed', markers: {campaign: 'gid://shopify/AnalyticsAnnotation/9', email: 'gid://shopify/AnalyticsAnnotation/10'}});
   const withOperation = (status) => {
     tablesOf().campaignState[0].stampOperation = OPERATION;
     return {StampOperation: () => ({data: {bulkOperation: {id: OPERATION, status, objectCount: '1'}}})};

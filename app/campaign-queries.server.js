@@ -332,16 +332,23 @@ export const targetNodes = (body) => (body.data?.targets ?? []).filter(Boolean);
 // [END campaign-dashboard.target-read]
 
 // [START campaign-dashboard.all-targets-read]
-// Every campaign's recorded IDs in one read. A paged `analyticsTargets` list drops
-// targets past the first page once QR codes add their own.
+// Every campaign's recorded IDs. A paged `analyticsTargets` list drops targets past the
+// first page once QR codes add their own. `nodes` takes at most 250 IDs per read.
+const NODES_LIMIT = 250;
+
 export async function readAllTargets(admin, campaigns) {
-  const targets = Object.fromEntries(
-    campaigns.flatMap((campaign) =>
-      Object.entries(campaign.targets ?? {}).map(([key, id]) => [`${campaign.id}:${key}`, id]),
-    ),
-  );
+  const ids = [...new Set(campaigns.flatMap((campaign) => Object.values(campaign.targets ?? {})))];
+  const chunks = [];
+  for (let start = 0; start < ids.length; start += NODES_LIMIT) {
+    chunks.push(ids.slice(start, start + NODES_LIMIT));
+  }
   try {
-    return await readTargets(admin, {targets});
+    const bodies = await Promise.all(chunks.map((chunk) => readTargets(admin, {targets: chunk})));
+    const errors = bodies.flatMap((body) => body.errors ?? []);
+    return {
+      data: {targets: bodies.flatMap((body) => body.data?.targets ?? [])},
+      ...(errors.length ? {errors} : {}),
+    };
   } catch (error) {
     // The overview shows this read's errors. A bare null would read as no targets.
     return {data: null, errors: [{message: `Couldn't read targets: ${error.message}`}]};

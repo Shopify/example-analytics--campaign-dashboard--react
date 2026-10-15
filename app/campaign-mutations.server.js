@@ -193,13 +193,6 @@ export async function endTargetsOn(admin, campaign, day) {
 }
 // [END campaign-dashboard.end-targets]
 
-// [START campaign-dashboard.own-targets]
-// Every name above ends in what the target measures. The title in front can change.
-const TARGET_ENDINGS = [': store-wide sales', ': promoted products', ' segment', ' QR code'];
-export const isOwnTarget = (target) =>
-  target.name?.includes(': ') && TARGET_ENDINGS.some((ending) => target.name.endsWith(ending));
-// [END campaign-dashboard.own-targets]
-
 // A form can name any target ID. Match against the recorded ones before writing.
 export function recordedTarget(campaign, body, id) {
   const recorded = new Set(Object.values(campaign.targets ?? {}));
@@ -459,7 +452,8 @@ export async function stampTier(admin, campaign, definition) {
 // A store can have thousands of orders in the window, so one bulk operation writes the
 // stamps. The close request starts it and returns. The campaign page polls it.
 export async function stampOrders(admin, campaign) {
-  const touches = touchMarks(campaign);
+  // An early close drops the marks that never ran. Their touches reached no one.
+  const touches = touchMarks(campaign).filter((mark) => campaign.markers?.[mark.key]);
   // The query skips refund and edit rows. An order placed before the window has no
   // row, and each remaining order's first row is the day it was placed.
   const stamped = new Set();

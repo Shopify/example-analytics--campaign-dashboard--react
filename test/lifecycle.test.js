@@ -495,6 +495,21 @@ describe('cancel', () => {
     expect(storedState(4210).targets).toEqual({});
   });
 
+  it('deletes a recorded target the merchant renamed', async () => {
+    const entry = planned({status: 'running', targets: {store: 'gid://shopify/AnalyticsTarget/1'}});
+    const {mock, result} = run(
+      {
+        ...base(entry),
+        CampaignTargets: ({ids}) => ({data: {targets: ids.map((id) => ({id, name: 'Holiday revenue goal'}))}}),
+        DeleteCampaignTargets: ({ids}) => ({data: {analyticsTargetsDelete: {deletedIds: ids, userErrors: []}}}),
+      },
+      {intent: 'cancel'},
+    );
+    expect(await result).toEqual({ok: true});
+    expect(mock.calls.find((call) => call.op === 'DeleteCampaignTargets').variables.ids).toEqual(['gid://shopify/AnalyticsTarget/1']);
+    expect(storedState(4210).targets).toEqual({});
+  });
+
   it('keeps the recorded targets when they fail to read', async () => {
     const entry = planned({status: 'running', targets: {store: 'gid://shopify/AnalyticsTarget/1'}});
     const {result} = run(

@@ -95,7 +95,6 @@ import {
   createStoreTarget,
   endTargetsOn,
   flagIncident,
-  isOwnTarget,
   isPlannedMark,
   markMilestone,
   raiseTarget,
@@ -782,7 +781,7 @@ async function runIntent(admin, shop, request, params, redirect) {
     // Attribution needs the orders to exist, and close is the first point they do.
     // Skipped until the definition is a dimension.
     if (dimensions.order.enabled) {
-      const started = await startStamping(admin, shop, closing);
+      const started = await startStamping(admin, shop, {...closing, markers});
       if (started.problems) return started;
     }
 
@@ -819,8 +818,8 @@ async function runIntent(admin, shop, request, params, redirect) {
     if (campaign.status !== 'planned' && campaign.status !== 'running') {
       return {problems: ['You can cancel only planned or active campaigns.']};
     }
-    // The merchant can edit the record, and `analyticsTargetsDelete` deletes any target.
-    // Delete only annotations this app created and targets ending in this app's names.
+    // Annotations go only if this app created them. Targets go by the IDs that activation
+    // recorded in the app's database.
     const undone = await clearOwnMarks(
       admin,
       Object.values(campaign.markers ?? {}),
@@ -837,7 +836,7 @@ async function runIntent(admin, shop, request, params, redirect) {
     const read = await readTargets(admin, campaign);
     const unread = transportErrors(read);
     undone.push(...unread);
-    const ours = unread.length ? [] : targetNodes(read).filter(isOwnTarget);
+    const ours = unread.length ? [] : targetNodes(read);
     if (ours.length > 0) {
       const body = await (
         await admin.graphql(TARGETS_DELETE, {variables: {ids: ours.map((target) => target.id)}})
