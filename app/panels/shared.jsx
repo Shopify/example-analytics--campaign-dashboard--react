@@ -10,6 +10,10 @@ export const CAPABILITIES = {
   components: {icon: 'code', label: 'Web components'},
 };
 
+// Rounded to a whole number, a small share reads as 0% and looks like nothing sold.
+export const sharePercent = (share) =>
+  share > 0 && share < 1 ? 'less than 1%' : `${Math.round(share)}%`;
+
 // `s-chip` takes no `interestFor`. The clickable variant triggers the tooltip. `s-section`'s
 // `heading` takes no elements, and each panel renders its heading in the body.
 export function PanelHeader({title, uses}) {

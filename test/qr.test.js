@@ -175,6 +175,13 @@ describe('QR code sales panel', async () => {
     expect(shape.qrTotal).toBe(40);
   });
 
+  it('shows a share under 1% as less than 1%', async () => {
+    const {sharePercent} = await import('../app/panels/shared.jsx');
+    expect(sharePercent(0.45)).toBe('less than 1%');
+    expect(sharePercent(0)).toBe('0%');
+    expect(sharePercent(20.4)).toBe('20%');
+  });
+
   it("filters sessions to the campaign's codes", async () => {
     const {qrFunnelQuery} = await import('../app/campaign-queries.server');
     expect(qrFunnelQuery({startDate: '2026-09-01', endDate: '2026-09-30'}, "utm_campaign IN ('hat-front')")).toContain(

@@ -11,7 +11,7 @@ import {
 } from '../campaigns';
 import {tierLabel} from '../audiences';
 
-import {PanelHeader} from './shared';
+import {PanelHeader, sharePercent} from './shared';
 
 // [START campaign-dashboard.promoted-split]
 export function promotedShape({promoted, campaign, totalSales, cell, rate}) {
@@ -172,7 +172,7 @@ export function PromotedProductSales({
       {Number(totalSales) > 0 ? (
         <s-paragraph>
           Promoted products earned {currency(promotedSales)},{' '}
-          {promotedShare.toFixed(0)}% of {currency(totalSales)} in store sales.
+          {sharePercent(promotedShare)} of {currency(totalSales)} in store sales.
         </s-paragraph>
       ) : (
         <s-paragraph>
@@ -240,7 +240,7 @@ export function SegmentSales({
       {Number(totalSales) > 0 ? (
         <s-paragraph>
           {tierLabel(campaign.audience)} customers spent {currency(tierTotal)},{' '}
-          {tierShare.toFixed(0)}% of {currency(totalSales)} in store sales.
+          {sharePercent(tierShare)} of {currency(totalSales)} in store sales.
         </s-paragraph>
       ) : (
         <s-paragraph>
@@ -422,7 +422,7 @@ export function QRCodeSales({
           total can outrun the store's daily dataset. No total, no share. */}
       {Number(totalSales) > 0 ? (
         <s-paragraph>
-          QR code orders earned {currency(qrTotal)}, {qrShare.toFixed(0)}% of{' '}
+          QR code orders earned {currency(qrTotal)}, {sharePercent(qrShare)} of{' '}
           {currency(totalSales)} in store sales.
         </s-paragraph>
       ) : (
