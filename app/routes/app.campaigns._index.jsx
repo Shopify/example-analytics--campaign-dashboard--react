@@ -96,8 +96,10 @@ export const action = async ({request}) => {
   // Setup for every campaign, sharing this route's action with the create form.
   if (String(form.get('intent')) === 'enable-dimension') {
     const which = String(form.get('which'));
-    const {appId} = await readCampaigns(admin, session.shop);
-    const definition = (await readDimensions(admin, appId))[which];
+    const {failed, appId} = await readCampaigns(admin, session.shop);
+    if (failed.length) return {problems: failed.map((error) => error.message)};
+    const dimensions = await readDimensions(admin, appId);
+    const definition = Object.hasOwn(dimensions, which) ? dimensions[which] : null;
     if (!definition) return {problems: [`No dimension named ${which}.`]};
     const errors = await enableDimension(admin, definition);
     return errors.length

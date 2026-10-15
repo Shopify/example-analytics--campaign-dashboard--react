@@ -463,10 +463,9 @@ export const findCampaign = (campaigns, campaignId) =>
 // [END campaign-dashboard.campaign-read]
 
 // [START campaign-dashboard.campaign-write]
-// Every field type takes a string. Lists and json take JSON, and an empty string clears.
+// Every field type takes a string. Lists take JSON, and an empty string clears.
 function fieldValue(definition, value) {
   if (value === null || value === undefined || value === '') return '';
-  if (definition.type === 'json') return JSON.stringify(value);
   // Products and creators travel as records. The field stores their IDs.
   if (definition.type.startsWith('list.')) {
     return JSON.stringify(value.map((item) => (isRecord(item) ? item.id : item)));
@@ -574,7 +573,8 @@ export async function upsertCreators(admin, pairs) {
 }
 // [END campaign-dashboard.creator-write]
 
-// Only canceled campaigns reach here, and cancel removed their annotations and targets.
+// Deletes a canceled campaign, whose annotations and targets cancel removed, or an entry
+// that a create made under a suffixed handle.
 // Shopify drops product references to the entry asynchronously. Creators stay for other campaigns.
 export async function deleteCampaign(admin, campaign) {
   const body = await (
