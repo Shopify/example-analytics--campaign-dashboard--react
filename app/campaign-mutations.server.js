@@ -452,7 +452,8 @@ export async function stampTier(admin, campaign, definition) {
 // A store can have thousands of orders in the window, so one bulk operation writes the
 // stamps. The close request starts it and returns. The campaign page polls it.
 export async function stampOrders(admin, campaign) {
-  // An early close drops the marks that never ran. Their touches reached no one.
+  // The shortened window moves a later send onto the close date. Only a recorded mark
+  // reached customers.
   const touches = touchMarks(campaign).filter((mark) => campaign.markers?.[mark.key]);
   // The query skips refund and edit rows. An order placed before the window has no
   // row, and each remaining order's first row is the day it was placed.

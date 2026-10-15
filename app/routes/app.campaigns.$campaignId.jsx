@@ -428,7 +428,7 @@ async function runIntent(admin, shop, request, params, redirect) {
       };
     }
     // A failed event comes back in `failures`. A throw, such as a failed token request,
-    // happens before the first event, and releasing the claim lets the merchant retry.
+    // happens before the first event, and releasing the claim lets the user retry.
     const funnel = await sendCampaignFunnel({
       shopId,
       campaignId: campaign.id,
@@ -470,7 +470,7 @@ async function runIntent(admin, shop, request, params, redirect) {
         };
       }
     } else {
-      // Nothing landed. Releasing the claim lets the merchant send again.
+      // Nothing landed. Releasing the claim lets the user send again.
       await releaseSend(shop, campaign.id).catch((error) =>
         console.error('Could not release the send', error),
       );
@@ -818,8 +818,8 @@ async function runIntent(admin, shop, request, params, redirect) {
     if (campaign.status !== 'planned' && campaign.status !== 'running') {
       return {problems: ['You can cancel only planned or active campaigns.']};
     }
-    // Annotations go only if this app created them. Targets go by the IDs that activation
-    // recorded in the app's database.
+    // Delete only the annotations this app created. Delete the targets by the IDs that
+    // activation recorded.
     const undone = await clearOwnMarks(
       admin,
       Object.values(campaign.markers ?? {}),
