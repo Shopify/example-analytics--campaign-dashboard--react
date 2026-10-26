@@ -319,11 +319,25 @@ const CAMPAIGN_TARGETS = `
   }
 `;
 
+// `nodes` takes at most 250 IDs per read, and a campaign records one target per QR code.
+const NODES_LIMIT = 250;
+
 export async function readTargets(admin, campaign) {
   const ids = Object.values(campaign.targets ?? {}).filter(
     (id) => typeof id === 'string' && id.startsWith('gid://shopify/AnalyticsTarget/'),
   );
-  return (await admin.graphql(CAMPAIGN_TARGETS, {variables: {ids}})).json();
+  const chunks = [];
+  for (let start = 0; start < ids.length; start += NODES_LIMIT) {
+    chunks.push(ids.slice(start, start + NODES_LIMIT));
+  }
+  const bodies = await Promise.all(
+    chunks.map(async (chunk) => (await admin.graphql(CAMPAIGN_TARGETS, {variables: {ids: chunk}})).json()),
+  );
+  const errors = bodies.flatMap((body) => body.errors ?? []);
+  return {
+    data: {targets: bodies.flatMap((body) => body.data?.targets ?? [])},
+    ...(errors.length ? {errors} : {}),
+  };
 }
 
 // A deleted target comes back as null.
@@ -333,22 +347,11 @@ export const targetNodes = (body) => (body.data?.targets ?? []).filter(Boolean);
 
 // [START campaign-dashboard.all-targets-read]
 // Every campaign's recorded IDs. A paged `analyticsTargets` list drops targets past the
-// first page once QR codes add their own. `nodes` takes at most 250 IDs per read.
-const NODES_LIMIT = 250;
-
+// first page once QR codes add their own.
 export async function readAllTargets(admin, campaigns) {
   const ids = [...new Set(campaigns.flatMap((campaign) => Object.values(campaign.targets ?? {})))];
-  const chunks = [];
-  for (let start = 0; start < ids.length; start += NODES_LIMIT) {
-    chunks.push(ids.slice(start, start + NODES_LIMIT));
-  }
   try {
-    const bodies = await Promise.all(chunks.map((chunk) => readTargets(admin, {targets: chunk})));
-    const errors = bodies.flatMap((body) => body.errors ?? []);
-    return {
-      data: {targets: bodies.flatMap((body) => body.data?.targets ?? [])},
-      ...(errors.length ? {errors} : {}),
-    };
+    return await readTargets(admin, {targets: ids});
   } catch (error) {
     // The overview shows this read's errors. A bare null would read as no targets.
     return {data: null, errors: [{message: `Couldn't read targets: ${error.message}`}]};

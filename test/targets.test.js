@@ -60,4 +60,15 @@ describe('target reads', () => {
     expect(calls[0].variables.ids).toEqual(['gid://shopify/AnalyticsTarget/1', late.id]);
     expect(targetNodes(body)).toEqual([late]);
   });
+
+  it("reads a campaign's targets at most 250 IDs at a time", async () => {
+    const targets = Object.fromEntries(
+      Array.from({length: 254}, (_unused, index) => [`qr:${index}`, `gid://shopify/AnalyticsTarget/${index}`]),
+    );
+    const {admin, calls} = mockAdmin({CampaignTargets: ({ids}) => ({data: {targets: ids.map((id) => ({id}))}})});
+    const body = await readTargets(admin, {targets});
+    expect(calls.map((call) => call.variables.ids.length)).toEqual([250, 4]);
+    expect(targetNodes(body).map((node) => node.id)).toEqual(Object.values(targets));
+    expect(body.errors).toBeUndefined();
+  });
 });
