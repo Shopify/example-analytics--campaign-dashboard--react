@@ -319,25 +319,30 @@ const CAMPAIGN_TARGETS = `
   }
 `;
 
-// `nodes` takes at most 250 IDs per read, and a campaign records one target per QR code.
+// `nodes` takes at most 250 IDs per read, and a campaign records a target and a mark
+// for each QR code. `key` is the query's alias for `nodes`.
 const NODES_LIMIT = 250;
 
-export async function readTargets(admin, campaign) {
-  const ids = Object.values(campaign.targets ?? {}).filter(
-    (id) => typeof id === 'string' && id.startsWith('gid://shopify/AnalyticsTarget/'),
-  );
+export async function readNodes(admin, query, key, ids) {
   const chunks = [];
   for (let start = 0; start < ids.length; start += NODES_LIMIT) {
     chunks.push(ids.slice(start, start + NODES_LIMIT));
   }
   const bodies = await Promise.all(
-    chunks.map(async (chunk) => (await admin.graphql(CAMPAIGN_TARGETS, {variables: {ids: chunk}})).json()),
+    chunks.map(async (chunk) => (await admin.graphql(query, {variables: {ids: chunk}})).json()),
   );
   const errors = bodies.flatMap((body) => body.errors ?? []);
   return {
-    data: {targets: bodies.flatMap((body) => body.data?.targets ?? [])},
+    data: {[key]: bodies.flatMap((body) => body.data?.[key] ?? [])},
     ...(errors.length ? {errors} : {}),
   };
+}
+
+export async function readTargets(admin, campaign) {
+  const ids = Object.values(campaign.targets ?? {}).filter(
+    (id) => typeof id === 'string' && id.startsWith('gid://shopify/AnalyticsTarget/'),
+  );
+  return readNodes(admin, CAMPAIGN_TARGETS, 'targets', ids);
 }
 
 // A deleted target comes back as null.

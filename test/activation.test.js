@@ -1,5 +1,6 @@
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {
+  clearOwnMarks,
   createProductTarget,
   createQrTargets,
   createStoreTarget,
@@ -317,5 +318,39 @@ describe('recordMark', () => {
     expect(calls.find((call) => call.op === 'DeleteCampaignAnnotation').variables).toEqual({
       id: 'gid://shopify/AnalyticsAnnotation/5',
     });
+  });
+});
+
+describe('mark clearing', () => {
+  const gid = (index) => `gid://shopify/AnalyticsAnnotation/${index}`;
+  const ids = Array.from({length: 252}, (_unused, index) => gid(index));
+  const appId = 'gid://shopify/App/1';
+
+  it("reads recorded marks at most 250 IDs at a time and deletes only the app's own", async () => {
+    const {admin, calls} = mockAdmin({
+      RecordedAnnotations: ({ids: chunk}) => ({
+        data: {
+          annotations: chunk.map((id) => ({id, createdByApp: {id: id === gid(251) ? 'gid://shopify/App/2' : appId}})),
+        },
+      }),
+      DeleteCampaignAnnotation: ({id}) => ({data: {analyticsAnnotationDelete: {deletedId: id, userErrors: []}}}),
+    });
+    expect(await clearOwnMarks(admin, ids, appId)).toEqual([]);
+    const reads = calls.filter((call) => call.op === 'RecordedAnnotations');
+    expect(reads.map((call) => call.variables.ids.length)).toEqual([250, 2]);
+    const deleted = calls.filter((call) => call.op === 'DeleteCampaignAnnotation').map((call) => call.variables.id);
+    expect(deleted).toHaveLength(251);
+    expect(deleted).not.toContain(gid(251));
+  });
+
+  it('deletes nothing when a batch fails to load', async () => {
+    const {admin, calls} = mockAdmin({
+      RecordedAnnotations: ({ids: chunk}) =>
+        chunk.length === 2
+          ? {errors: [{message: 'Throttled'}]}
+          : {data: {annotations: chunk.map((id) => ({id, createdByApp: {id: appId}}))}},
+    });
+    expect(await clearOwnMarks(admin, ids, appId)).toEqual([{message: 'Throttled', id: null}]);
+    expect(calls.some((call) => call.op === 'DeleteCampaignAnnotation')).toBe(false);
   });
 });

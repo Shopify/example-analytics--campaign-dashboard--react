@@ -15,6 +15,7 @@ import {
   measureQuery,
   orderDaysQuery,
   progressValue,
+  readNodes,
   readTargets,
   runOptional,
   targetNodes,
@@ -232,9 +233,7 @@ export async function clearOwnMarks(admin, ids, appId) {
     (id) => typeof id === 'string' && id.startsWith('gid://shopify/AnalyticsAnnotation/'),
   );
   if (!recorded.length) return [];
-  const body = await (
-    await admin.graphql(RECORDED_ANNOTATIONS, {variables: {ids: recorded}})
-  ).json();
+  const body = await readNodes(admin, RECORDED_ANNOTATIONS, 'annotations', recorded);
   const failed = transportErrors(body);
   if (failed.length) return failed.map((error) => ({...error, id: null}));
 
