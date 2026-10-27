@@ -14,8 +14,6 @@ import {
   progressQuery,
   progressValue,
   readAllTargets,
-  runOptional,
-  sliceQuery,
   targetNodes,
 } from '../campaign-queries.server';
 import {enableDimension, readDimensions} from '../dimensions.server';
@@ -35,12 +33,11 @@ import {CHANNELS, CHANNEL_KEYS} from '../channels';
 export const loader = async ({request}) => {
   const {admin: client, session} = await authenticate.admin(request);
   const admin = withReturnedErrors(client);
-  const {appId, campaigns, appName, userErrors} = await ensureCampaign(admin, session.shop);
+  const {appId, campaigns, userErrors} = await ensureCampaign(admin, session.shop);
 
-  const [dimensions, targetsBody, sends] = await Promise.all([
+  const [dimensions, targetsBody] = await Promise.all([
     readDimensions(admin, appId),
     readAllTargets(admin, campaigns),
-    runOptional(admin, sliceQuery()),
   ]);
 
   const owner = new Map();
@@ -73,15 +70,11 @@ export const loader = async ({request}) => {
 
   return {
     campaigns,
-    appName,
     dimensions,
     targets,
     targetsUnavailable,
     // The admin's locale rides in on the request. Formatting here matches the client.
     locale: safeLocale(new URL(request.url).searchParams.get('locale')),
-    sends: sends.tableData.rows ?? [],
-    // A failed read has no rows, the same as a store that sent nothing.
-    sendsUnavailable: sends.unavailable,
     seedErrors: userErrors.map((error) => error.message),
   };
 };
@@ -216,46 +209,6 @@ function targetProgress(campaign, targets, unavailable) {
   };
 }
 
-// Matched on the app too, because IDs aren't unique across apps.
-function ownRow(campaign, rows, appName) {
-  // Events outlive the record that emitted them, and a reused ID inherits the sends of
-  // whatever held it before. The status says whether this one sent.
-  if (campaign.status === 'planned') return null;
-
-  return rows.find(
-    (entry) =>
-      String(entry['campaign_id']) === String(campaign.id) &&
-      String(entry['app_name']) === String(appName),
-  );
-}
-
-function sendsFor(campaign, rows, appName) {
-  const row = ownRow(campaign, rows, appName);
-  if (!row) return null;
-  const emails = Number(row['emails_sent'] ?? 0);
-  const opens = Number(row['emails_opened'] ?? 0);
-  return {
-    sent:
-      emails +
-      Number(row['sms_messages_sent'] ?? 0) +
-      Number(row['push_notifications_sent'] ?? 0),
-    openRate: emails > 0 ? Math.round((opens / emails) * 100) : null,
-  };
-}
-
-// One row per campaign that sent, with the per-channel split beside it.
-function messageMix(campaigns, rows, appName) {
-  return campaigns
-    .map((campaign) => ({campaign, row: ownRow(campaign, rows, appName)}))
-    .filter(({row}) => row)
-    .map(({campaign, row}) => ({
-      title: campaign.title,
-      email: Number(row['emails_sent'] ?? 0),
-      sms: Number(row['sms_messages_sent'] ?? 0),
-      push: Number(row['push_notifications_sent'] ?? 0),
-    }));
-}
-
 // The store from the earliest campaign onwards, capped at 90 days of daily rows.
 // ShopifyQL resolves the relative token in the store's timezone.
 const OVERVIEW_DAYS = 90;
@@ -271,17 +224,8 @@ function overviewSince(campaigns) {
 // [END campaign-dashboard.overview-shape]
 
 export default function CampaignsIndex() {
-  const {
-    campaigns,
-    dimensions,
-    targets,
-    targetsUnavailable,
-    locale,
-    seedErrors,
-    appName,
-    sends,
-    sendsUnavailable,
-  } = useLoaderData();
+  const {campaigns, dimensions, targets, targetsUnavailable, locale, seedErrors} =
+    useLoaderData();
   const fetcher = useFetcher();
   const shopify = useAppBridge();
   // A separate fetcher keeps a dimension error off the create form.
@@ -298,7 +242,6 @@ export default function CampaignsIndex() {
   const problems =
     fetcher.data && fetcher.data !== discarded ? fetcher.data.problems ?? [] : [];
   const saving = fetcher.state !== 'idle';
-  const integer = (value) => new Intl.NumberFormat(locale).format(value ?? 0);
 
   // Local midnight. A bare date string is UTC, and formats a day early west of it.
   const shortDate = (day) =>
@@ -332,9 +275,6 @@ export default function CampaignsIndex() {
       `VISUALIZE ${metric} TYPE line`,
     ].join(' ');
 
-  // Nothing sent is a table of zeros. Don't draw one.
-  const mix = messageMix(campaigns, sends, appName);
-  const anySends = mix.some((row) => row.email + row.sms + row.push > 0);
   // [END campaign-dashboard.overview-graphics]
 
   // The link needs a campaign to point at. Prefer one past planning. A planned campaign
@@ -476,8 +416,7 @@ export default function CampaignsIndex() {
             <s-box paddingBlockStart="base" />
 
             {/* [START campaign-dashboard.channel-picker] */}
-            {/* Each channel reports a different set of stages, and a different funnel. */}
-            <s-section heading="Channels">
+              <s-section heading="Channels">
               <s-box paddingBlockStart="base" />
               <s-choice-list
                 label="Send on"
@@ -492,13 +431,6 @@ export default function CampaignsIndex() {
                     defaultSelected={channels.includes(key) || undefined}
                   >
                     {CHANNELS[key].label}
-                    <s-text slot="details">
-                      Reports{' '}
-                      {CHANNELS[key].stages
-                        .map((stage) => stage.label.toLowerCase())
-                        .join(', ')}
-                      .
-                    </s-text>
                   </s-choice>
                 ))}
               </s-choice-list>
@@ -612,13 +544,6 @@ export default function CampaignsIndex() {
               </s-paragraph>
             </s-banner>
           )}
-          {sendsUnavailable && (
-            <s-banner tone="info" heading="Messages sent didn't load">
-              <s-paragraph>
-                Reload the page to try again. The store returned: {sendsUnavailable}
-              </s-paragraph>
-            </s-banner>
-          )}
           {campaigns.length === 0 ? (
             <s-paragraph>No campaigns yet.</s-paragraph>
           ) : (
@@ -628,15 +553,13 @@ export default function CampaignsIndex() {
                 <s-table-header listSlot="primary">Campaign</s-table-header>
                 <s-table-header listSlot="labeled">Dates</s-table-header>
                 <s-table-header listSlot="labeled">Segment and channels</s-table-header>
-                <s-table-header listSlot="labeled">Messages sent</s-table-header>
-                <s-table-header listSlot="labeled">Target progress</s-table-header>
+                  <s-table-header listSlot="labeled">Target progress</s-table-header>
                 <s-table-header listSlot="labeled">Annotations and targets</s-table-header>
                 <s-table-header listSlot="inline">Status</s-table-header>
               </s-table-header-row>
               <s-table-body>
                 {campaigns.map((campaign) => {
-                  const reach = sendsFor(campaign, sends, appName);
-                  const target = targetProgress(campaign, targets, targetsUnavailable);
+                    const target = targetProgress(campaign, targets, targetsUnavailable);
                   return (
                     <s-table-row key={campaign.id}>
                       <s-table-cell>
@@ -653,19 +576,6 @@ export default function CampaignsIndex() {
                         {(campaign.channels ?? [])
                           .map((key) => CHANNELS[key]?.label ?? key)
                           .join(', ')}
-                      </s-table-cell>
-                      <s-table-cell>
-                        {reach ? (
-                          <Fragment>
-                            {integer(reach.sent)} messages
-                            {reach.openRate !== null &&
-                              `, ${reach.openRate}% email open rate`}
-                          </Fragment>
-                        ) : sendsUnavailable && campaign.status !== 'planned' ? (
-                          <s-text color="subdued">Couldn’t load</s-text>
-                        ) : (
-                          <s-text color="subdued">Nothing sent</s-text>
-                        )}
                       </s-table-cell>
                       <s-table-cell>
                         {target.unmeasured ? (
@@ -706,37 +616,7 @@ export default function CampaignsIndex() {
           )}
         </s-section>
 
-        {/* [START campaign-dashboard.overview-chart-render] */}
-        {anySends && (
-          <s-section heading="Messages sent by campaign">
-            <s-box paddingBlockStart="base" />
-            <s-paragraph>
-              Messages sent in the last 29 days. App Events keeps 30 days of
-              data. Older campaigns don’t appear.
-            </s-paragraph>
-            <s-table variant="auto">
-              <s-table-header-row>
-                <s-table-header listSlot="primary">Campaign</s-table-header>
-                <s-table-header listSlot="labeled">Email</s-table-header>
-                <s-table-header listSlot="labeled">SMS</s-table-header>
-                <s-table-header listSlot="labeled">Push</s-table-header>
-              </s-table-header-row>
-              <s-table-body>
-                {mix.map((row) => (
-                  <s-table-row key={row.title}>
-                    <s-table-cell>{row.title}</s-table-cell>
-                    <s-table-cell>{integer(row.email)}</s-table-cell>
-                    <s-table-cell>{integer(row.sms)}</s-table-cell>
-                    <s-table-cell>{integer(row.push)}</s-table-cell>
-                  </s-table-row>
-                ))}
-              </s-table-body>
-            </s-table>
-          </s-section>
-        )}
-        {/* [END campaign-dashboard.overview-chart-render] */}
-
-        {/* [START campaign-dashboard.metafield-dimension-render] */}
+          {/* [START campaign-dashboard.metafield-dimension-render] */}
         <s-section heading="Analytics dimensions">
           <s-box paddingBlockStart="base" />
           <s-paragraph>

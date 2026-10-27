@@ -22,8 +22,8 @@ export default function App() {
       <div className={styles.content}>
         <h1 className={styles.heading}>Campaign performance dashboard</h1>
         <p className={styles.text}>
-          Report a campaign’s funnel with App Events, query it back with
-          ShopifyQL, and record the result on the store’s analytics timeline.
+          Query a campaign’s sales with ShopifyQL, measure them against
+          targets, and record the campaign on the store’s analytics timeline.
         </p>
         {showForm && (
           <Form className={styles.form} method="post" action="/auth/login">

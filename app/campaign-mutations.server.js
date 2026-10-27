@@ -10,14 +10,11 @@ import {
   RECORDED_ANNOTATIONS,
   TARGET_CREATE,
   TARGET_UPDATE,
-  appEventsQuery,
-  bounceQuery,
   measureQuery,
   orderDaysQuery,
   progressValue,
   readNodes,
   readTargets,
-  runOptional,
   targetNodes,
   tierHoldersQuery,
   tierRankQuery,
@@ -27,7 +24,6 @@ import {
   transportErrors,
   updateCampaign,
 } from './campaigns.server';
-import {detectIncident} from './campaign-report.server';
 import {startBulkMetafieldsSet} from './bulk-stamp.server';
 import {queryShopifyQL, shopifyqlErrors} from './shopifyql.server';
 import {
@@ -583,36 +579,3 @@ export async function recordMark(admin, campaign, key, id) {
 }
 // [END campaign-dashboard.record-mark]
 
-// [START campaign-dashboard.flag-incident]
-// No bounce type in the vocabulary. The reason goes in the text.
-export async function flagIncident(admin, campaign, appName, markedAt) {
-  const [funnel, bounces] = await Promise.all([
-    runOptional(admin, appEventsQuery(campaign, appName)),
-    runOptional(admin, bounceQuery(campaign, appName)),
-  ]);
-
-  const incident = detectIncident(campaign, funnel, bounces);
-  if (!incident) {
-    return {userErrors: [{message: 'No email bounces to flag.'}]};
-  }
-
-  const body = await (
-    await admin.graphql(ANNOTATION_CREATE, {
-      variables: {
-        input: {
-          startedAt: markedAt,
-          type: 'other',
-          title: incident.title,
-          description: incident.description,
-        },
-      },
-    })
-  ).json();
-
-  const result = body.data?.analyticsAnnotationCreate;
-  return {
-    ...result,
-    userErrors: [...transportErrors(body), ...(result?.userErrors ?? [])],
-  };
-}
-// [END campaign-dashboard.flag-incident]

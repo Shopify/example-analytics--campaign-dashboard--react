@@ -86,7 +86,7 @@ export async function loader({ request, params }) {
   // [START data]
   if (params.id === "new") {
     const { campaigns, failed } = await campaignChoices(admin, session.shop, null);
-    // A campaign page links here with its campaign picked.
+    // A link can pick the campaign with `?campaign=<gid>`.
     const picked = new URL(request.url).searchParams.get("campaign");
     return {
       destination: "product",

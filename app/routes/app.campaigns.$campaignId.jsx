@@ -4,13 +4,6 @@ import {useAppBridge} from '@shopify/app-bridge-react';
 import {boundary} from '@shopify/shopify-app-react-router/server';
 import {authenticate} from '../shopify.server';
 import {
-  eventTotal,
-  sendBlocker,
-  sendCampaignFunnel,
-  sendCount,
-} from '../app-events.server';
-import {
-  deleteCampaign,
   findCampaign,
   lockCampaign,
   readCampaigns,
@@ -18,25 +11,10 @@ import {
   updateCampaign,
   withReturnedErrors,
 } from '../campaigns.server';
-import {
-  claimSend,
-  clearStampOperation,
-  forgetCampaign,
-  recordSend,
-  recordStampOperation,
-  releaseSend,
-} from '../campaign-state.server';
-import {readStamping} from '../bulk-stamp.server';
-import {queryShopifyQL} from '../shopifyql.server';
-import {
-  outcomeText,
-  readSequence,
-} from '../campaign-report.server';
+import {outcomeText} from '../campaign-report.server';
 import {
   SHOP_QUERY,
   annotationsQuery,
-  appEventsQuery,
-  bounceQuery,
   codeSalesQuery,
   deleteTargets,
   emptyTable,
@@ -45,16 +23,18 @@ import {
   promotedByQuery,
   qrFunnelQuery,
   qrSalesQuery,
+  readTargets,
   runIfSupported,
   runOptional,
   salesQuery,
   topProductsQuery,
-  sequenceQuery,
-  readTargets,
   targetNodes,
   tierSalesQuery,
   touchSalesQuery,
 } from '../campaign-queries.server';
+import {clearStampOperation, recordStampOperation} from '../campaign-state.server';
+import {readStamping} from '../bulk-stamp.server';
+import {queryShopifyQL} from '../shopifyql.server';
 import {
   QR_MARK_PREFIX,
   campaignMarks,
@@ -74,18 +54,6 @@ import {
   statusLabel,
 } from '../campaigns';
 import {CHANNELS} from '../channels';
-import {getQRCode} from '../models/QRCode.server';
-import {
-  ChannelMetrics,
-  Deliverability,
-  SendEventsPanel,
-  SendPerformance,
-  bounceReasons as readBounceReasons,
-  channelFunnels,
-  funnelTotals,
-  reachRowsFor,
-  sendsByDay,
-} from '../panels/app-events';
 import {
   clearOwnMarks,
   closeCampaign,
@@ -94,8 +62,6 @@ import {
   createQrTargets,
   createStoreTarget,
   endTargetsOn,
-  flagIncident,
-  isPlannedMark,
   markMilestone,
   raiseTarget,
   recordMark,
@@ -106,6 +72,7 @@ import {
   stampOrders,
   stampProducts,
   stampTier,
+  isPlannedMark,
   writeMarks,
 } from '../campaign-mutations.server';
 import {CampaignLifecycle, OrderStamping} from '../panels/close';
@@ -131,7 +98,6 @@ import {
   tierShape,
   touchShape,
 } from '../panels/dimensions';
-import {IncidentBanner} from '../panels/incident';
 import {TargetsPanel, splitTargets} from '../panels/targets';
 import {measureTargets} from '../campaign-targets.server';
 import {AUDIENCE_TIERS, isTargetedTier, tierLabel} from '../audiences';
@@ -144,7 +110,7 @@ export async function loader({request, params}) {
   // and takes the app's navigation with it. The redirect keeps App Bridge's search params.
   const {admin: client, session, redirect} = await authenticate.admin(request);
   const admin = withReturnedErrors(client);
-  const {appId, appName, campaigns, failed} = await readCampaigns(admin, session.shop);
+  const {appId, campaigns, failed} = await readCampaigns(admin, session.shop);
   // Report a failed read. A redirect would treat the campaign as deleted.
   if (failed.length) {
     return {
@@ -169,9 +135,6 @@ export async function loader({request, params}) {
     salesBody,
     targetsBody,
     annotationsBody,
-    funnel,
-    sequenceTable,
-    bounces,
     promoted,
     tierSales,
     touchSales,
@@ -183,9 +146,6 @@ export async function loader({request, params}) {
     queryShopifyQL(admin, salesQuery(campaign)),
     readTargets(admin, campaign).catch(() => ({data: null})),
     runIfSupported(admin, annotationsQuery(campaign)),
-    runOptional(admin, appEventsQuery(campaign, appName)),
-    runOptional(admin, sequenceQuery(campaign, appName)),
-    runOptional(admin, bounceQuery(campaign, appName)),
     dimensions.product.enabled
       ? runOptional(admin, promotedByQuery(campaign, dimensions.product.dimension))
       : emptyTable(),
@@ -230,19 +190,6 @@ export async function loader({request, params}) {
     readStamping(admin, campaign),
   ]);
 
-  // Each image encodes the code's scan URL. Render it where the merchant
-  // plans the campaign, ready to print.
-  const qrCodes =
-    campaign.status === 'planned'
-      ? (
-          await Promise.all(
-            campaign.qrCodes
-              .filter((qrCode) => qrCode.handle)
-              .map((qrCode) => getQRCode(qrCode.handle, admin.graphql, session.shop)),
-          )
-        ).filter(Boolean)
-      : [];
-
   const annotations = annotationsBody.data?.shop?.analyticsAnnotations?.nodes ?? [];
 
   return {
@@ -250,8 +197,6 @@ export async function loader({request, params}) {
     locale,
     fatal: null,
     appId,
-    eventTotal: eventTotal(campaign.channels),
-    sendCount: sendCount(campaign.channels),
     // The sales schema has no currency column. Read it off the shop field.
     currencyCode: salesBody.data?.shop?.currencyCode ?? 'USD',
     // TIMESERIES buckets by the store's timezone. The browser's would misdate an annotation.
@@ -261,9 +206,6 @@ export async function loader({request, params}) {
     rows: sales.tableData.rows,
     targets,
     annotations,
-    funnel,
-    sequence: readSequence(sequenceTable),
-    bounces,
     promoted,
     tierSales,
     touchSales,
@@ -271,9 +213,7 @@ export async function loader({request, params}) {
     qrSales,
     qrFunnel,
     topProducts,
-    qrCodes,
     stamping,
-    sendBlocked: sendBlocker(campaign, salesBody.data?.shop?.ianaTimezone ?? 'Etc/UTC', locale),
     // Read the clock on the server. Render runs twice and must return the same day.
     now: Date.now(),
   };
@@ -299,7 +239,7 @@ async function runIntent(admin, shop, request, params, redirect) {
   const form = await request.formData();
   const intent = String(form.get('intent'));
 
-  const [{appId, appName, campaigns, failed}, shopBody] = await Promise.all([
+  const [{appId, campaigns, failed}, shopBody] = await Promise.all([
     readCampaigns(admin, shop),
     admin.graphql(SHOP_QUERY).then((response) => response.json()),
   ]);
@@ -309,7 +249,6 @@ async function runIntent(admin, shop, request, params, redirect) {
   const campaign = findCampaign(campaigns, params.campaignId);
   if (!campaign) return redirect('/app/campaigns');
 
-  const shopId = shopBody.data?.shop?.id ?? null;
   const timeZone = shopBody.data?.shop?.ianaTimezone ?? 'Etc/UTC';
 
   // This writes annotation text, and the sales schema has no currency column. Take the
@@ -399,88 +338,6 @@ async function runIntent(admin, shop, request, params, redirect) {
     }
     return {ok: true};
   }
-
-  // [START campaign-dashboard.send-events-action]
-  if (intent === 'send-events') {
-    // A planned campaign would date its sends in the future.
-    if (campaign.status !== 'running') {
-      return {problems: ['Only active campaigns can send events.']};
-    }
-    const blocked = sendBlocker(
-      campaign,
-      timeZone,
-      safeLocale(new URL(request.url).searchParams.get('locale')),
-    );
-    if (blocked) return {problems: [blocked]};
-    if (!shopId) return {problems: ["Couldn't read the store ID. Reload and try again."]};
-    // The App Events API can't retract an event, and a second replay doubles every funnel
-    // denominator. The claim gates it, because the funnel read lags ingestion by minutes.
-    const claimed = await claimSend(shop, campaign.id, campaign.gid).catch((error) => {
-      console.error('Could not claim the send', error);
-      return null;
-    });
-    if (claimed === null) return {problems: ["Couldn't check for an earlier send. Try again."]};
-    if (!claimed) {
-      return {
-        problems: [
-          'Events already sent. Create a new campaign to send them again.',
-        ],
-      };
-    }
-    // A failed event comes back in `failures`. A throw, such as a failed token request,
-    // happens before the first event, and releasing the claim lets the user retry.
-    const funnel = await sendCampaignFunnel({
-      shopId,
-      campaignId: campaign.id,
-      startDate: campaign.startDate,
-      timeZone,
-      channels: campaign.channels,
-    }).catch((error) => {
-      console.error('Could not start the send', error);
-      return null;
-    });
-    if (!funnel) {
-      await releaseSend(shop, campaign.id).catch((error) =>
-        console.error('Could not release the send', error),
-      );
-      return {problems: ["Couldn't start the send. Try again."]};
-    }
-    const {accepted, failures} = funnel;
-    const sent = Object.values(accepted).reduce((total, n) => total + n, 0);
-    // Record what landed before reporting failures. Idempotency keys expire after 24 hours,
-    // and an unrecorded partial send would let a later run duplicate it.
-    const landed = sent
-      ? [
-          `Shopify received ${sent} of ${eventTotal(campaign.channels)} events. The funnel reports the events that pass validation, and a second send would count them twice.`,
-        ]
-      : [];
-    if (sent > 0) {
-      // A failed record keeps the claim, and a second send stays blocked.
-      const recorded = await recordSend(shop, campaign.id, sent).then(
-        () => true,
-        (error) => {
-          console.error('Could not record the send', error);
-          return false;
-        },
-      );
-      if (!recorded) {
-        return {
-          heading: "Events sent, but the campaign didn't record them",
-          problems: [...landed, ...failures, "Couldn't save the campaign's records."],
-        };
-      }
-    } else {
-      // Nothing landed. Releasing the claim lets the user send again.
-      await releaseSend(shop, campaign.id).catch((error) =>
-        console.error('Could not release the send', error),
-      );
-    }
-    if (failures.length > 0) {
-      return {heading: sent ? "Some events didn't send" : undefined, problems: [...landed, ...failures]};
-    }
-    return {ok: true};
-  }
-  // [END campaign-dashboard.send-events-action]
 
   // Read by the activate and close branches below.
   const dimensions = await readDimensions(admin, appId);
@@ -652,36 +509,6 @@ async function runIntent(admin, shop, request, params, redirect) {
     return {ok: true};
   }
 
-  // [START campaign-dashboard.flag-incident-action]
-  if (intent === 'flag-incident') {
-    if (campaign.status !== 'running') {
-      return {problems: ['Only active campaigns can flag incidents.']};
-    }
-    const day = String(form.get('day'));
-    if (!inWindow(campaign, day)) {
-      return {problems: ['Pick a day inside the campaign.']};
-    }
-    if (campaign.markers?.[`incident:${day}`]) {
-      return {problems: ['An incident is already flagged for this day.']};
-    }
-
-    const result = await flagIncident(admin, campaign, appName, markedAt(day));
-    if (result.userErrors?.length) {
-      return {problems: result.userErrors.map((error) => error.message)};
-    }
-    const saved = await recordMark(
-      admin,
-      campaign,
-      `incident:${day}`,
-      result.analyticsAnnotation?.id,
-    );
-    if (saved?.userErrors?.length) {
-      return {problems: saved.userErrors.map((error) => error.message)};
-    }
-    return {ok: true};
-  }
-  // [END campaign-dashboard.flag-incident-action]
-
   if (intent === 'close') {
     // The outcome annotation is a closed campaign's permanent record. The status write
     // lands last, and a failed attempt stays retryable.
@@ -707,10 +534,7 @@ async function runIntent(admin, shop, request, params, redirect) {
       return {problems: stillOpen.map((error) => error.message)};
     }
 
-    const [sequenceTable, targetsBody] = await Promise.all([
-      runOptional(admin, sequenceQuery(closing, appName)),
-      readTargets(admin, closing),
-    ]);
+    const targetsBody = await readTargets(admin, closing);
 
     // A failed read returns no nodes, the same shape as a deleted target. Closing
     // is permanent. Only the deleted case is allowed through.
@@ -741,7 +565,7 @@ async function runIntent(admin, shop, request, params, redirect) {
       campaign: closing,
       revenue,
       target: store?.expectedValue,
-      sequence: readSequence(sequenceTable),
+      sequence: [],
       money,
     });
 
@@ -884,23 +708,6 @@ async function runIntent(admin, shop, request, params, redirect) {
     return {ok: true};
   }
 
-  if (intent === 'delete') {
-    // Canceling removed the annotations and targets. Deleting any other status would
-    // abandon them on the charts. The promoted products keep their `campaign` metafield.
-    if (campaign.status !== 'canceled') {
-      return {problems: ['Only a canceled campaign can be deleted.']};
-    }
-    const {userErrors} = await deleteCampaign(admin, campaign);
-    if (userErrors.length) {
-      return {problems: userErrors.map((error) => error.message)};
-    }
-    // The entry is gone, and its ID stays spent. A failed delete leaves an unused row.
-    await forgetCampaign(shop, campaign.id).catch((error) =>
-      console.error('Could not delete campaign state', error),
-    );
-    return redirect('/app/campaigns');
-  }
-
   return {problems: ['Unknown action.']};
 }
 // [END campaign-dashboard.lifecycle]
@@ -953,10 +760,8 @@ const DONE = {
   'set-products': 'Products saved',
   'set-audience': 'Customer segment saved',
   'set-targets': 'Targets saved',
-  'send-events': 'Events sent. Reload in a few minutes.',
   'raise-target': 'Target raised',
   milestone: 'Milestone marked',
-  'flag-incident': 'Incident flagged',
   'stamp-orders': 'Order stamping started',
 };
 
@@ -996,8 +801,6 @@ export default function CampaignDashboard() {
   const problems = fetcher.data?.problems ?? [];
   // Problems alongside `ok` mean the action landed with something rejected inside it.
   const partial = Boolean(fetcher.data?.ok);
-  // An action that landed part of its work names that in the heading.
-  const landedHeading = fetcher.data?.heading;
   // Only the in-flight intent's button spins.
   const busy = fetcher.state === 'idle' ? null : (fetcher.formData?.get('intent') ?? 'pending');
   const pending = useRef(null);
@@ -1038,8 +841,6 @@ export default function CampaignDashboard() {
 
   const {
     appId,
-    eventTotal,
-    sendCount,
     currencyCode,
     timeZone,
     queryWindow,
@@ -1047,10 +848,6 @@ export default function CampaignDashboard() {
     rows,
     targets,
     annotations,
-    funnel,
-    sequence,
-    bounces,
-    sendBlocked,
     promoted,
     tierSales,
     touchSales,
@@ -1058,7 +855,6 @@ export default function CampaignDashboard() {
     qrSales,
     qrFunnel,
     topProducts,
-    qrCodes,
     stamping,
   } = data;
 
@@ -1076,9 +872,6 @@ export default function CampaignDashboard() {
       maximumFractionDigits: 0,
     }).format(Number(value ?? 0));
 
-  const integer = (value) =>
-    new Intl.NumberFormat(locale).format(Number(value ?? 0));
-
   // A bare YYYY-MM-DD is UTC midnight, a day early west of it. Append a time.
   const asLocalDay = (day) => new Date(`${day}T00:00:00`);
 
@@ -1089,8 +882,6 @@ export default function CampaignDashboard() {
 
   const percent = (value) =>
     value === null ? '—' : `${value > 0 ? '+' : ''}${value.toFixed(1)}%`;
-
-  const humanize = (value) => String(value ?? '').replace(/_/g, ' ');
 
   // Written as 9am in the store's timezone. Slicing the UTC string is a day early.
   const shopDay = new Intl.DateTimeFormat('en-CA', {
@@ -1109,7 +900,7 @@ export default function CampaignDashboard() {
 
   const {storeTarget, scopedTargets} = splitTargets(targets);
 
-  const {marks, ours, outdated, openCampaign, incidentFlagged} = annotationStatus({
+  const {marks, ours, outdated, openCampaign} = annotationStatus({
     campaign,
     annotations,
     appId,
@@ -1128,15 +919,7 @@ export default function CampaignDashboard() {
 
   const cardQuery = metricCardQuery(range);
 
-  const {total, rate, sent, bounced, unsubscribed, health} = funnelTotals(funnel, cell);
-
-  const reachRows = reachRowsFor(campaign, total);
-
-  const funnels = channelFunnels(campaign, total);
-
-  const sends = sendsByDay(funnel, cell);
-
-  const bounceReasons = readBounceReasons({bounces, cell, humanize});
+  const rate = (value, base) => (base > 0 ? (value / base) * 100 : 0);
 
   const exploreHref = analyticsReportHref({
     window: queryWindow,
@@ -1274,13 +1057,11 @@ export default function CampaignDashboard() {
       {problems.length > 0 && (
         <s-section>
           <s-banner
-            tone={partial || landedHeading ? 'warning' : 'critical'}
+            tone={partial ? 'warning' : 'critical'}
             heading={
-              landedHeading
-                ? landedHeading
-                : partial
-                  ? 'Completed with warnings'
-                  : 'Action failed'
+              partial
+                ? 'Completed with warnings'
+                : 'Action failed'
             }
           >
             <s-unordered-list>
@@ -1313,7 +1094,7 @@ export default function CampaignDashboard() {
                 tone="critical"
                 label="Cancel campaign"
                 heading="Cancel this campaign?"
-                body="The campaign stops before it starts. You can replan it or delete it afterward."
+                body="The campaign stops before it starts. You can replan it afterward."
                 confirmLabel="Cancel campaign"
                 loading={busy === 'cancel'}
                 disabled={Boolean(busy)}
@@ -1389,55 +1170,6 @@ export default function CampaignDashboard() {
               </s-select>
             </s-stack>
           </s-section>
-
-          {/* [START campaign-dashboard.qr-setup-render] */}
-          <s-section heading="QR codes">
-            <s-box paddingBlockStart="base" />
-            {(qrCodes ?? []).length > 0 ? (
-              <s-stack direction="block" gap="base">
-                <s-text>
-                  Print the code or scan it from the screen. Each scan opens
-                  the storefront with the code’s UTM parameters. QR code sales
-                  reports orders placed after a scan.
-                </s-text>
-                {qrCodes.map((code) => (
-                  <s-stack key={code.handle} direction="block" gap="small-200">
-                    {code.productTitle && (
-                      <s-text>
-                        {code.destination === 'cart'
-                          ? `Opens checkout with ${code.productTitle} in the cart.`
-                          : `Opens the ${code.productTitle} product page.`}
-                      </s-text>
-                    )}
-                    <s-stack
-                      direction="block"
-                      gap="small-200"
-                      inlineSize="200px"
-                    >
-                      <s-image
-                        aspectRatio="1/1"
-                        src={code.image}
-                        alt={`${code.title} QR code`}
-                      />
-                      <s-link href={`/app/qrcodes/${code.handle}`}>
-                        Edit QR code
-                      </s-link>
-                    </s-stack>
-                  </s-stack>
-                ))}
-              </s-stack>
-            ) : (
-              <s-text>
-                No QR codes. QR code sales reports orders placed after a scan.
-              </s-text>
-            )}
-            {/* Codes join a campaign before activation. */}
-            <s-box paddingBlockStart="base" />
-            <s-link href={`/app/qrcodes/new?campaign=${encodeURIComponent(campaign.gid)}`}>
-              Create a QR code for this campaign
-            </s-link>
-          </s-section>
-          {/* [END campaign-dashboard.qr-setup-render] */}
 
           {/* Each amount becomes a target at activation. A blank one is no target. */}
           <form onSubmit={saveTargets}>
@@ -1540,55 +1272,16 @@ export default function CampaignDashboard() {
           rows={rows}
           cell={cell}
           shortDate={shortDate}
-          sends={sends}
           marks={marks}
           ours={ours}
           running={running}
           markNote={markNote}
-          rewrote={fetcher.data?.rewrote}
           exploreHref={exploreHref}
           busy={busy}
           submit={submit}
+          rewrote={fetcher.data?.rewrote}
           currency={currency}
           percent={percent}
-        />
-
-
-        <SendEventsPanel
-          running={running}
-          funnel={funnel}
-          sendCount={sendCount}
-          eventTotal={eventTotal}
-          alreadySent={campaign.sentEvents != null}
-          blocked={sendBlocked}
-          busy={busy}
-          submit={submit}
-        />
-
-        <ChannelMetrics funnels={funnels} integer={integer} />
-
-        <IncidentBanner
-          health={health}
-          bounced={bounced}
-          bounceReasons={bounceReasons}
-          incidentFlagged={incidentFlagged}
-          total={total}
-          integer={integer}
-          busy={busy}
-          submit={submit}
-          today={today}
-          canFlag={running && inWindow(campaign, today)}
-        />
-
-        <SendPerformance sequence={sequence} integer={integer} />
-
-        <Deliverability
-          sent={sent}
-          health={health}
-          reachRows={reachRows}
-          unsubscribed={unsubscribed}
-          rate={rate}
-          integer={integer}
         />
 
         <Unavailable heading="Top products" reason={topProducts.unavailable} />
@@ -1677,21 +1370,7 @@ export default function CampaignDashboard() {
         submit={submit}
         shortDate={shortDate}
         stampsOrders={dimensions.order.enabled}
-      >
-        {campaign.status === 'canceled' && (
-          <ConfirmButton
-            id="delete-campaign"
-            tone="critical"
-            label="Delete campaign"
-            heading="Delete this campaign?"
-            body="Deleting removes the campaign entry. You can't undo this."
-            confirmLabel="Delete campaign"
-            loading={busy === 'delete'}
-            disabled={Boolean(busy)}
-            onConfirm={() => submit('delete')}
-          />
-        )}
-      </CampaignLifecycle>
+      />
     </s-page>
   );
 }
