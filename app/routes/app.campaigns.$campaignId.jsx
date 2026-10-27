@@ -34,11 +34,11 @@ import {
 } from '../campaign-report.server';
 import {
   SHOP_QUERY,
-  TARGETS_DELETE,
   annotationsQuery,
   appEventsQuery,
   bounceQuery,
   codeSalesQuery,
+  deleteTargets,
   emptyTable,
   measureQuery,
   progressValue,
@@ -536,11 +536,7 @@ async function runIntent(admin, shop, request, params, redirect) {
         targets,
       });
       if (unsaved.length) {
-        const rollback = await (
-          await admin.graphql(TARGETS_DELETE, {
-            variables: {ids: Object.values(created)},
-          })
-        ).json();
+        const rollback = await deleteTargets(admin, Object.values(created));
         return {
           problems: [
             ...unsaved,
@@ -838,9 +834,7 @@ async function runIntent(admin, shop, request, params, redirect) {
     undone.push(...unread);
     const ours = unread.length ? [] : targetNodes(read);
     if (ours.length > 0) {
-      const body = await (
-        await admin.graphql(TARGETS_DELETE, {variables: {ids: ours.map((target) => target.id)}})
-      ).json();
+      const body = await deleteTargets(admin, ours.map((target) => target.id));
       const result = body.data?.analyticsTargetsDelete;
       const deletedIds = result?.deletedIds ?? [];
       const failed = [...transportErrors(body), ...(result?.userErrors ?? [])];

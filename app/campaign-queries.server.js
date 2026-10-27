@@ -323,13 +323,17 @@ const CAMPAIGN_TARGETS = `
 // for each QR code. `key` is the query's alias for `nodes`.
 const NODES_LIMIT = 250;
 
-export async function readNodes(admin, query, key, ids) {
+function batches(ids) {
   const chunks = [];
   for (let start = 0; start < ids.length; start += NODES_LIMIT) {
     chunks.push(ids.slice(start, start + NODES_LIMIT));
   }
+  return chunks;
+}
+
+export async function readNodes(admin, query, key, ids) {
   const bodies = await Promise.all(
-    chunks.map(async (chunk) => (await admin.graphql(query, {variables: {ids: chunk}})).json()),
+    batches(ids).map(async (chunk) => (await admin.graphql(query, {variables: {ids: chunk}})).json()),
   );
   const errors = bodies.flatMap((body) => body.errors ?? []);
   return {
@@ -343,6 +347,25 @@ export async function readTargets(admin, campaign) {
     (id) => typeof id === 'string' && id.startsWith('gid://shopify/AnalyticsTarget/'),
   );
   return readNodes(admin, CAMPAIGN_TARGETS, 'targets', ids);
+}
+
+// `analyticsTargetsDelete` takes the same 250-ID limit.
+export async function deleteTargets(admin, ids) {
+  const bodies = [];
+  for (const chunk of batches(ids)) {
+    bodies.push(await (await admin.graphql(TARGETS_DELETE, {variables: {ids: chunk}})).json());
+  }
+  const errors = bodies.flatMap((body) => body.errors ?? []);
+  const results = bodies.map((body) => body.data?.analyticsTargetsDelete ?? {});
+  return {
+    data: {
+      analyticsTargetsDelete: {
+        deletedIds: results.flatMap((result) => result.deletedIds ?? []),
+        userErrors: results.flatMap((result) => result.userErrors ?? []),
+      },
+    },
+    ...(errors.length ? {errors} : {}),
+  };
 }
 
 // A deleted target comes back as null.

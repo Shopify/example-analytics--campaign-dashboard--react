@@ -1,5 +1,5 @@
 import {describe, expect, it} from 'vitest';
-import {readTargets, targetNodes} from '../app/campaign-queries.server';
+import {deleteTargets, readTargets, targetNodes} from '../app/campaign-queries.server';
 import {targetChartQuery} from '../app/panels/targets.jsx';
 import {mockAdmin} from './helpers/admin';
 
@@ -69,6 +69,25 @@ describe('target reads', () => {
     const body = await readTargets(admin, {targets});
     expect(calls.map((call) => call.variables.ids.length)).toEqual([250, 4]);
     expect(targetNodes(body).map((node) => node.id)).toEqual(Object.values(targets));
+    expect(body.errors).toBeUndefined();
+  });
+
+  it('deletes targets at most 250 IDs at a time and merges each batch', async () => {
+    const ids = Array.from({length: 252}, (_unused, index) => `gid://shopify/AnalyticsTarget/${index}`);
+    const {admin, calls} = mockAdmin({
+      DeleteCampaignTargets: ({ids: chunk}) => ({
+        data: {
+          analyticsTargetsDelete: {
+            deletedIds: chunk.length === 2 ? chunk.slice(0, 1) : chunk,
+            userErrors: chunk.length === 2 ? [{field: ['ids'], message: 'Target not found'}] : [],
+          },
+        },
+      }),
+    });
+    const body = await deleteTargets(admin, ids);
+    expect(calls.map((call) => call.variables.ids.length)).toEqual([250, 2]);
+    expect(body.data.analyticsTargetsDelete.deletedIds).toEqual(ids.slice(0, 251));
+    expect(body.data.analyticsTargetsDelete.userErrors).toEqual([{field: ['ids'], message: 'Target not found'}]);
     expect(body.errors).toBeUndefined();
   });
 });
