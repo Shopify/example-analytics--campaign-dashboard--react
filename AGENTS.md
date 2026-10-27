@@ -39,7 +39,6 @@ npm run build
 ## Gotchas
 
 - `npm run config:link` overwrites `access_scopes.scopes` in `shopify.app.toml`. Restore the committed line before `npm run dev`. Never commit the `client_id` or URLs it writes, or any secret, token, or store domain.
-- Without App Events access, `npm run config:link`, `npm run dev`, and `npm run deploy` fail with `Invalid extension type "analytics_app_events"`. Run `rm -rf extensions/app-events` to run the rest of the app. Don't commit the deletion. `git checkout -- extensions/app-events` restores the extension.
 - `ensureDefinition` in `app/campaigns.server.js` creates the `campaign_dashboard_campaign` and `campaign_dashboard_creator` metaobject types at runtime. Keep these types out of `shopify.app.toml`, because a merchant can't turn on analytics for an `$app:` type.
 - A metaobject reference field's validation can't change after the field exists. Add a new field instead.
 - `app/shopify.server.js` and `shopify.app.toml` both pin API version `2026-10`. Change them together.

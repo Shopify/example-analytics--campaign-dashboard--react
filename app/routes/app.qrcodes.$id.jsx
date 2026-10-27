@@ -31,8 +31,7 @@ import {
 import { isCalendarDate, shortDate, statusLabel } from "../campaigns";
 
 // [START campaign-dashboard.qr-campaign-picker]
-// Activation writes a mark for each code, and a target when the campaign sets a QR
-// target. Codes join and leave a campaign before activation.
+// Codes join and leave a campaign while it's planned.
 const assignable = (campaign) => campaign.status === "planned";
 
 async function campaignChoices(admin, shop, qrCodeId) {
@@ -55,7 +54,7 @@ async function campaignChoices(admin, shop, qrCodeId) {
   };
 }
 
-// The code's annotation and target start on this day. Blank goes live with the campaign.
+// Blank goes live with the campaign.
 function liveOnError(liveOn, choice) {
   if (!liveOn) return null;
   if (!choice) return "Select a campaign to set a live date.";
@@ -86,7 +85,7 @@ export async function loader({ request, params }) {
   // [START data]
   if (params.id === "new") {
     const { campaigns, failed } = await campaignChoices(admin, session.shop, null);
-    // A campaign page links here with its campaign picked.
+    // A link can pick the campaign with `?campaign=<gid>`.
     const picked = new URL(request.url).searchParams.get("campaign");
     return {
       destination: "product",
@@ -506,7 +505,7 @@ export default function QRCodeForm() {
                   label="Live on"
                   details={
                     chosenCampaign
-                      ? `${shortDate(chosenCampaign.startDate)} to ${shortDate(chosenCampaign.endDate)}. Leave blank to go live with the campaign. The code's annotation and target start on this day.`
+                      ? `${shortDate(chosenCampaign.startDate)} to ${shortDate(chosenCampaign.endDate)}. Leave blank to go live with the campaign.`
                       : "Leave blank to go live with the campaign."
                   }
                   disabled={loaderData.campaignLocked || loaderData.campaignsFailed}
