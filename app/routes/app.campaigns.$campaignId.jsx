@@ -219,7 +219,7 @@ export default function CampaignDashboard() {
       style: 'currency',
       currency: currencyCode,
       maximumFractionDigits: 0,
-    }).format(Number(value ?? 0));
+    }).format(value ?? 0);
 
   // A bare YYYY-MM-DD is UTC midnight, a day early west of it. Append a time.
   const asLocalDay = (day) => new Date(`${day}T00:00:00`);
