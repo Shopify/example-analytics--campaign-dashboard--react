@@ -184,8 +184,8 @@ function expand(touch) {
 
 const STAGES = SEQUENCE.flatMap(expand);
 
-// Every timestamp is an offset from the campaign's start date. Shopify keeps every
-// event it accepts, and one dated ahead of today falls outside the funnel's window.
+// Every timestamp is an offset from the campaign's start date. The API rejects a
+// timestamp more than 5 minutes in the future.
 const LAST_OFFSET = Math.max(
   ...STAGES.map((stage) => stage.day * 86400000 + stage.hour * 3600000),
 );
@@ -273,10 +273,10 @@ async function postEvent({token, shopId, stage, campaignId, start, index}) {
 // [END campaign-dashboard.app-events-send]
 
 // [START campaign-dashboard.app-events-retry]
-// A 429, a 5xx, or a dropped connection gets two more tries, each after a longer wait.
+// A 409, a 429, a 5xx, or a dropped connection gets two more tries, each after a longer wait.
 // The retry reuses the idempotency key, and the API counts the event once.
 const RETRY_DELAYS_MS = [250, 1000];
-const retryable = ({status}) => status === 429 || status === 'network' || status >= 500;
+const retryable = ({status}) => status === 409 || status === 429 || status === 'network' || status >= 500;
 
 async function sendWithRetry(event) {
   let result = await sendEvent(event);

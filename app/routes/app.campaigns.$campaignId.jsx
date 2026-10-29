@@ -218,7 +218,7 @@ export async function loader({request, params}) {
   const sales = salesBody.data?.shopifyqlQuery;
   const fatal = !sales
     ? (salesBody.errors?.[0]?.message ??
-      'The sales query returned no data. Check the read_reports scope and Level 2 protected customer data access.')
+      'The sales query returned no data. Check the write_reports scope and Level 2 protected customer data access.')
     : sales.parseErrors?.length
       ? sales.parseErrors.join(' ')
       : null;
@@ -1074,7 +1074,7 @@ export default function CampaignDashboard() {
       style: 'currency',
       currency: currencyCode,
       maximumFractionDigits: 0,
-    }).format(Number(value ?? 0));
+    }).format(value ?? 0);
 
   const integer = (value) =>
     new Intl.NumberFormat(locale).format(Number(value ?? 0));

@@ -4,18 +4,11 @@ An embedded Shopify app that measures a marketing campaign's sales, QR code traf
 
 The app queries sales, top products, creator codes, and customer segments with [ShopifyQL](https://shopify.dev/docs/api/shopifyql). It reports each send to Shopify with [App Events](https://shopify.dev/docs/apps/build/app-events/analytics), then queries the deliveries, opens, and clicks beside the sales. Each QR code belongs to one campaign. The app registers each code as a marketing activity and tags every scan with the code's UTM parameters. Shopify then attributes the sessions and orders that follow a scan to the code, and the app reports each code's conversion rate and sales.
 
-This repository holds the finished app. It starts from the app that [Build a Shopify app using React Router](https://shopify.dev/docs/apps/build/build) produces. A three-part tutorial series builds the dashboard inside that app, one capability per part.
+This repository holds the finished app. The finished app builds on the app that [Build a Shopify app using React Router](https://shopify.dev/docs/apps/build/build) produces. A three-part tutorial series builds the dashboard inside that app, one capability per part.
 
-1. [Query campaign sales](https://shopify.dev/docs/apps/build/analytics/campaign-dashboard-sales) covers the scopes, the ShopifyQL sales queries, and the dimensions your app owns.
-2. [Add targets and annotations](https://shopify.dev/docs/apps/build/analytics/campaign-dashboard-targets-and-annotations) sets a revenue target and marks the campaign on the store's analytics timeline.
+1. [Query campaign sales](https://shopify.dev/docs/apps/build/analytics/campaign-dashboard-sales) covers the scopes, the ShopifyQL sales queries, the creator codes, and QR code attribution.
+2. [Add targets and annotations](https://shopify.dev/docs/apps/build/analytics/campaign-dashboard-targets-and-annotations) sets revenue targets, marks the campaign on the store's analytics timeline, and groups sales by the dimensions your app owns.
 3. [Report on a campaign with App Events](https://shopify.dev/docs/apps/build/analytics/campaign-dashboard-app-events) reports your app's marketing events, then queries the funnel beside the sales.
-
-> [!IMPORTANT]
-> App Events in Analytics is in developer preview. [Sign up for early access](https://forms.gle/2yLka2Ww3J3cNiGY8).
->
-> Without access, Shopify CLI rejects the App Events extension, and `npm run config:link`, `npm run dev`, and `npm run deploy` fail with `Invalid extension type "analytics_app_events"`. Delete `extensions/app-events` in setup step 3, and the rest of the app runs.
->
-> Parts 1 and 2 don't use App Events. The `part-1` and `part-2` branches run without access.
 
 ## Setup
 
@@ -35,41 +28,33 @@ You'll need Node 22.12 or later, [app development permissions](https://shopify.d
    npm ci
    ```
 
-3. If your organization doesn't have App Events access yet, delete the extension:
-
-   ```shell
-   rm -rf extensions/app-events
-   ```
-
-   Without access, the extension stops `npm run config:link`, `npm run dev`, and `npm run deploy` with `Invalid extension type "analytics_app_events"`. After you delete the extension, the rest of the app runs. After you activate a campaign, the **Campaign events** panel shows a **Campaign events aren't available yet** banner. After access arrives, run `git checkout -- extensions/app-events` to restore the extension, then run `npm run deploy` to send the event declarations to Shopify.
-
-4. Create the app record and link this directory to it:
+3. Create the app record and link this directory to it:
 
    ```shell
    npm run config:link
    ```
 
-5. Restore `access_scopes.scopes` in `shopify.app.toml`. `config:link` overwrites the line, and a new app record has no scopes to write. If you install the app with no scopes, every query and every write fails:
+4. Restore `access_scopes.scopes` in `shopify.app.toml`. `config:link` overwrites the line, and a new app record has no scopes to write. If you install the app with no scopes, every query and every write fails:
 
    ```toml
    [access_scopes]
    scopes = "write_reports,write_analytics_annotations,write_products,write_customers,write_orders,write_metaobject_definitions,write_metaobjects,write_marketing_events"
    ```
 
-6. Create the local database and start the app. Shopify CLI asks for a dev store and installs the app with the scopes from step 5. Press `p` to open the app:
+5. Create the local database and start the app. Shopify CLI asks for a dev store and installs the app with the scopes from step 4. Press `p` to open the app:
 
    ```shell
    npm run setup
    npm run dev
    ```
 
-7. In a second terminal, deploy the QR code metaobject definition, plus the event declarations if you kept the extension. Run the deploy after `npm run dev` starts, because until then the app URL is a placeholder and the deploy rejects the webhook addresses:
+6. In a second terminal, deploy the QR code metaobject definition and the App Events declarations. Run the deploy after `npm run dev` starts, because until then the app URL is a placeholder and the deploy rejects the webhook addresses:
 
    ```shell
    npm run deploy
    ```
 
-The app opens on a campaign list with two campaigns that the app seeds. Panels read `$0` or show no rows until you request the access below and the store has orders. With the extension in place, the event declarations from `npm run deploy` take a few minutes to propagate before an App Events query returns rows.
+The app opens on a campaign list with two campaigns that the app seeds. Panels read `$0` or show no rows until you request the access below and the store has orders. The event declarations from `npm run deploy` take a few minutes to propagate before an App Events query returns rows.
 
 ## Tests
 
@@ -85,36 +70,30 @@ npm run check:markers
 | Access | What stays empty without it |
 |--------|-----------------------------|
 | [Level 2 protected customer data](https://shopify.dev/docs/apps/launch/protected-customer-data) | The campaign detail page. `shopifyqlQuery` returns an access error, and a **Couldn't load sales** banner replaces the panels. The campaign list still loads. |
-| [App Events in Analytics](https://shopify.dev/docs/apps/build/app-events/analytics) | The app, which won't start until you delete the extension in setup step 3. Then **Campaign events** shows a **Campaign events aren't available yet** banner, and **Channel metrics**, **Send performance**, and **Deliverability** stay hidden. |
 
 ### Level 2 protected customer data
 
 `shopifyqlQuery` requires Level 2 across all four protected fields, and the error names them: `Level 2 access to Customer data including name, address, phone, and email fields`. Request only **Name** and every sales panel stays empty.
 
-On a dev store the request is self-serve, with no review to wait on:
+Before you request access, [select a distribution method](https://shopify.dev/docs/apps/launch/distribution/select-distribution-method) for the app that `config:link` created. You can't change the method after you select it.
 
-1. Open the app that `config:link` created in the [Partner Dashboard](https://partners.shopify.com), then go to **API access requests**.
-2. Under **Protected customer data access**, click **Manage**.
-3. Click **Select** on **Protected customer data**, choose your reasons, then click **Save**.
-4. Repeat step 3 for **Name**, **Email**, **Phone**, and **Address**.
+Then [request access](https://shopify.dev/docs/apps/launch/protected-customer-data#request-access-to-protected-customer-data) in the Partner Dashboard:
 
-Saving each request grants the access.
+1. From the [Partner Dashboard](https://partners.shopify.com), go to **Apps**, and then select your app.
+2. In the sidebar, click **API access requests**.
+3. Find **Protected customer data access** and click **Request access**.
+4. Select **Protected customer data**, provide your reasons for using it, and click **Save**.
+5. Select **Name**, **Email**, **Phone**, and **Address**, provide your reasons for using them, and click **Save**.
 
-Leave this app's distribution method unset. [Requesting protected customer data](https://shopify.dev/docs/apps/launch/protected-customer-data#request-access-to-protected-customer-data) needs no distribution method, and picking **Custom distribution** removes the request flow for good.
-
-### App Events in Analytics
-
-Shopify grants access through an early-access program. [Request access with this form](https://forms.gle/2yLka2Ww3J3cNiGY8) and wait for a reply. Access has no self-serve path.
-
-Until access arrives, delete the extension as step 3 of [Setup](#setup) describes.
+An app that's installed only on a dev store gets access after step 5, with no review.
 
 ## API version
 
-Two files pin version `2026-10`. `shopify.app.toml` sets `api_version` for webhooks, and `app/shopify.server.js` sets `apiVersion` for every GraphQL Admin API call. Keep both files on the same version.
+Three files pin version `2026-10`. `shopify.app.toml` sets the webhooks API version, `app/shopify.server.js` sets the version for every GraphQL Admin API call, and `.graphqlrc.js` sets the version for GraphQL codegen. Keep all three files on the same version.
 
 ## Credentials
 
-This repository ships none. `client_id` is empty in `shopify.app.toml`, and `.gitignore` excludes `.env` files. `config:link` writes your own `client_id`, `application_url`, and `redirect_urls`, and `shopify app dev` supplies `SHOPIFY_API_KEY` and `SHOPIFY_API_SECRET` to the running process.
+This repository ships none. The client ID in `shopify.app.toml` is empty, and `.gitignore` excludes environment files. `config:link` writes your own client ID, app URL, and redirect URLs. `shopify app dev` supplies the API key and secret to the running process.
 
 Never put a client secret in `shopify.app.toml`. It's a tracked file.
 
@@ -128,31 +107,31 @@ The first load seeds two planned campaigns. The app sets their dates relative to
 | `Back to school` | Starts in two weeks | Nothing to report. Every panel shows the setup it still needs. |
 
 1. On the campaign list, under **Analytics dimensions**, click **Create dimension** on each of the three rows. Do this once. A report that groups on a dimension returns no rows until the dimension reads **Queryable**.
-2. The product row now reads **Analytics off for Campaign**. Click **Turn on analytics** on that row. The admin opens the Campaign type. Turn on **Filter or group data in Analytics**, then reload the app. Only the merchant can change this setting. The row reads **Queryable** about 30 seconds later.
+2. The product row now reads **Analytics off for Campaign**. Click **Turn on analytics** on that row. The admin opens the Campaign type. Turn on **Filter or group data in Analytics**, then reload the app. Apps can't change this setting in API version `2026-10`. The row reads **Queryable** about 30 seconds later.
 3. Open `Summer launch`. Under **Campaign setup**, click **Select products** and choose up to five, then choose a **Customer segment**.
 4. Click **Activate campaign**. Annotations and targets appear on the next render.
-5. With App Events access, click **Send events** and confirm. The text above the button names the send and event counts. Posting takes a minute or two, and the funnel panels have numbers a few minutes after that.
+5. Click **Send events** and confirm. The text above the button names the send and event counts. Posting takes a minute or two, and the funnel panels have numbers a few minutes after that.
 6. Click **Open in Analytics** to confirm the annotations landed outside the app.
 
 Targets are optional. Activation creates a target for each amount you set and skips each blank one. The annotations go up either way.
 
 Four more controls write to the same charts. **Close campaign** rewrites the annotation with what the campaign earned. If the order dimension is queryable, the close also records the last campaign touch before each order. **Cancel campaign** takes the annotations and targets back off the store. **Replan campaign** returns a canceled campaign to planned for a second activation, and **Delete campaign** removes it.
 
-To try the QR code flow, click **QR codes** in the app's navigation and create a code. Under **Campaign**, pick a planned campaign, then save. A planned campaign's page also links to a new code with its campaign picked. A code belongs to one campaign, and the **Campaign** column on the list links to it. **Live on** sets the day the code's mark lands on the timeline. Blank goes live with the campaign. Activating the campaign marks each of its codes on the timeline. With a **QR code target** amount, activation also creates one target per code. Every scan redirects to the product with the code's UTM parameters, and the **QR code sales** panel reports the sessions each code started and the orders shoppers place after scanning.
+To try the QR code flow, click **QR codes** in the app's navigation and create a code. Under **Campaign**, pick a planned campaign, then save. A planned campaign's page also links to a new code with its campaign picked. A code belongs to one campaign, and the **Campaign** column on the list links to it. **Live on** sets the day the code's mark lands on the timeline. Blank goes live with the campaign. Activating the campaign marks each of its codes on the timeline. With a **QR code target** amount, activation also creates one target per code. Every scan redirects to the code's scan destination with the code's UTM parameters. The destination is the product page or checkout. The **QR code sales** panel reports the sessions each code started and the orders shoppers place after scanning.
 
-Each campaign is an entry of the **Campaign** metaobject type, which the app creates on first load. The admin lists the entries with the store's other metaobjects, and a merchant can edit them there. Re-cloning doesn't reset them. The seed runs once per store. Deleting the seeded campaigns doesn't bring them back. Each creator is an entry of the **Creator** type, and campaigns share those entries. Deleting a campaign leaves its creators in place.
+Each campaign is an entry of the **Campaign** metaobject type, which the app creates on first load. The admin lists the entries with the store's other metaobjects, and users can edit the entries there. Re-cloning doesn't reset them. The seed runs once per store. Deleting the seeded campaigns doesn't bring them back. Each creator is an entry of the **Creator** type, and campaigns share those entries. Deleting a campaign leaves its creators in place.
 
 ## Get numbers on the charts
 
 A dev store with no orders reports `$0`. The seed creates campaigns. The sales come from orders you create.
 
-- A dev store accepts only test payments, and test orders often don't reach the `sales` dataset. Create orders with the GraphQL Admin API's [`orderCreate`](https://shopify.dev/docs/api/admin-graphql/latest/mutations/orderCreate) mutation instead, with a `processedAt` date inside `Summer launch`'s window. The nine sends land between 20 and 7 days before you install.
+- A dev store accepts only test payments, and test orders don't reach the `sales` schema. Create orders with the GraphQL Admin API's [`orderCreate`](https://shopify.dev/docs/api/admin-graphql/latest/mutations/orderCreate) mutation instead, with a `processedAt` date inside `Summer launch`'s window. The nine sends land between 20 and 7 days before you install.
 - Cluster the orders in the days right after a send, with the largest cluster in the last few days. If every order falls in the opening week, each later send reads as having moved nothing.
-- **Creator revenue** groups sales by `discount_code`, and that column counts a code only when a buyer enters it at checkout. An order that you create through the API or in the admin has no code. **QR code sales** reads orders that follow a scan. Both panels need real checkouts on a store that accepts payments. On a dev store, **Creator revenue** lists each code at `$0` and **QR code sales** stays empty.
+- **Creator revenue** groups sales by `discount_code`, and that column counts a code only when a buyer enters it at checkout. **QR code sales** reads orders that follow a scan. Both panels need real checkouts on a store that accepts payments. On a dev store, **Creator revenue** lists each code at `$0`, and **QR code sales** lists each scanned code's sessions at `$0`.
 
 ## What it does
 
-An active campaign's page runs the panels in the order a campaign produces evidence. Targets come first, then sales against the period before and the same days last year, the top products, the send funnel per channel, revenue grouped by the dimensions this app creates, and a closing summary that the app writes back to the store's timeline.
+An active campaign's page runs the panels in the order a campaign produces evidence. Targets come first, then sales against the period before and the same days last year, the send funnel per channel, the top products, revenue grouped by the dimensions this app creates, and a closing summary that the app writes back to the store's timeline.
 
 Chips beside each panel title name what produced the number, whether ShopifyQL, App Events, metafields, annotations, targets, or web components.
 
@@ -162,11 +141,11 @@ The [tutorial series](https://shopify.dev/docs/apps/build/analytics) walks throu
 
 | What you see | What it means |
 |--------------|---------------|
-| A **Couldn't load sales** banner replaces the sales panels | Either the `scopes` line didn't survive `config:link`, or Level 2 access hasn't landed for this app. Reading live analytics needs both `read_reports` and Level 2. |
+| A **Couldn't load sales** banner replaces the sales panels | Either the `scopes` line didn't survive `config:link`, or Level 2 access hasn't landed for this app. Reading live analytics needs both `write_reports` and Level 2. |
 | Every sales panel reads `$0` | The store has no orders in the campaign's window. |
-| A **Campaign events aren't available yet** banner | Either `npm run deploy` hasn't propagated, or the organization doesn't have App Events access. |
+| A **Campaign events aren't available yet** banner | `npm run deploy` hasn't propagated yet. Reload after a few minutes. |
 | `Column Not Found` on an `app_events` query | The declaration hasn't reached the store. Don't send events until it clears. |
-| **Creator revenue** lists every code at `$0` | No sale has one of the three codes. A discount added in the admin has no code for analytics to group on. |
+| **Creator revenue** lists every code at `$0` | No sale has one of the three codes. |
 | **Promoted product sales** is empty | Analytics is off for the Campaign type, or the setting changed under a minute ago. Turn it on from the product row under **Analytics dimensions**. |
 | A segment panel is empty | The dimension isn't queryable yet. Create it from **Analytics dimensions**. |
 | **Order attribution** is missing after a close | Analytics takes a few minutes to index the order metafields the close wrote. Reload after that. |
@@ -175,18 +154,19 @@ The [tutorial series](https://shopify.dev/docs/apps/build/analytics) walks throu
 
 ## How it's built
 
-The app starts from [Build a Shopify app using React Router](https://shopify.dev/docs/apps/build/build) and adds two campaign routes:
+The app starts from [Build a Shopify app using React Router](https://shopify.dev/docs/apps/build/build) and adds three campaign routes:
 
 | Path | File |
 |------|------|
 | `/app/campaigns` | `app/routes/app.campaigns._index.jsx` |
 | `/app/campaigns/:id` | `app/routes/app.campaigns.$campaignId.jsx` |
+| `/app/campaigns/:id/stamping` | `app/routes/app.campaigns.$campaignId.stamping.jsx` |
 
-The QR code routes come from that tutorial. `/app/qrcodes` lists the codes, `/app/qrcodes/:id` edits one, and the public `/qrcodes/:id` and `/qrcodes/:id/scan` routes serve the image and record each scan. `app/models/QRCode.server.js` holds their queries, and the codes live in an `$app:qrcode` metaobject that `shopify.app.toml` defines.
+The QR code routes come from that tutorial: a list page, an edit form, and two public routes that serve each code's image and record each scan. `app/models/QRCode.server.js` holds their queries, and the codes live in an `$app:qrcode` metaobject that `shopify.app.toml` defines.
 
 `app/campaign-queries.server.js` holds the GraphQL documents, `app/campaigns.server.js` reads and writes campaign entries, and `app/app-events.server.js` holds the App Events client and send plan. Each module under `app/panels/` renders one group of panels. `extensions/app-events/shopify.extension.toml` declares the events. `shopify.app.toml` holds no credentials.
 
-Each campaign is an entry of the `campaign_dashboard_campaign` metaobject type. `ensureDefinition` creates the type at runtime, because analytics joins only types without the `$app:` prefix. Each QR code's `campaign` field holds its campaign entry's ID as text, because a field in `shopify.app.toml` can't reference a type the app creates at runtime. An uninstall leaves every campaign entry in place. `CAMPAIGN_FIELDS` documents the shape field by field.
+Each campaign is an entry of the `campaign_dashboard_campaign` metaobject type. `ensureDefinition` creates the type at runtime. In API version 2026-10, analytics groups only by a type without the `$app:` prefix. Each QR code's `campaign` field holds its campaign entry's ID as text, because a field in `shopify.app.toml` can't reference a type the app creates at runtime. An uninstall leaves every campaign entry in place. `CAMPAIGN_FIELDS` documents the shape field by field.
 
 The app keeps its private records in its own SQLite database through Prisma, and `app/campaign-state.server.js` reads and writes them. The records hold the IDs of the annotations and targets that each campaign created, how many events each campaign sent, the last campaign ID the app handed out, and a short-lived lock per campaign. The `shop/redact` webhook deletes them 48 hours after an uninstall.
 
@@ -196,7 +176,7 @@ For a smaller starting point covering only the ShopifyQL half, see [Build a sale
 
 ## Contributions
 
-This repository is a documentation sample. It doesn't accept issues or contributions. To report a problem with the tutorial, use the feedback control on any [tutorial page](https://shopify.dev/docs/apps/build/analytics).
+This repository is a documentation sample. It doesn't accept issues or contributions. To report a problem with the tutorial, use the feedback control on the [tutorial page](https://shopify.dev/docs/apps/build/analytics/campaign-dashboard-app-events).
 
 ## License
 

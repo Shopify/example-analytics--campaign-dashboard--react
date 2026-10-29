@@ -124,7 +124,7 @@ export function SendEventsPanel({
           {/* The event declarations define the columns. Without them, every column is missing. */}
           <s-paragraph>
             {/Column Not Found/i.test(unavailable)
-              ? "The store doesn't have this app's event declarations. App Events needs early access. With access, deploy the app, then reload the page a few minutes later."
+              ? "The store doesn't have this app's event declarations yet. Run npm run deploy, then reload the page a few minutes later."
               : `Reload the page to try again. The store returned: ${unavailable}`}
           </s-paragraph>
         </s-banner>
