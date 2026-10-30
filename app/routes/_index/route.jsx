@@ -22,8 +22,8 @@ export default function App() {
       <div className={styles.content}>
         <h1 className={styles.heading}>Campaign performance dashboard</h1>
         <p className={styles.text}>
-          Query a campaign’s sales with ShopifyQL and group them by the
-          dimensions that the app creates.
+          Query a campaign’s sales with ShopifyQL and create the app’s
+          analytics dimensions.
         </p>
         {showForm && (
           <Form className={styles.form} method="post" action="/auth/login">

@@ -2,7 +2,7 @@
 
 An embedded Shopify app that measures a marketing campaign's sales and QR code traffic with ShopifyQL.
 
-This branch holds the app as it stands at the end of part 1, [Query campaign sales](https://shopify.dev/docs/apps/build/analytics/campaign-dashboard-sales). The app reads a campaign's sales with ShopifyQL and groups them by the dimensions the app creates. Targets and annotations arrive in part 2, and App Events in part 3. The finished app is on the [`main` branch](https://github.com/Shopify/example-analytics--campaign-dashboard--react).
+This branch holds the app as it stands at the end of part 1, [Query campaign sales](https://shopify.dev/docs/apps/build/analytics/campaign-dashboard-sales). The app reads a campaign's sales with ShopifyQL and creates three analytics dimensions. Part 2 adds targets, annotations, and the activation step that fills the dimension panels. Part 3 adds App Events. The finished app is on the [`main` branch](https://github.com/Shopify/example-analytics--campaign-dashboard--react).
 
 ## Setup
 
@@ -119,7 +119,7 @@ A dev store with no orders reports `$0`. The seed creates campaigns. The sales c
 
 ## What it does
 
-A campaign's page reports its sales against the period before and the same days last year, its top products, then revenue grouped by the dimensions this app creates.
+A campaign's page reports its sales against the period before and the same days last year, its top products, creator revenue, and QR code sales.
 
 Chips beside each panel title name what produced the number, whether ShopifyQL, metafields, annotations, or web components.
 
