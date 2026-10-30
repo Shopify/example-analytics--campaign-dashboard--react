@@ -76,6 +76,7 @@
     "p-map": "^4.0.0",
     "qs": "^6.16.1",
     "deepmerge-ts": "^8.0.0",
+    "@graphql-tools/utils": "^12.0.3",
     "@shopify/graphql-codegen": {
       "lodash": "^4.18.0"
     },
