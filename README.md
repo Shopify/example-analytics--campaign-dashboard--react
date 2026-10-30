@@ -108,7 +108,7 @@ The first load seeds two planned campaigns. The app sets their dates relative to
 
 Targets are optional. Activation creates a target for each amount you set and skips each blank one. The annotations go up either way.
 
-Three more controls write to the same charts. **Close campaign** rewrites the annotation with what the campaign earned. If the order dimension is queryable, the close also stamps each order with the marketing touch it followed. **Cancel campaign** takes the annotations and targets back off the store. **Replan campaign** returns a canceled campaign to planned for a second activation.
+Three more controls write to the same charts. **Close campaign** rewrites the annotation with what the campaign earned. If the order dimension is queryable, the close also records the last campaign touch before each order. **Cancel campaign** takes the annotations and targets back off the store. **Replan campaign** returns a canceled campaign to planned for a second activation.
 
 To try the QR code flow, click **QR codes** in the app's navigation and create a code. Under **Campaign**, pick a planned campaign, then save. A code belongs to one campaign, and the **Campaign** column on the list links to it. **Live on** sets the day the code's mark lands on the timeline. Blank goes live with the campaign. Activating the campaign marks each of its codes on the timeline. With a **QR code target** amount, activation also creates one target per code. Every scan redirects to the code's scan destination with the code's UTM parameters. The destination is the product page or checkout. The **QR code sales** panel reports the sessions each code started and the orders shoppers place after scanning.
 
